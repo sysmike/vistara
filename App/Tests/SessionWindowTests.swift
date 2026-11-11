@@ -97,7 +97,10 @@ struct SessionWindowTests {
         #expect(view.desktopFrame.width > 0)
         #expect(view.accessibilityLabel() == "Remote desktop, Test Server")
 
-        controller.window.close()
+        // Session > Disconnect closes the window, and that ends the session.
+        #expect(controller.window.isVisible)
+        coordinator.disconnect(model)
+        #expect(!controller.window.isVisible)
         await waitUntil("the session has ended") { !model.isLive }
         #expect(model.phase == .disconnected(.userRequested))
         #expect(coordinator.liveSessionCount == 0)

@@ -5,10 +5,10 @@ import Testing
 @Suite
 struct DisconnectMessageTests {
     @Test
-    func aDisconnectTheUserAskedForOffersReconnect() {
+    func cancellingWhileConnectingSaysSoAndOffersAnotherTry() {
         let message = DisconnectMessage(reason: .userRequested, name: "Build Server")
-        #expect(message.title == "Disconnected from “Build Server”")
-        #expect(message.action == "Reconnect")
+        #expect(message.title == "Connection cancelled")
+        #expect(message.action == "Try Again")
         #expect(message.detail == nil)
     }
 

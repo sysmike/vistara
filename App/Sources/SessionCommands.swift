@@ -20,7 +20,10 @@ private struct SessionMenuItems: View {
         Button("Reconnect") { model?.reconnect() }
             .keyboardShortcut("r")
             .disabled(model?.isLive != false)
-        Button("Disconnect") { model?.disconnect() }
+        // Same as closing the window.
+        Button("Disconnect") {
+            if let model { coordinator.disconnect(model) }
+        }
             .disabled(model?.isLive != true)
 
         Divider()
