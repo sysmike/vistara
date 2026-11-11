@@ -110,7 +110,8 @@ ls "$PREFIX/bin"
 for tool in freerdp-shadow-cli winpr-hash; do
   [[ -x "$PREFIX/bin/$tool" ]] || die "expected $tool in $PREFIX/bin"
 done
-"$PREFIX/bin/freerdp-shadow-cli" /version
+# Proves the binary loads its libraries. /version exits non-zero by design.
+"$PREFIX/bin/freerdp-shadow-cli" /version | grep -F "$FREERDP_VERSION"
 
 echo "$BUILD_KEY" >"$STAMP"
 echo "Done: test server in $PREFIX"
