@@ -1,0 +1,44 @@
+# The Xcode project is generated from this file and is not committed:
+#   xcodegen generate
+name: Vistara
+
+options:
+  bundleIdPrefix: io.github.sysmike
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  RDPKit:
+    path: Packages/RDPKit
+  VistaraCore:
+    path: Packages/VistaraCore
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  Vistara:
+    type: application
+    platform: macOS
+    sources:
+      - App/Sources
+    dependencies:
+      - package: RDPKit
+      - package: VistaraCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.sysmike.vistara
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        CODE_SIGN_ENTITLEMENTS: App/Vistara.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        # Ad hoc signing for local and CI builds. Xcode applies the hardened
+        # runtime only with a real identity, which arrives with issue #34.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+    scheme: {}

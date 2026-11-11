@@ -42,3 +42,49 @@ jobs:
           for lib in build/freerdp/prefix/lib/lib{freerdp3,freerdp-client3,winpr3,ssl,crypto}.dylib; do
             otool -L "$lib"
           done
+
+  app:
+    name: Build, test, and lint
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install XcodeGen and SwiftLint
+        run: brew install xcodegen swiftlint
+
+      - name: Lint
+        run: swiftlint lint --strict
+
+      - name: Test packages
+        run: |
+          swift test --package-path Packages/VistaraCore
+          swift test --package-path Packages/RDPKit
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build app
+        run: |
+          xcodebuild build -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
+
+      - name: Check hardened runtime and sandbox
+        run: |
+          app=build/DerivedData/Build/Products/Debug/Vistara.app
+          codesign --verify --strict "$app"
+          # Xcode leaves the runtime flag off ad hoc signatures, so check the
+          # build setting here. The signed release build is checked in #34.
+          xcodebuild -project Vistara.xcodeproj -scheme Vistara -showBuildSettings |
+            grep -E '^ +ENABLE_HARDENED_RUNTIME = YES$'
+          codesign --display --entitlements - "$app" 2>/dev/null | tee /dev/stderr | grep -q 'com.apple.security.app-sandbox'
+
+      - name: Launch app
+        run: |
+          app=build/DerivedData/Build/Products/Debug/Vistara.app
+          open "$app"
+          sleep 8
+          pgrep -x Vistara
+          pkill -x Vistara
