@@ -96,7 +96,7 @@ jobs:
       - name: Launch app
         run: |
           app=build/DerivedData/Build/Products/Debug/Vistara.app
-          otool -L "$app/Contents/MacOS/Vistara" | grep '@rpath/libfreerdp3.3.dylib'
+          otool -L "$app"/Contents/MacOS/* | grep '@rpath/libfreerdp3.3.dylib'
           # Hide the build prefix so the app can only load its embedded copies.
           mv build/freerdp/prefix build/freerdp/prefix.hidden
           open "$app"
