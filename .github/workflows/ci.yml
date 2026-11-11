@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  freerdp:
+    name: Build FreeRDP
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compute build key
+        id: key
+        run: echo "key=$(scripts/build-freerdp.sh --print-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FreeRDP prefix
+        id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/freerdp/prefix
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+
+      - name: Build FreeRDP
+        run: scripts/build-freerdp.sh
+
+      - name: Show result
+        run: |
+          ls -l build/freerdp/prefix/lib
+          for lib in build/freerdp/prefix/lib/lib{freerdp3,freerdp-client3,winpr3,ssl,crypto}.dylib; do
+            otool -L "$lib"
+          done
