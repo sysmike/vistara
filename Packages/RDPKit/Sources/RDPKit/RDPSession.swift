@@ -20,6 +20,10 @@ public final class RDPSession: Sendable {
         var abortToken: SessionHandle.AbortToken?
     }
 
+    /// The remote desktop's pixels. Updated from the session thread while
+    /// connected; read it from any thread.
+    public let framebuffer = RDPFramebuffer()
+
     private let delegate: RDPSessionDelegate
     private let continuation: AsyncStream<RDPSessionState>.Continuation
     private let control = OSAllocatedUnfairLock(initialState: Control())
@@ -68,6 +72,7 @@ public final class RDPSession: Sendable {
         let reason = connectAndServe()
         continuation.yield(.disconnected(isStopRequested ? .userRequested : reason))
         continuation.finish()
+        framebuffer.finish()
     }
 
     private func connectAndServe() -> RDPDisconnectReason {
@@ -129,9 +134,20 @@ public final class RDPSession: Sendable {
                 handle.disconnect()
                 return .connectionLost(code: code)
             }
+            publishChanges(from: handle)
         }
         handle.disconnect()
         return .userRequested
+    }
+
+    /// Copies what FreeRDP painted during the last poll into `framebuffer`.
+    private func publishChanges(from handle: SessionHandle) {
+        guard let dirty = handle.takeDirtyRect() else { return }
+        let width = handle.framebufferWidth
+        let height = handle.framebufferHeight
+        _ = handle.withFramebuffer { pixels, stride in
+            framebuffer.write(from: pixels, stride: stride, width: width, height: height, dirty: dirty)
+        }
     }
 
     /// Runs an async question and blocks this session thread until it is

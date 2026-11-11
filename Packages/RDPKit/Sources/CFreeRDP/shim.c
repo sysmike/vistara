@@ -18,6 +18,9 @@ struct vistara_session {
     vistara_certificate_decider decide_certificate;
     void *decide_certificate_context;
     uint64_t paint_count;
+    // Union of everything painted since the last vistara_session_take_dirty().
+    bool has_dirty;
+    int32_t dirty_left, dirty_top, dirty_right, dirty_bottom;
 };
 
 // FreeRDP allocates ContextSize bytes and treats the start as rdpContext, so
@@ -88,6 +91,24 @@ static DWORD verify_changed_certificate(freerdp *instance, const char *host, UIN
 
 // MARK: Painting
 
+static void add_dirty(vistara_session *session, int32_t x, int32_t y, int32_t width, int32_t height) {
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    if (!session->has_dirty) {
+        session->has_dirty = true;
+        session->dirty_left = x;
+        session->dirty_top = y;
+        session->dirty_right = x + width;
+        session->dirty_bottom = y + height;
+        return;
+    }
+    if (x < session->dirty_left) session->dirty_left = x;
+    if (y < session->dirty_top) session->dirty_top = y;
+    if (x + width > session->dirty_right) session->dirty_right = x + width;
+    if (y + height > session->dirty_bottom) session->dirty_bottom = y + height;
+}
+
 static BOOL begin_paint(rdpContext *context) {
     HGDI_WND window = context->gdi->primary->hdc->hwnd;
     window->invalid->null = TRUE;
@@ -97,16 +118,23 @@ static BOOL begin_paint(rdpContext *context) {
 
 static BOOL end_paint(rdpContext *context) {
     HGDI_WND window = context->gdi->primary->hdc->hwnd;
-    if (!window->invalid->null) {
-        session_of(context)->paint_count += 1;
+    const GDI_RGN *invalid = window->invalid;
+    if (!invalid->null) {
+        vistara_session *session = session_of(context);
+        session->paint_count += 1;
+        add_dirty(session, invalid->x, invalid->y, invalid->w, invalid->h);
     }
     return TRUE;
 }
 
 static BOOL desktop_resize(rdpContext *context) {
     rdpSettings *settings = context->settings;
-    return gdi_resize(context->gdi, freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth),
-                      freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight));
+    if (!gdi_resize(context->gdi, freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth),
+                    freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight))) {
+        return FALSE;
+    }
+    add_dirty(session_of(context), 0, 0, context->gdi->width, context->gdi->height);
+    return TRUE;
 }
 
 // MARK: Connection callbacks
@@ -272,6 +300,28 @@ uint32_t vistara_session_stride(const vistara_session *session) {
 const uint8_t *vistara_session_framebuffer(const vistara_session *session) {
     const rdpGdi *gdi = gdi_of(session);
     return gdi ? gdi->primary_buffer : NULL;
+}
+
+bool vistara_session_take_dirty(vistara_session *session, vistara_rect *rect) {
+    const rdpGdi *gdi = gdi_of(session);
+    if (!gdi || !session->has_dirty) {
+        return false;
+    }
+    session->has_dirty = false;
+
+    // Clip to the framebuffer; a server may report more than is there.
+    int32_t left = session->dirty_left < 0 ? 0 : session->dirty_left;
+    int32_t top = session->dirty_top < 0 ? 0 : session->dirty_top;
+    int32_t right = session->dirty_right > gdi->width ? gdi->width : session->dirty_right;
+    int32_t bottom = session->dirty_bottom > gdi->height ? gdi->height : session->dirty_bottom;
+    if (right <= left || bottom <= top) {
+        return false;
+    }
+    rect->x = left;
+    rect->y = top;
+    rect->width = right - left;
+    rect->height = bottom - top;
+    return true;
 }
 
 uint64_t vistara_session_paint_count(const vistara_session *session) {

@@ -10,7 +10,8 @@ let package = Package(
     name: "RDPKit",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "RDPKit", targets: ["RDPKit"])
+        .library(name: "RDPKit", targets: ["RDPKit"]),
+        .library(name: "RDPKitUI", targets: ["RDPKitUI"])
     ],
     targets: [
         // C shim over FreeRDP. Its public header exposes no FreeRDP types, so
@@ -31,9 +32,20 @@ let package = Package(
             ]
         ),
         .target(name: "RDPKit", dependencies: ["CFreeRDP"]),
+        // AppKit and Metal views over RDPKit. Imports no FreeRDP.
+        .target(name: "RDPKitUI", dependencies: ["RDPKit"]),
         .testTarget(
             name: "RDPKitTests",
             dependencies: ["RDPKit"],
+            // Tests run outside an app bundle, so they find the libraries in
+            // the build prefix. The app embeds them instead (see project.yml).
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "\(freeRDPPrefix)/lib"])
+            ]
+        ),
+        .testTarget(
+            name: "RDPKitUITests",
+            dependencies: ["RDPKitUI"],
             // Tests run outside an app bundle, so they find the libraries in
             // the build prefix. The app embeds them instead (see project.yml).
             linkerSettings: [

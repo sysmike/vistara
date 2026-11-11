@@ -108,6 +108,19 @@ uint32_t vistara_session_height(const vistara_session *session);
 uint32_t vistara_session_stride(const vistara_session *session);
 const uint8_t *_Nullable vistara_session_framebuffer(const vistara_session *session);
 
+/// A rectangle in framebuffer pixels, origin at the top left.
+typedef struct {
+    int32_t x;
+    int32_t y;
+    int32_t width;
+    int32_t height;
+} vistara_rect;
+
+/// Reports the area that changed since the last call, as one rectangle that
+/// lies inside the framebuffer, and resets it. Returns false when nothing
+/// changed. A desktop resize marks the whole framebuffer.
+bool vistara_session_take_dirty(vistara_session *session, vistara_rect *rect);
+
 /// Number of paint cycles that changed the framebuffer since connecting.
 uint64_t vistara_session_paint_count(const vistara_session *session);
 
