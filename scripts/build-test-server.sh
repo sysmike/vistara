@@ -98,7 +98,8 @@ cmake -S "$WORK/src" -B "$WORK/obj" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DWITH_FUSE=OFF \
   -DWITH_INTERNAL_MD4=ON \
   -DWITH_INTERNAL_MD5=ON \
-  -DWITH_INTERNAL_RC4=ON
+  -DWITH_INTERNAL_RC4=ON \
+  -DCHANNEL_URBDRC=OFF
 cmake --build "$WORK/obj" --parallel "$(sysctl -n hw.ncpu)"
 cmake --install "$WORK/obj"
 
