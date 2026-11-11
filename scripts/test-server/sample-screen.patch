@@ -1,0 +1,17 @@
+--- a/server/shadow/Sample/sample_shadow.c
++++ b/server/shadow/Sample/sample_shadow.c
+@@ -91,7 +91,13 @@
+ 	sampleShadowSubsystem* subsystem = (sampleShadowSubsystem*)arg;
+ 	WINPR_ASSERT(subsystem);
+ 
+-	subsystem->base.numMonitors = sample_shadow_enum_monitors(subsystem->base.monitors, 16);
++	/* Vistara test server: one fixed 1024x768 monitor instead of none. */
++	subsystem->base.numMonitors = 1;
++	subsystem->base.monitors[0].left = 0;
++	subsystem->base.monitors[0].top = 0;
++	subsystem->base.monitors[0].right = 1023;
++	subsystem->base.monitors[0].bottom = 767;
++	subsystem->base.monitors[0].flags = 1;
+ 
+ 	WLog_WARN(TAG, "TODO: Implement!");
+ 
