@@ -8,7 +8,7 @@ protocol UnknownFieldPreserving: Codable {
 }
 
 /// A folder in the sidebar. Folders do not nest.
-public struct Folder: Identifiable, Equatable, Sendable, UnknownFieldPreserving {
+public struct Folder: Identifiable, Codable, Equatable, Sendable, UnknownFieldPreserving {
     public var id: UUID
     public var name: String
     public var unknownFields: [String: JSONValue] = [:]

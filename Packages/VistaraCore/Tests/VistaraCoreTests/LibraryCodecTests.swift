@@ -28,7 +28,7 @@ private func fullyPopulatedLibrary() -> Library {
 
 private func keys(in value: JSONValue) -> [String] {
     switch value {
-    case .object(let fields): fields.keys + fields.values.flatMap(keys(in:))
+    case .object(let fields): Array(fields.keys) + fields.values.flatMap(keys(in:))
     case .array(let items): items.flatMap(keys(in:))
     default: []
     }
@@ -90,7 +90,8 @@ private func keys(in value: JSONValue) -> [String] {
     let data = try LibraryCodec.encode(library)
     let encodedKeys = keys(in: try JSONDecoder().decode(JSONValue.self, from: data))
     #expect(encodedKeys.filter(LibraryCodec.isSecretLike).isEmpty)
-    #expect(!String(decoding: data, as: UTF8.self).contains("hunter2"))
+    let text = try #require(String(data: data, encoding: .utf8))
+    #expect(!text.contains("hunter2"))
 }
 
 @Test func olderFilesAreMigratedStepByStep() throws {

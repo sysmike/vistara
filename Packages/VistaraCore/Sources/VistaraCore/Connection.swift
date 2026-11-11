@@ -2,7 +2,7 @@ import Foundation
 
 /// One saved RDP connection. Holds no secrets: the password lives in the
 /// Keychain, keyed by `id`.
-public struct Connection: Identifiable, Equatable, Sendable, UnknownFieldPreserving {
+public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFieldPreserving {
     public enum ResolutionMode: String, Codable, Sendable, CaseIterable {
         /// The remote desktop resizes to match the window.
         case matchWindow
