@@ -8,7 +8,7 @@
 // the implementation is checked against the headers of the pinned version.
 //
 // A session is not thread-safe. Call all functions for one session from the
-// same thread.
+// same thread, except vistara_session_abort().
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -32,6 +32,25 @@ vistara_session *_Nullable vistara_session_create(void);
 /// NULL is allowed.
 void vistara_session_destroy(vistara_session *_Nullable session);
 
+/// A server certificate that OpenSSL could not verify on its own.
+typedef struct {
+    const char *host;
+    uint16_t port;
+    const char *common_name;
+    const char *subject;
+    const char *issuer;
+    /// SHA-256 as colon-separated hex pairs.
+    const char *fingerprint;
+    /// Set when FreeRDP's own store holds a different certificate for this
+    /// host. NULL otherwise.
+    const char *_Nullable previous_fingerprint;
+} vistara_certificate;
+
+/// Decides whether to continue with a certificate. Called on the thread that
+/// runs vistara_session_connect(), which blocks until this returns.
+typedef bool (*vistara_certificate_decider)(void *_Nullable context,
+                                            const vistara_certificate *certificate);
+
 typedef struct {
     const char *host;
     uint16_t port;
@@ -40,20 +59,26 @@ typedef struct {
     const char *password;
     uint32_t width;
     uint32_t height;
-    /// SHA-256 fingerprint the server's certificate must have, as reported by
-    /// vistara_session_presented_fingerprint(). With NULL, a certificate that
-    /// OpenSSL cannot verify is always rejected. There is no way to accept a
-    /// certificate without naming its fingerprint.
-    const char *_Nullable trusted_fingerprint;
+    /// Desktop scale in percent, 100 to 500.
+    uint32_t scale_percent;
+    /// When false, the server may negotiate TLS without Network Level
+    /// Authentication. Legacy RDP security is never offered.
+    bool require_nla;
+    /// Asked about every certificate OpenSSL cannot verify. With NULL, such a
+    /// certificate is always rejected: nothing is ever accepted silently.
+    vistara_certificate_decider _Nullable decide_certificate;
+    void *_Nullable decide_certificate_context;
 } vistara_connect_options;
 
 typedef enum {
     VISTARA_CONNECT_OK = 0,
-    /// The server's certificate did not match trusted_fingerprint.
+    /// The server's certificate was rejected by the decider, or there was none.
     VISTARA_CONNECT_CERTIFICATE_UNTRUSTED = 1,
     VISTARA_CONNECT_AUTHENTICATION_FAILED = 2,
+    /// vistara_session_abort() was called.
+    VISTARA_CONNECT_CANCELLED = 3,
     /// Anything else; see vistara_session_last_error_name().
-    VISTARA_CONNECT_FAILED = 3,
+    VISTARA_CONNECT_FAILED = 4,
 } vistara_connect_result;
 
 /// Connects with Network Level Authentication and blocks until the
@@ -61,10 +86,12 @@ typedef enum {
 vistara_connect_result vistara_session_connect(vistara_session *session,
                                                const vistara_connect_options *options);
 
-/// Fingerprint of the certificate the server presented during the last
-/// vistara_session_connect(), or NULL if none needed a decision. Owned by the
-/// session.
-const char *_Nullable vistara_session_presented_fingerprint(const vistara_session *session);
+/// Makes a running vistara_session_connect() fail and a later
+/// vistara_session_poll() return false, as soon as FreeRDP notices. This is
+/// the one function that may be called from another thread while the session
+/// is in use: it only signals an event. The caller must make sure the session
+/// is not destroyed concurrently.
+void vistara_session_abort(vistara_session *session);
 
 /// FreeRDP's name for the last error, for example
 /// "FREERDP_ERROR_AUTHENTICATION_FAILED". Static storage.
