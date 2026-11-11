@@ -114,6 +114,32 @@ jobs:
             grep -E '^ +ENABLE_HARDENED_RUNTIME = YES$'
           codesign --display --entitlements - "$app" 2>/dev/null | tee /dev/stderr | grep -q 'com.apple.security.app-sandbox'
 
+      # The tests run inside the sandboxed app and connect to the test server.
+      - name: Test app
+        env:
+          TEST_RUNNER_VISTARA_TEST_RDP_HOST: ${{ env.VISTARA_TEST_RDP_HOST }}
+          TEST_RUNNER_VISTARA_TEST_RDP_PORT: ${{ env.VISTARA_TEST_RDP_PORT }}
+          TEST_RUNNER_VISTARA_TEST_RDP_USER: ${{ env.VISTARA_TEST_RDP_USER }}
+          TEST_RUNNER_VISTARA_TEST_RDP_PASSWORD: ${{ env.VISTARA_TEST_RDP_PASSWORD }}
+        run: |
+          xcodebuild test -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
+
+      - name: Collect screenshots
+        if: always()
+        run: |
+          mkdir -p build/screenshots
+          find "$HOME/Library/Containers" -type d -name vistara-screenshots -exec cp -R {}/. build/screenshots/ \; 2>/dev/null || true
+          ls -l build/screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots
+          path: build/screenshots
+          if-no-files-found: warn
+
       - name: Launch app
         run: |
           app=build/DerivedData/Build/Products/Debug/Vistara.app

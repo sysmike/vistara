@@ -28,6 +28,9 @@ targets:
       - App/Sources
     dependencies:
       - package: RDPKit
+        product: RDPKit
+      - package: RDPKit
+        product: RDPKitUI
       - package: VistaraCore
     settings:
       base:
@@ -47,4 +50,22 @@ targets:
       - name: Embed FreeRDP
         script: '"$SRCROOT/scripts/embed-freerdp.sh"'
         basedOnDependencyAnalysis: false
-    scheme: {}
+    scheme:
+      testTargets:
+        - VistaraTests
+
+  # Runs inside the app, so the tests see real windows and the sandbox.
+  VistaraTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - App/Tests
+    dependencies:
+      - target: Vistara
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.sysmike.vistara.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
