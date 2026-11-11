@@ -4,3 +4,9 @@ included:
 excluded:
   - "**/.build"
   - build
+
+identifier_name:
+  excluded:
+    - id
+    - x
+    - y

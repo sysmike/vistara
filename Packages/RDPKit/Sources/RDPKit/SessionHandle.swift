@@ -133,6 +133,21 @@ final class SessionHandle {
     /// Number of paint cycles that changed the framebuffer since connecting.
     var paintCount: UInt64 { vistara_session_paint_count(session) }
 
+    /// The area painted since the last call, or nil when nothing changed.
+    func takeDirtyRect() -> RDPFramebuffer.Rect? {
+        var rect = vistara_rect()
+        guard vistara_session_take_dirty(session, &rect) else { return nil }
+        return .init(x: Int(rect.x), y: Int(rect.y), width: Int(rect.width), height: Int(rect.height))
+    }
+
+    /// Gives `body` the live framebuffer (32-bit BGRA rows of `stride` bytes).
+    /// Returns nil when not connected. The buffer is valid only inside `body`.
+    func withFramebuffer<Result>(_ body: (UnsafeBufferPointer<UInt8>, _ stride: Int) -> Result) -> Result? {
+        guard let pixels = vistara_session_framebuffer(session) else { return nil }
+        let stride = Int(vistara_session_stride(session))
+        return body(UnsafeBufferPointer(start: pixels, count: stride * framebufferHeight), stride)
+    }
+
     /// A copy of the framebuffer as 32-bit BGRA rows, or nil when not connected.
     func copyFramebuffer() -> [UInt8]? {
         guard let pixels = vistara_session_framebuffer(session) else { return nil }
