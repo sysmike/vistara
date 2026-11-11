@@ -45,6 +45,12 @@ final class SessionCoordinator {
         return controller
     }
 
+    /// Closes the session's window, which disconnects. This is what
+    /// Session > Disconnect does.
+    func disconnect(_ model: SessionModel) {
+        controllers.first { $0.model === model }?.window.close()
+    }
+
     /// Disconnects every session and waits until all have ended, or the
     /// timeout has passed.
     func disconnectAll(timeout: Duration) async {

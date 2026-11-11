@@ -12,11 +12,9 @@ struct DisconnectMessage: Equatable {
 
     init(reason: RDPDisconnectReason, name: String) {
         switch reason {
-        case .userRequested:
-            title = "Disconnected from “\(name)”"
-            explanation = "Programs on the remote computer keep running."
-            action = "Reconnect"
-        case .credentialsCancelled:
+        // Disconnecting a running session closes its window, so a window only
+        // shows this after Cancel while connecting.
+        case .userRequested, .credentialsCancelled:
             title = "Connection cancelled"
             action = "Try Again"
         case .certificateRejected:

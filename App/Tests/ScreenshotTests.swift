@@ -42,7 +42,7 @@ struct ScreenshotTests {
     @Test
     func disconnected() async throws {
         let examples: [(name: String, reason: RDPDisconnectReason)] = [
-            ("disconnected", .userRequested),
+            ("cancelled", .userRequested),
             ("failed", .connectionFailed(code: "ERRCONNECT_CONNECT_TRANSPORT_FAILED")),
             ("lost", .connectionLost(code: "ERRINFO_RPC_INITIATED_DISCONNECT")),
             ("wrong-password", .authenticationFailed),
