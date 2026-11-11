@@ -24,23 +24,23 @@ struct ScreenshotTests {
     )
 
     @Test
-    func launcher() throws {
+    func launcher() async throws {
         let size = NSSize(width: 380, height: 170)
-        let bytes = try Screenshots.write(LauncherView { _, _ in }, size: size, name: "launcher")
+        let bytes = try await Screenshots.write(LauncherView { _, _ in }, size: size, name: "launcher")
         #expect(bytes > 0)
     }
 
     @Test(arguments: [false, true])
-    func connecting(dark: Bool) throws {
+    func connecting(dark: Bool) async throws {
         let model = SessionModel(target: Self.target, password: "", phase: .connecting)
         let name = dark ? "connecting-dark" : "connecting"
         let view = SessionContentView(model: model)
-        let bytes = try Screenshots.write(view, size: Self.windowSize, name: name, dark: dark)
+        let bytes = try await Screenshots.write(view, size: Self.windowSize, name: name, dark: dark)
         #expect(bytes > 0)
     }
 
     @Test
-    func disconnected() throws {
+    func disconnected() async throws {
         let examples: [(name: String, reason: RDPDisconnectReason)] = [
             ("disconnected", .userRequested),
             ("failed", .connectionFailed(code: "ERRCONNECT_CONNECT_TRANSPORT_FAILED")),
@@ -51,16 +51,34 @@ struct ScreenshotTests {
         for example in examples {
             let model = SessionModel(target: Self.target, password: "", phase: .disconnected(example.reason))
             let view = SessionContentView(model: model)
-            let bytes = try Screenshots.write(view, size: Self.windowSize, name: example.name)
+            let bytes = try await Screenshots.write(view, size: Self.windowSize, name: example.name)
             #expect(bytes > 0)
         }
     }
 
+    @Test
+    func changedCertificateSheet() async throws {
+        var changed = Self.certificate
+        changed.previousFingerprint =
+            "a1:07:5c:de:42:90:3b:f8:19:c6:7e:05:d3:68:2a:b4:91:0c:e7:36:5f:a8:14:7b:c0:29:e5:83:4d:f1:6a:9e"
+        let view = CertificateSheet(certificate: changed) { _ in }
+        let size = NSSize(width: 520, height: 310)
+        let bytes = try await Screenshots.write(view, size: size, name: "certificate-changed")
+        #expect(bytes > 0)
+    }
+
+    @Test
+    func fingerprintLinesNeverSplitAPair() {
+        #expect(CertificateSheet.lines(ofFingerprint: "aa:bb:cc:dd:ee", pairsPerLine: 2) == "aa:bb\ncc:dd\nee")
+        #expect(CertificateSheet.lines(ofFingerprint: Self.certificate.fingerprint).split(separator: "\n").count == 2)
+        #expect(CertificateSheet.lines(ofFingerprint: "").isEmpty)
+    }
+
     @Test(arguments: [false, true])
-    func certificateSheet(dark: Bool) throws {
+    func certificateSheet(dark: Bool) async throws {
         let name = dark ? "certificate-dark" : "certificate"
         let view = CertificateSheet(certificate: Self.certificate) { _ in }
-        let bytes = try Screenshots.write(view, size: NSSize(width: 520, height: 230), name: name, dark: dark)
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 520, height: 250), name: name, dark: dark)
         #expect(bytes > 0)
     }
 }

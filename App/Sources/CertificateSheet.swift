@@ -19,12 +19,13 @@ struct CertificateSheet: View {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
                 row("Issued to:", certificate.commonName.isEmpty ? certificate.subject : certificate.commonName)
                 row("Issued by:", certificate.issuer)
-                row("SHA-256 fingerprint:", certificate.fingerprint, monospaced: true)
-                if let previous = certificate.previousFingerprint {
-                    row("Seen before:", previous, monospaced: true)
-                }
             }
-            .padding(.vertical, 4)
+            .padding(.top, 4)
+
+            fingerprint("SHA-256 fingerprint", certificate.fingerprint)
+            if let previous = certificate.previousFingerprint {
+                fingerprint("Fingerprint seen before", previous)
+            }
 
             HStack {
                 Spacer()
@@ -48,15 +49,34 @@ struct CertificateSheet: View {
         }
     }
 
-    private func row(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
+    private func row(_ label: String, _ value: String) -> some View {
         GridRow {
             Text(label)
                 .foregroundStyle(.secondary)
                 .gridColumnAlignment(.trailing)
             Text(value)
-                .font(monospaced ? .system(.body, design: .monospaced) : .body)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func fingerprint(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(Self.lines(ofFingerprint: value))
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .fixedSize()
+        }
+    }
+
+    /// Breaks a colon-separated fingerprint into lines of 16 pairs, so a line
+    /// never ends in the middle of a pair.
+    static func lines(ofFingerprint fingerprint: String, pairsPerLine: Int = 16) -> String {
+        let pairs = fingerprint.split(separator: ":")
+        return stride(from: 0, to: pairs.count, by: pairsPerLine)
+            .map { pairs[$0..<min($0 + pairsPerLine, pairs.count)].joined(separator: ":") }
+            .joined(separator: "\n")
     }
 }

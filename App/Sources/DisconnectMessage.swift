@@ -28,8 +28,8 @@ struct DisconnectMessage: Equatable {
             explanation = "Close this window and connect again."
         case .connectionFailed(let code):
             title = "Can’t connect to “\(name)”"
-            explanation = "Check the name and your network connection, and that Remote Desktop is turned on "
-                + "on that computer."
+            explanation = "Check the name and your network connection, and that Remote Desktop is enabled on "
+                + "that computer."
             action = "Try Again"
             detail = code
         case .connectionLost(let code):

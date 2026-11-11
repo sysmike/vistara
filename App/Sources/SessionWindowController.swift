@@ -26,9 +26,6 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         let target = model.target
         window.isReleasedWhenClosed = false
         window.title = target.name
-        if target.name != target.host {
-            window.subtitle = target.host
-        }
         // Session tabs are a later feature (issue #37).
         window.tabbingMode = .disallowed
 
@@ -42,6 +39,9 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // Restores size and position from the last window for this computer.
         window.setFrameAutosaveName("Session \(target.host):\(target.port)")
         window.delegate = self
+        if target.name != target.host {
+            window.subtitle = target.host
+        }
     }
 
     func show() {
