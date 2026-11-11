@@ -5,18 +5,18 @@ import Testing
 struct LauncherInputTests {
     @Test
     func acceptsHostsWithAndWithoutPort() {
-        let examples: [(text: String, host: String, port: UInt16)] = [
-            ("build01.example.com", "build01.example.com", 3389),
-            ("  10.0.0.5  ", "10.0.0.5", 3389),
-            ("build01:3390", "build01", 3390),
-            ("fe80::1", "fe80::1", 3389),
-            ("[fe80::1]", "fe80::1", 3389),
-            ("[fe80::1]:3391", "fe80::1", 3391)
+        let examples: [String: (host: String, port: UInt16)] = [
+            "build01.example.com": ("build01.example.com", 3389),
+            "  10.0.0.5  ": ("10.0.0.5", 3389),
+            "build01:3390": ("build01", 3390),
+            "fe80::1": ("fe80::1", 3389),
+            "[fe80::1]": ("fe80::1", 3389),
+            "[fe80::1]:3391": ("fe80::1", 3391)
         ]
-        for example in examples {
-            let result = LauncherInput.hostAndPort(example.text)
-            #expect(result?.host == example.host, "\(example.text)")
-            #expect(result?.port == example.port, "\(example.text)")
+        for (text, expected) in examples {
+            let result = LauncherInput.hostAndPort(text)
+            #expect(result?.host == expected.host, "\(text)")
+            #expect(result?.port == expected.port, "\(text)")
         }
     }
 
