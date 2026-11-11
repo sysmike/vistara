@@ -2,14 +2,19 @@ import SwiftUI
 
 @main
 struct VistaraApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var coordinator = SessionCoordinator.shared
+
     var body: some Scene {
-        WindowGroup {
-            ContentUnavailableView(
-                "No Connections",
-                systemImage: "desktopcomputer",
-                description: Text("Connections you add will appear here.")
-            )
-            .frame(minWidth: 480, minHeight: 320)
+        // Temporary: the connections window (issue #21) replaces this launcher.
+        WindowGroup("Connect", id: "launcher") {
+            LauncherView { target, password in
+                coordinator.open(target, password: password)
+            }
+        }
+        .windowResizability(.contentSize)
+        .commands {
+            SessionCommands(coordinator: coordinator)
         }
     }
 }
