@@ -17,7 +17,7 @@ private let sampleText = """
     authentication level:i:2
     enablecredsspsupport:i:1
     username:s:EXAMPLE\\alice
-    drivestoredirect:s:C:\;D:\\
+    drivestoredirect:s:C:\\;D:\\
     password 51:b:01000000D08C9DDF0115D1118C7A00C04FC297EB
     """
 
@@ -27,7 +27,7 @@ private let sampleText = """
     #expect(file.skippedLines.isEmpty)
     #expect(file.integer("desktopwidth") == 1920)
     #expect(file.string("full address") == "build01.example.com:3390")
-    #expect(file.string("drivestoredirect") == "C:\;D:\\")
+    #expect(file.string("drivestoredirect") == "C:\\;D:\\")
 }
 
 @Test func keysAreCaseInsensitive() {
@@ -98,7 +98,7 @@ private let sampleText = """
     #expect(connection.requiresNLA)
     #expect(connection.certificatePolicy == .askOnFirstUse)
     #expect(connection.additionalRDPSettings == [
-        "screen mode id:i:2", "use multimon:i:0", "session bpp:i:32", "drivestoredirect:s:C:\;D:\\"
+        "screen mode id:i:2", "use multimon:i:0", "session bpp:i:32", "drivestoredirect:s:C:\\;D:\\"
     ])
 }
 
