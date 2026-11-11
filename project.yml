@@ -36,7 +36,8 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         CODE_SIGN_ENTITLEMENTS: App/Vistara.entitlements
         ENABLE_HARDENED_RUNTIME: YES
-        # Ad hoc signing for local and CI builds. Release signing is issue #34.
+        # Ad hoc signing for local and CI builds. Xcode applies the hardened
+        # runtime only with a real identity, which arrives with issue #34.
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         DEVELOPMENT_TEAM: ""

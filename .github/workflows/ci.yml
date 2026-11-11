@@ -75,7 +75,10 @@ jobs:
         run: |
           app=build/DerivedData/Build/Products/Debug/Vistara.app
           codesign --verify --strict "$app"
-          codesign --display --verbose "$app" 2>&1 | tee /dev/stderr | grep -Eq 'flags=.*runtime'
+          # Xcode leaves the runtime flag off ad hoc signatures, so check the
+          # build setting here. The signed release build is checked in #34.
+          xcodebuild -project Vistara.xcodeproj -scheme Vistara -showBuildSettings |
+            grep -E '^ +ENABLE_HARDENED_RUNTIME = YES$'
           codesign --display --entitlements - "$app" 2>/dev/null | tee /dev/stderr | grep -q 'com.apple.security.app-sandbox'
 
       - name: Launch app
