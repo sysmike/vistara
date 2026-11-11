@@ -40,6 +40,27 @@ swift test --package-path Packages/VistaraCore && swift test --package-path Pack
 swiftlint lint --strict
 ```
 
+## Integration tests
+
+Tests that need an RDP server run only when `VISTARA_TEST_RDP_HOST` is set.
+Also read: `VISTARA_TEST_RDP_PORT`, `VISTARA_TEST_RDP_USER`,
+`VISTARA_TEST_RDP_DOMAIN`, and `VISTARA_TEST_RDP_PASSWORD`.
+
+CI runs them against FreeRDP's shadow server on localhost. To do the same
+locally, after building FreeRDP:
+
+```bash
+scripts/build-test-server.sh
+```
+
+```bash
+set -a && eval "$(scripts/run-test-server.sh)" && set +a && swift test --package-path Packages/RDPKit
+```
+
+The test server is a build of FreeRDP's own server with a 1024x768
+screen filled with one colour. It checks the protocol path (TLS, Network Level Authentication,
+graphics updates). It is not a substitute for testing against Windows.
+
 ## Building FreeRDP
 
 Vistara embeds FreeRDP as libraries built from a pinned release.
