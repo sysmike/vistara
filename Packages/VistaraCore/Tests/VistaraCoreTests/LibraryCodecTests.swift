@@ -23,6 +23,7 @@ private func fullyPopulatedLibrary() -> Library {
     connection.reconnectsAutomatically = false
     connection.requiresNLA = false
     connection.certificatePolicy = .requireTrusted
+    connection.additionalRDPSettings = ["use multimon:i:0"]
     return Library(connections: [connection, Connection(name: "Jump Host", host: "10.0.4.17")], folders: [folder])
 }
 
