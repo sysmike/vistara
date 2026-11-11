@@ -1,6 +1,50 @@
 --- a/server/shadow/Sample/sample_shadow.c
 +++ b/server/shadow/Sample/sample_shadow.c
-@@ -91,7 +91,13 @@
+@@ -20,6 +20,7 @@
+ #include <winpr/crt.h>
+ #include <winpr/synch.h>
+ #include <winpr/sysinfo.h>
++#include <winpr/thread.h>
+ 
+ #include <freerdp/log.h>
+ #include <freerdp/codec/color.h>
+@@ -30,6 +31,35 @@
+ 
+ #define TAG SERVER_TAG("shadow.sample")
+ 
++/* Vistara test server: a solid-colour screen (blue 0x99, green 0x66, red 0x33)
++ * and a timer that tells clients to pick up pending updates. */
++#define VISTARA_TEST_COLOR 0xFF336699u
++
++static HANDLE vistara_stop_event = nullptr;
++static HANDLE vistara_tick_thread = nullptr;
++
++static void vistara_fill(rdpShadowSurface* surface)
++{
++	if (!surface || !surface->data)
++		return;
++	EnterCriticalSection(&surface->lock);
++	for (UINT32 y = 0; y < surface->height; y++)
++	{
++		UINT32* row = (UINT32*)(void*)&surface->data[1ull * y * surface->scanline];
++		for (UINT32 x = 0; x < surface->width; x++)
++			row[x] = VISTARA_TEST_COLOR;
++	}
++	LeaveCriticalSection(&surface->lock);
++}
++
++static DWORD WINAPI vistara_tick(LPVOID arg)
++{
++	rdpShadowSubsystem* subsystem = (rdpShadowSubsystem*)arg;
++	while (WaitForSingleObject(vistara_stop_event, 100) == WAIT_TIMEOUT)
++		shadow_subsystem_frame_update(subsystem);
++	return 0;
++}
++
+ WINPR_ATTR_NODISCARD
+ static BOOL sample_shadow_input_synchronize_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
+                                                   WINPR_ATTR_UNUSED rdpShadowClient* client,
+@@ -91,7 +121,13 @@
  	sampleShadowSubsystem* subsystem = (sampleShadowSubsystem*)arg;
  	WINPR_ASSERT(subsystem);
  
@@ -15,3 +59,36 @@
  
  	WLog_WARN(TAG, "TODO: Implement!");
  
+@@ -124,7 +160,14 @@
+ 	if (!subsystem)
+ 		return -1;
+ 
+-	WLog_WARN(TAG, "TODO: Implement!");
++	vistara_fill(subsystem->base.server->surface);
++	vistara_fill(subsystem->base.server->lobby);
++	vistara_stop_event = CreateEvent(nullptr, TRUE, FALSE, nullptr);
++	if (!vistara_stop_event)
++		return -1;
++	vistara_tick_thread = CreateThread(nullptr, 0, vistara_tick, &subsystem->base, 0, nullptr);
++	if (!vistara_tick_thread)
++		return -1;
+ 
+ 	return 1;
+ }
+@@ -137,7 +180,15 @@
+ 	if (!subsystem)
+ 		return -1;
+ 
+-	WLog_WARN(TAG, "TODO: Implement!");
++	if (vistara_tick_thread)
++	{
++		(void)SetEvent(vistara_stop_event);
++		(void)WaitForSingleObject(vistara_tick_thread, INFINITE);
++		(void)CloseHandle(vistara_tick_thread);
++		(void)CloseHandle(vistara_stop_event);
++		vistara_tick_thread = nullptr;
++		vistara_stop_event = nullptr;
++	}
+ 
+ 	return 1;
+ }

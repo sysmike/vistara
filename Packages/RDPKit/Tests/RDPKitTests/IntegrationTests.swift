@@ -67,10 +67,18 @@ struct IntegrationTests {
             guard session.poll(timeoutMilliseconds: 100) else { break }
         }
 
+        // Let the rest of the first full-screen update arrive.
+        for _ in 0..<10 where session.poll(timeoutMilliseconds: 50) {}
+
         #expect(session.framebufferWidth == 1024)
         #expect(session.framebufferHeight == 768)
-        #expect(session.copyFramebuffer()?.count == 1024 * 768 * 4)
         #expect(session.paintCount > 0)
+
+        // The test server shows one solid colour: blue 0x99, green 0x66, red 0x33.
+        let pixels = try #require(session.copyFramebuffer())
+        #expect(pixels.count == 1024 * 768 * 4)
+        #expect(Array(pixels.prefix(3)) == [0x99, 0x66, 0x33])
+        #expect(Array(pixels.suffix(4).prefix(3)) == [0x99, 0x66, 0x33])
 
         session.disconnect()
         #expect(session.copyFramebuffer() == nil)

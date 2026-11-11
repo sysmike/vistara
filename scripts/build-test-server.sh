@@ -3,8 +3,9 @@
 # Builds FreeRDP's shadow server from the pinned source, for integration
 # tests only. It is never bundled in the app.
 #
-# The server's "sample" screen source has no monitor; a patch gives it one
-# fixed 1024x768 monitor so clients receive a framebuffer of a known size.
+# The server's "sample" screen source has no monitor and never sends anything.
+# A patch gives it one fixed 1024x768 monitor filled with a known colour and a
+# timer that pushes pending updates, so clients receive a predictable picture.
 #
 # Requires scripts/build-freerdp.sh to have run (for OpenSSL).
 #
