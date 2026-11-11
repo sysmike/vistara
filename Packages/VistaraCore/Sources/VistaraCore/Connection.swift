@@ -65,6 +65,10 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
     public var requiresNLA = true
     public var certificatePolicy = CertificatePolicy.askOnFirstUse
 
+    /// Lines from an imported `.rdp` file that Vistara has no setting for, kept
+    /// as written so an export gives them back. Never holds a password.
+    public var additionalRDPSettings: [String] = []
+
     public var unknownFields: [String: JSONValue] = [:]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -73,6 +77,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         case resolutionMode, fixedWidth, fixedHeight, usesHiDPI
         case sharesClipboard, audioMode, sharedFolders
         case reconnectsAutomatically, requiresNLA, certificatePolicy
+        case additionalRDPSettings
     }
 
     public static var knownKeys: Set<String> {
@@ -111,5 +116,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         requiresNLA = try values.decodeIfPresent(Bool.self, forKey: .requiresNLA) ?? requiresNLA
         certificatePolicy =
             try values.decodeIfPresent(CertificatePolicy.self, forKey: .certificatePolicy) ?? certificatePolicy
+        additionalRDPSettings =
+            try values.decodeIfPresent([String].self, forKey: .additionalRDPSettings) ?? additionalRDPSettings
     }
 }
