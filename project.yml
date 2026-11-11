@@ -41,4 +41,10 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         DEVELOPMENT_TEAM: ""
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+    postBuildScripts:
+      - name: Embed FreeRDP
+        script: '"$SRCROOT/scripts/embed-freerdp.sh"'
+        basedOnDependencyAnalysis: false
     scheme: {}

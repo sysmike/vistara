@@ -45,12 +45,24 @@ jobs:
 
   app:
     name: Build, test, and lint
+    needs: freerdp
     runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Compute build key
+        id: key
+        run: echo "key=$(scripts/build-freerdp.sh --print-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FreeRDP prefix
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/freerdp/prefix
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+          fail-on-cache-miss: true
 
       - name: Install XcodeGen and SwiftLint
         run: brew install xcodegen swiftlint
@@ -84,6 +96,9 @@ jobs:
       - name: Launch app
         run: |
           app=build/DerivedData/Build/Products/Debug/Vistara.app
+          otool -L "$app/Contents/MacOS/Vistara" | grep '@rpath/libfreerdp3.3.dylib'
+          # Hide the build prefix so the app can only load its embedded copies.
+          mv build/freerdp/prefix build/freerdp/prefix.hidden
           open "$app"
           sleep 8
           pgrep -x Vistara
