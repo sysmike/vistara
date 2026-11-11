@@ -10,6 +10,33 @@ grouped by milestone.
 - [Architecture](docs/ARCHITECTURE.md)
 - Requires macOS 14 or later
 
+## Building the app
+
+The Xcode project is generated from [`project.yml`](project.yml) and is not
+committed. Most code lives in local Swift packages under `Packages/`.
+
+```bash
+brew install xcodegen swiftlint
+```
+
+```bash
+xcodegen generate
+```
+
+Then open `Vistara.xcodeproj`, or build and test from the command line:
+
+```bash
+xcodebuild build -project Vistara.xcodeproj -scheme Vistara
+```
+
+```bash
+swift test --package-path Packages/VistaraCore && swift test --package-path Packages/RDPKit
+```
+
+```bash
+swiftlint lint --strict
+```
+
 ## Building FreeRDP
 
 Vistara embeds FreeRDP as libraries built from a pinned release.

@@ -1,0 +1,6 @@
+included:
+  - App
+  - Packages
+excluded:
+  - "**/.build"
+  - build
