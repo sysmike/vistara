@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
@@ -16,8 +15,8 @@ struct vistara_session {
     bool connect_attempted;
     bool connected;
     bool certificate_rejected;
-    char *trusted_fingerprint;
-    char *presented_fingerprint;
+    vistara_certificate_decider decide_certificate;
+    void *decide_certificate_context;
     uint64_t paint_count;
 };
 
@@ -38,25 +37,35 @@ const char *vistara_freerdp_version(void) {
 
 // MARK: Certificates
 
-/// Accepts a certificate for this session only when its fingerprint equals
-/// the one the caller named. Nothing is written to FreeRDP's own store.
-static DWORD decide_certificate(vistara_session *session, const char *fingerprint) {
-    free(session->presented_fingerprint);
-    session->presented_fingerprint = fingerprint ? strdup(fingerprint) : NULL;
-
-    if (fingerprint && session->trusted_fingerprint &&
-        strcasecmp(fingerprint, session->trusted_fingerprint) == 0) {
+/// Asks the decider. Acceptance is for this session only, so nothing is
+/// written to FreeRDP's own certificate store.
+static DWORD decide_certificate(vistara_session *session, const vistara_certificate *certificate) {
+    if (session->decide_certificate && certificate->fingerprint &&
+        session->decide_certificate(session->decide_certificate_context, certificate)) {
         return 2; // accept for this session only
     }
     session->certificate_rejected = true;
     return 0;
 }
 
+static const char *or_empty(const char *text) {
+    return text ? text : "";
+}
+
 static DWORD verify_certificate(freerdp *instance, const char *host, UINT16 port,
                                 const char *common_name, const char *subject, const char *issuer,
                                 const char *fingerprint, DWORD flags) {
-    (void)host, (void)port, (void)common_name, (void)subject, (void)issuer, (void)flags;
-    return decide_certificate(session_of(instance->context), fingerprint);
+    (void)flags;
+    const vistara_certificate certificate = {
+        .host = or_empty(host),
+        .port = port,
+        .common_name = or_empty(common_name),
+        .subject = or_empty(subject),
+        .issuer = or_empty(issuer),
+        .fingerprint = fingerprint,
+        .previous_fingerprint = NULL,
+    };
+    return decide_certificate(session_of(instance->context), &certificate);
 }
 
 static DWORD verify_changed_certificate(freerdp *instance, const char *host, UINT16 port,
@@ -64,9 +73,17 @@ static DWORD verify_changed_certificate(freerdp *instance, const char *host, UIN
                                         const char *issuer, const char *new_fingerprint,
                                         const char *old_subject, const char *old_issuer,
                                         const char *old_fingerprint, DWORD flags) {
-    (void)host, (void)port, (void)common_name, (void)subject, (void)issuer;
-    (void)old_subject, (void)old_issuer, (void)old_fingerprint, (void)flags;
-    return decide_certificate(session_of(instance->context), new_fingerprint);
+    (void)old_subject, (void)old_issuer, (void)flags;
+    const vistara_certificate certificate = {
+        .host = or_empty(host),
+        .port = port,
+        .common_name = or_empty(common_name),
+        .subject = or_empty(subject),
+        .issuer = or_empty(issuer),
+        .fingerprint = new_fingerprint,
+        .previous_fingerprint = or_empty(old_fingerprint),
+    };
+    return decide_certificate(session_of(instance->context), &certificate);
 }
 
 // MARK: Painting
@@ -152,8 +169,6 @@ void vistara_session_destroy(vistara_session *session) {
     vistara_session_disconnect(session);
     freerdp_context_free(session->instance);
     freerdp_free(session->instance);
-    free(session->trusted_fingerprint);
-    free(session->presented_fingerprint);
     free(session);
 }
 
@@ -166,9 +181,12 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            freerdp_settings_set_uint32(settings, FreeRDP_DesktopWidth, options->width) &&
            freerdp_settings_set_uint32(settings, FreeRDP_DesktopHeight, options->height) &&
            freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 32) &&
-           // Network Level Authentication or nothing: no fallback to weaker modes.
+           freerdp_settings_set_uint32(settings, FreeRDP_DesktopScaleFactor, options->scale_percent) &&
+           freerdp_settings_set_uint32(settings, FreeRDP_DeviceScaleFactor, 100) &&
+           // Network Level Authentication, or TLS when the caller allows it.
+           // Legacy RDP security is never offered.
            freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, TRUE) &&
-           freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, FALSE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, options->require_nla ? FALSE : TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE);
 }
 
@@ -179,9 +197,8 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     }
     session->connect_attempted = true;
 
-    if (options->trusted_fingerprint) {
-        session->trusted_fingerprint = strdup(options->trusted_fingerprint);
-    }
+    session->decide_certificate = options->decide_certificate;
+    session->decide_certificate_context = options->decide_certificate_context;
     if (!apply_options(session->instance->context->settings, options)) {
         return VISTARA_CONNECT_FAILED;
     }
@@ -195,6 +212,8 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
         return VISTARA_CONNECT_CERTIFICATE_UNTRUSTED;
     }
     switch (freerdp_get_last_error(session->instance->context)) {
+    case FREERDP_ERROR_CONNECT_CANCELLED:
+        return VISTARA_CONNECT_CANCELLED;
     case FREERDP_ERROR_AUTHENTICATION_FAILED:
     case FREERDP_ERROR_CONNECT_LOGON_FAILURE:
         return VISTARA_CONNECT_AUTHENTICATION_FAILED;
@@ -203,8 +222,8 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     }
 }
 
-const char *vistara_session_presented_fingerprint(const vistara_session *session) {
-    return session->presented_fingerprint;
+void vistara_session_abort(vistara_session *session) {
+    (void)freerdp_abort_connect_context(session->instance->context);
 }
 
 const char *vistara_session_last_error_name(const vistara_session *session) {

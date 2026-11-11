@@ -1,0 +1,161 @@
+import Foundation
+import os
+
+/// One RDP connection, from `start()` to the `.disconnected` state.
+///
+/// Each session runs FreeRDP on its own thread. Nothing here blocks the
+/// caller: `start()` and `disconnect()` return at once, and progress arrives
+/// on `states`. A session is used once; to reconnect, create another.
+public final class RDPSession: Sendable {
+    public let configuration: RDPSessionConfiguration
+
+    /// Every state the session goes through, ending with `.disconnected`.
+    /// Intended for a single consumer.
+    public let states: AsyncStream<RDPSessionState>
+
+    private struct Control {
+        var isStarted = false
+        var stopRequested = false
+        var openQuestion: Task<Void, Never>?
+        var abortToken: SessionHandle.AbortToken?
+    }
+
+    private let delegate: RDPSessionDelegate
+    private let continuation: AsyncStream<RDPSessionState>.Continuation
+    private let control = OSAllocatedUnfairLock(initialState: Control())
+
+    public init(configuration: RDPSessionConfiguration, delegate: RDPSessionDelegate) {
+        self.configuration = configuration
+        self.delegate = delegate
+        let (stream, continuation) = AsyncStream.makeStream(of: RDPSessionState.self)
+        self.states = stream
+        self.continuation = continuation
+    }
+
+    /// Starts connecting. Calling it again does nothing.
+    public func start() {
+        let shouldStart = control.withLock { control in
+            if control.isStarted { return false }
+            control.isStarted = true
+            return true
+        }
+        guard shouldStart else { return }
+
+        let thread = Thread { self.run() }
+        thread.name = "Vistara RDP session"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+    }
+
+    /// Ends the session, whatever it is doing. The final state is
+    /// `.disconnected(.userRequested)`.
+    public func disconnect() {
+        control.withLock { control in
+            control.stopRequested = true
+            control.openQuestion?.cancel()
+            control.abortToken?.abort()
+        }
+    }
+
+    // MARK: Session thread
+
+    private var isStopRequested: Bool {
+        control.withLock { $0.stopRequested }
+    }
+
+    private func run() {
+        continuation.yield(.connecting)
+        let reason = connectAndServe()
+        continuation.yield(.disconnected(isStopRequested ? .userRequested : reason))
+        continuation.finish()
+    }
+
+    private func connectAndServe() -> RDPDisconnectReason {
+        continuation.yield(.awaitingCredentials)
+        let configuration = configuration
+        let delegate = delegate
+        guard let answer = ask({ await delegate.credentials(configuration) }), let credentials = answer else {
+            return .credentialsCancelled
+        }
+        guard let handle = SessionHandle() else {
+            return .connectionFailed(code: "out of memory")
+        }
+
+        // The token must be gone before the handle is, so both happen here.
+        let abortToken = handle.abortToken
+        return withExtendedLifetime(handle) {
+            control.withLock { control in
+                control.abortToken = abortToken
+                if control.stopRequested { abortToken.abort() }
+            }
+            defer { control.withLock { $0.abortToken = nil } }
+            return serve(handle, credentials: credentials)
+        }
+    }
+
+    private func serve(_ handle: SessionHandle, credentials: RDPCredentials) -> RDPDisconnectReason {
+        continuation.yield(.connecting)
+        let target = SessionHandle.Target(
+            host: configuration.host,
+            port: configuration.port,
+            username: credentials.username,
+            domain: credentials.domain,
+            password: credentials.password,
+            width: configuration.desktopWidth,
+            height: configuration.desktopHeight,
+            scalePercent: configuration.scalePercent,
+            requiresNLA: configuration.requiresNLA
+        )
+        let delegate = delegate
+
+        let result = handle.connect(to: target) { certificate in
+            self.continuation.yield(.awaitingCertificateDecision(certificate))
+            let isAccepted = self.ask { await delegate.certificateDecision(certificate) } ?? false
+            if isAccepted { self.continuation.yield(.connecting) }
+            return isAccepted
+        }
+        switch result {
+        case .connected: break
+        case .certificateRejected: return .certificateRejected
+        case .authenticationFailed: return .authenticationFailed
+        case .cancelled: return .userRequested
+        case .failed(let errorName): return .connectionFailed(code: errorName)
+        }
+
+        continuation.yield(.connected(width: handle.framebufferWidth, height: handle.framebufferHeight))
+        while !isStopRequested {
+            if !handle.poll(timeoutMilliseconds: 100) {
+                let code = handle.lastErrorName
+                handle.disconnect()
+                return .connectionLost(code: code)
+            }
+        }
+        handle.disconnect()
+        return .userRequested
+    }
+
+    /// Runs an async question and blocks this session thread until it is
+    /// answered. Returns nil if the session is disconnected first. Blocking is
+    /// acceptable here because the thread belongs to this session alone.
+    private func ask<Answer: Sendable>(_ question: @escaping @Sendable () async -> Answer) -> Answer? {
+        let answer = OSAllocatedUnfairLock<Answer?>(initialState: nil)
+        let answered = DispatchSemaphore(value: 0)
+        let task = Task {
+            let value = await question()
+            answer.withLock { $0 = value }
+            answered.signal()
+        }
+        control.withLock { $0.openQuestion = task }
+        defer { control.withLock { $0.openQuestion = nil } }
+
+        // Wake up regularly so that a question that ignores cancellation
+        // cannot hold the thread after a disconnect.
+        while answered.wait(timeout: .now() + .milliseconds(50)) == .timedOut {
+            if isStopRequested {
+                task.cancel()
+                return nil
+            }
+        }
+        return isStopRequested ? nil : answer.withLock { $0 }
+    }
+}

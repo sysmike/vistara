@@ -5,68 +5,87 @@ import Testing
 
 /// Where the integration tests connect, read from the environment. The tests
 /// are skipped unless `VISTARA_TEST_RDP_HOST` is set (see scripts/run-test-server.sh).
-private enum TestHost {
+enum TestHost {
     static let environment = ProcessInfo.processInfo.environment
     static let isConfigured = environment["VISTARA_TEST_RDP_HOST"] != nil
 
-    static func target(password: String? = nil) -> SessionHandle.Target {
-        SessionHandle.Target(
+    static var configuration: RDPSessionConfiguration {
+        RDPSessionConfiguration(
             host: environment["VISTARA_TEST_RDP_HOST"] ?? "",
             port: UInt16(environment["VISTARA_TEST_RDP_PORT"] ?? "") ?? 3389,
             username: environment["VISTARA_TEST_RDP_USER"] ?? "",
             domain: environment["VISTARA_TEST_RDP_DOMAIN"],
+            desktopWidth: 1024,
+            desktopHeight: 768
+        )
+    }
+
+    static func credentials(password: String? = nil) -> RDPCredentials {
+        RDPCredentials(
+            username: configuration.username,
+            domain: configuration.domain,
             password: password ?? environment["VISTARA_TEST_RDP_PASSWORD"] ?? ""
         )
     }
 
-    /// Asks the server for its certificate fingerprint by connecting without
-    /// trusting anything, which must be refused.
-    static func fingerprint() throws -> String {
-        let session = try #require(SessionHandle())
-        guard case .certificateUntrusted(let fingerprint?) = session.connect(to: target()) else {
-            throw FingerprintUnavailable()
-        }
-        return fingerprint
+    static func target(password: String? = nil) -> SessionHandle.Target {
+        let credentials = credentials(password: password)
+        return SessionHandle.Target(
+            host: configuration.host,
+            port: configuration.port,
+            username: credentials.username,
+            domain: credentials.domain,
+            password: credentials.password
+        )
     }
 
-    struct FingerprintUnavailable: Error {}
+    /// Answers with the test account and accepts or rejects any certificate.
+    static func delegate(password: String? = nil, acceptCertificate: Bool = true) -> RDPSessionDelegate {
+        RDPSessionDelegate(
+            credentials: { _ in credentials(password: password) },
+            certificateDecision: { _ in acceptCertificate }
+        )
+    }
 }
 
-@Suite(.serialized, .enabled(if: TestHost.isConfigured, "Set VISTARA_TEST_RDP_HOST to run"))
+@Suite(.serialized, .enabled(if: TestHost.isConfigured, "Set VISTARA_TEST_RDP_HOST to run"), .timeLimit(.minutes(2)))
 struct IntegrationTests {
-    @Test func unknownCertificateIsRefusedAndItsFingerprintReported() throws {
-        let session = try #require(SessionHandle())
-        let result = session.connect(to: TestHost.target())
+    // MARK: SessionHandle
 
-        guard case .certificateUntrusted(let fingerprint) = result else {
-            Issue.record("expected the certificate to be refused, got \(result)")
-            return
-        }
-        // SHA-256 as colon-separated hex pairs.
-        #expect(fingerprint?.split(separator: ":").count == 32)
+    @Test func certificateIsRejectedWhenNobodyDecides() throws {
+        let session = try #require(SessionHandle())
+        #expect(session.connect(to: TestHost.target()) == .certificateRejected)
         #expect(session.copyFramebuffer() == nil)
     }
 
-    @Test func wrongFingerprintIsRefused() throws {
-        let presented = try TestHost.fingerprint()
+    @Test func certificateDetailsReachTheDecider() throws {
         let session = try #require(SessionHandle())
-        let wrong = Array(repeating: "00", count: 32).joined(separator: ":")
-        let result = session.connect(to: TestHost.target(), trustedFingerprint: wrong)
+        var seen: [RDPCertificate] = []
+        let result = session.connect(to: TestHost.target()) { certificate in
+            seen.append(certificate)
+            return false
+        }
 
-        #expect(result == .certificateUntrusted(fingerprint: presented))
+        #expect(result == .certificateRejected)
+        let certificate = try #require(seen.first)
+        #expect(seen.count == 1)
+        #expect(certificate.host == TestHost.configuration.host)
+        #expect(certificate.port == TestHost.configuration.port)
+        // SHA-256 as colon-separated hex pairs.
+        #expect(certificate.fingerprint.split(separator: ":").count == 32)
+        #expect(certificate.previousFingerprint == nil)
     }
 
     @Test func connectsWithNLAAndReceivesAFramebuffer() throws {
-        let fingerprint = try TestHost.fingerprint()
         let session = try #require(SessionHandle())
-        #expect(session.connect(to: TestHost.target(), trustedFingerprint: fingerprint) == .connected)
+        let result = session.connect(to: TestHost.target()) { _ in true }
+        #expect(result == .connected)
 
         // Give the server up to ten seconds to paint.
         let deadline = Date().addingTimeInterval(10)
         while session.paintCount == 0, Date() < deadline {
             guard session.poll(timeoutMilliseconds: 100) else { break }
         }
-
         // Let the rest of the first full-screen update arrive.
         for _ in 0..<10 where session.poll(timeoutMilliseconds: 50) {}
 
@@ -86,10 +105,68 @@ struct IntegrationTests {
     }
 
     @Test func wrongPasswordIsAnAuthenticationFailure() throws {
-        let fingerprint = try TestHost.fingerprint()
         let session = try #require(SessionHandle())
-        let result = session.connect(to: TestHost.target(password: "not the password"), trustedFingerprint: fingerprint)
+        let result = session.connect(to: TestHost.target(password: "not the password")) { _ in true }
 
         #expect(result == .authenticationFailed)
+    }
+
+    // MARK: RDPSession
+
+    @Test func sessionReportsEveryStepAndDisconnectsOnRequest() async {
+        let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
+        let states = await runToEnd(session) { state, session in
+            if case .connected = state { session.disconnect() }
+        }
+
+        #expect(states.map(\.kind) == [
+            "connecting", "awaitingCredentials", "connecting", "awaitingCertificateDecision", "connecting",
+            "connected", "disconnected"
+        ])
+        #expect(states.contains(.connected(width: 1024, height: 768)))
+        #expect(states.last == .disconnected(.userRequested))
+    }
+
+    @Test func rejectedCertificateEndsTheSession() async {
+        let delegate = TestHost.delegate(acceptCertificate: false)
+        let states = await runToEnd(RDPSession(configuration: TestHost.configuration, delegate: delegate))
+
+        #expect(states.last == .disconnected(.certificateRejected))
+        #expect(!states.map(\.kind).contains("connected"))
+    }
+
+    @Test func wrongPasswordEndsTheSession() async {
+        let delegate = TestHost.delegate(password: "not the password")
+        let states = await runToEnd(RDPSession(configuration: TestHost.configuration, delegate: delegate))
+
+        #expect(states.last == .disconnected(.authenticationFailed))
+    }
+
+    @Test func disconnectWhileDecidingOnTheCertificateEndsTheSession() async {
+        let delegate = RDPSessionDelegate(
+            credentials: { _ in TestHost.credentials() },
+            certificateDecision: { _ in
+                try? await Task.sleep(for: .seconds(120))
+                return true
+            }
+        )
+        let session = RDPSession(configuration: TestHost.configuration, delegate: delegate)
+        let states = await runToEnd(session) { state, session in
+            if case .awaitingCertificateDecision = state { session.disconnect() }
+        }
+
+        #expect(states.last == .disconnected(.userRequested))
+        #expect(!states.map(\.kind).contains("connected"))
+    }
+
+    @Test func connectsAndDisconnectsFiftyTimes() async {
+        for round in 1...50 {
+            let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
+            let states = await runToEnd(session) { state, session in
+                if case .connected = state { session.disconnect() }
+            }
+            #expect(states.last == .disconnected(.userRequested), "round \(round): \(states.map(\.kind))")
+            #expect(states.map(\.kind).contains("connected"), "round \(round)")
+        }
     }
 }
