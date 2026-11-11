@@ -12,6 +12,8 @@ grouped by milestone.
 
 ## Building the app
 
+Build FreeRDP first (see below); the app links and embeds it.
+
 The Xcode project is generated from [`project.yml`](project.yml) and is not
 committed. Most code lives in local Swift packages under `Packages/`.
 
