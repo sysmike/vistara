@@ -110,7 +110,6 @@ struct ConnectionManagementTests {
         model.library.connections.map(\.name)
     }
 
-
     @Test
     func savingReplacesTheConnectionWithTheSameIdentifier() async throws {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
