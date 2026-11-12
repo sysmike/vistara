@@ -38,6 +38,13 @@ extension RDPSessionView {
     }
 
     override public func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Right Command as the Windows key: Windows-R, Windows-E and the
+        // rest go to the remote computer, not to the Mac's menus.
+        if event.type == .keyDown, window?.firstResponder === self,
+            translator.isWindowsCombination(flags: event.modifierFlags.rawValue) {
+            send(translator.windowsCombination(keyCode: event.keyCode))
+            return true
+        }
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
         guard translatesEditingShortcuts, event.type == .keyDown, window?.firstResponder === self,
             modifiers == .command || modifiers == [.command, .shift],
@@ -53,7 +60,9 @@ extension RDPSessionView {
     /// makes the server forget every key it thought was held, then send the
     /// modifiers that are down right now.
     func keyboardFocusArrived() {
-        translator = KeyboardTranslator(keyboard: MacKeyboard.current)
+        translator = KeyboardTranslator(
+            keyboard: MacKeyboard.current, rightCommandIsWindowsKey: rightCommandIsWindowsKey
+        )
         let flags = NSEvent.modifierFlags
         // A Mac has no Num Lock; the keypad always types digits.
         let locks: RDPLockState = flags.contains(.capsLock) ? [.numLock, .capsLock] : .numLock

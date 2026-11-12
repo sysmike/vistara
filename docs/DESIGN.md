@@ -303,7 +303,9 @@ Checked against the standard shortcuts in HIG Keyboards: no standard shortcut
 is given a different meaning. Control-Option-Delete is free on macOS; using it
 means Ctrl+Alt+Backspace cannot be typed directly, which we accept.
 
-The Dock menu lists favorites and open sessions.
+The Dock menu lists open sessions, to bring forward, and favorites, to
+connect. Import and Export arrive with issue #52, and Vistara Help with the
+user guide (issue #36).
 
 ### Clipboard
 
@@ -365,12 +367,18 @@ the title follows the pane, and the window reopens on the last pane.
 
 | Pane | Contents |
 | --- | --- |
-| General | Defaults for new connections; whether to ask before quitting with open sessions |
+| General | Defaults for new connections (resolution, Retina, clipboard, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
 | Keyboard | Translate editing shortcuts; Right Command as the Windows key |
 | Security | Trusted certificates: host, fingerprint, date trusted, Remove |
 
 Nothing here repeats a system setting such as appearance, accent color, or
 scrolling direction (HIG Settings: "Respect people's systemwide settings").
+
+- The defaults shape only the editor's new connections; saved ones keep what
+  they have. A fixed size belongs to one computer and is not a default.
+- Right Command as the Windows key is off by default, because Command
+  belongs to the Mac (rule 1). When on, Right Command and the keys pressed with
+  it go to the remote computer; Left Command stays with the Mac.
 
 ## Color, type, and icons
 

@@ -16,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LibraryModel.shared.removeOrphanedCredentials(from: SessionCoordinator.shared.credentialStore)
     }
 
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        DockMenu.current()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let coordinator = SessionCoordinator.shared
         let count = coordinator.liveSessionCount

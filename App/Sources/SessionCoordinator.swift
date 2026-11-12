@@ -32,6 +32,9 @@ final class SessionCoordinator {
         return CertificateTrustStore(directory: directory)
     }
 
+    /// The open session windows, oldest first. For the Dock menu.
+    var sessionWindows: [SessionWindowController] { controllers }
+
     var liveSessionCount: Int {
         controllers.filter { $0.model.isLive }.count
     }

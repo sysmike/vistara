@@ -110,6 +110,23 @@ struct ScreenshotTests {
         #expect(bytes > 0)
     }
 
+    @Test(arguments: [false, true])
+    func settingsGeneral(dark: Bool) async throws {
+        let name = dark ? "settings-general-dark" : "settings-general"
+        let bytes = try await Screenshots.write(
+            GeneralSettingsView(), size: NSSize(width: 520, height: 560), name: name, dark: dark
+        )
+        #expect(bytes > 0)
+    }
+
+    @Test
+    func settingsKeyboard() async throws {
+        let bytes = try await Screenshots.write(
+            KeyboardSettingsView(), size: NSSize(width: 520, height: 300), name: "settings-keyboard"
+        )
+        #expect(bytes > 0)
+    }
+
     /// The lost session's last picture, dimmed, while Vistara reconnects.
     @Test(arguments: [false, true])
     func reconnecting(dark: Bool) async throws {
