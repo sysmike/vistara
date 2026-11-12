@@ -409,11 +409,13 @@ scrolling direction (HIG Settings: "Respect people's systemwide settings").
   its own, and its one material (the reconnecting panel) is a system one.
 - VoiceOver announces when a session connects, is lost and reconnects, or
   ends, with the same words the window shows.
-- Words are drawn in the label colors only. Red marks a problem with its
-  icon, never with its text: red text on a light form measures about 3.5:1.
-  Explanations use the system's secondary label color, which measures below
-  4.5:1 in the standard appearances and above it with Increase Contrast; the
-  design keeps the system color rather than inventing a darker one.
+- Words are drawn in the system's label colors only. Red marks a problem
+  with its icon, never with its text: red text measures 3.0–3.6:1 on a light
+  window. Anything needed to act (what went wrong and what to do, a warning
+  that weakens security, a missing folder) is in the primary label color,
+  9.7:1 or more. Supplementary text (footnotes, paths, field captions) keeps
+  the secondary label color as System Settings does: 5.1:1 or more in dark
+  mode, 3.8–4.0:1 in light mode, below 4.5:1, a gap recorded on issue #31.
 - Icon-only buttons have a label, a tooltip, and at least 20 by 20 points to
   aim at.
 

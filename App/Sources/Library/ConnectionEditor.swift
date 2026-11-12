@@ -160,7 +160,6 @@ struct ConnectionEditor: View {
             if let warning = draft.nlaWarning {
                 Text(warning)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Picker("Certificate", selection: $draft.certificatePolicy) {

@@ -16,7 +16,6 @@ struct CertificateSheet: View {
                 "Its certificate isn’t signed by an authority your Mac trusts. Compare the fingerprint with the "
                     + "one shown on that computer before you continue."
             )
-            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {

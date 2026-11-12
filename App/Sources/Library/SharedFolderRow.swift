@@ -22,7 +22,6 @@ struct SharedFolderRow: View {
                 if isMissing {
                     Text("Can’t find this folder. Remove it and add it again.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     // Long paths keep both ends: where it is and what it is.

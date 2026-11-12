@@ -148,7 +148,6 @@ struct ReconnectingView: View {
                 Text("Reconnecting to “\(name)”…")
                     .font(.title3)
                 Text("The connection was lost. Your session keeps running on the computer.")
-                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
@@ -188,8 +187,9 @@ struct DisconnectedView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             if let explanation = message.explanation {
+                // What to do next: in the label color, which reads at more
+                // than 4.5:1 in both appearances.
                 Text(explanation)
-                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
