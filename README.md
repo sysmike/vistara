@@ -61,6 +61,52 @@ The test server is a build of FreeRDP's own server with a 1024x768
 screen filled with one colour. It checks the protocol path (TLS, Network Level Authentication,
 graphics updates). It is not a substitute for testing against Windows.
 
+### Against a Windows host
+
+The same tests run against any RDP host. Use a computer you may test
+against, with Remote Desktop and Network Level Authentication turned on, and
+a dedicated test account:
+
+```bash
+export VISTARA_TEST_RDP_HOST=win11-test.example.com
+export VISTARA_TEST_RDP_USER=vistara-test
+export VISTARA_TEST_RDP_DOMAIN=EXAMPLE   # optional
+read -rs VISTARA_TEST_RDP_PASSWORD && export VISTARA_TEST_RDP_PASSWORD
+```
+
+```bash
+swift test --package-path Packages/RDPKit
+```
+
+The app's tests take the same values with a `TEST_RUNNER_` prefix, which
+`xcodebuild` passes on to the test process:
+
+```bash
+TEST_RUNNER_VISTARA_TEST_RDP_HOST="$VISTARA_TEST_RDP_HOST" \
+TEST_RUNNER_VISTARA_TEST_RDP_USER="$VISTARA_TEST_RDP_USER" \
+TEST_RUNNER_VISTARA_TEST_RDP_DOMAIN="${VISTARA_TEST_RDP_DOMAIN:-}" \
+TEST_RUNNER_VISTARA_TEST_RDP_PASSWORD="$VISTARA_TEST_RDP_PASSWORD" \
+xcodebuild test -project Vistara.xcodeproj -scheme Vistara -destination 'platform=macOS'
+```
+
+What changes against a real host:
+
+- **Failed logins are left out** unless `VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS=1`
+  is set. A run signs in with a wrong password about five times, which can
+  lock the account under a typical lockout policy. Set it only for an account
+  without one.
+- Checks that need the test server are left out: its screen colour, its
+  cursor shape, and everything read from its log (keyboard, pointer, and
+  desktop-size requests as the server received them).
+- Connecting repeatedly runs five rounds instead of fifty.
+- The certificate tests expect a certificate the Mac does not trust, such as
+  the self-signed one Windows uses by default. A host with a publicly trusted
+  certificate connects without the question they wait for.
+- The tests ask for a 1024x768 desktop and expect to get it.
+
+Never put the password in a file in this repository or in your shell
+history; `read -rs` above keeps it out of both.
+
 ## Logs
 
 Vistara writes to the unified log under the subsystem

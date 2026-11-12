@@ -8,6 +8,14 @@ import Testing
 enum TestHost {
     static let environment = ProcessInfo.processInfo.environment
     static let isConfigured = environment["VISTARA_TEST_RDP_HOST"] != nil
+    /// The FreeRDP test server from scripts/run-test-server.sh, whose screen,
+    /// cursor, and log the tests know. Against any other host, the checks
+    /// that depend on them are left out.
+    static let isTestServer = environment["VISTARA_TEST_SERVER_LOG"] != nil
+    /// Wrong passwords count towards an account lockout on Windows, so tests
+    /// that sign in with one run only when this is set.
+    static let allowsFailedLogins = environment["VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS"] == "1"
+    static let failedLoginsNote: Comment = "Set VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS=1 to sign in with wrong passwords"
 
     static var configuration: RDPSessionConfiguration {
         RDPSessionConfiguration(
@@ -138,18 +146,21 @@ struct IntegrationTests {
         #expect(session.framebufferHeight == 768)
         #expect(session.paintCount > 0)
 
-        // The test server shows one solid colour: blue 0x99, green 0x66, red 0x33.
         let pixels = try #require(session.copyFramebuffer())
         #expect(pixels.count == 1024 * 768 * 4)
-        #expect(Array(pixels.prefix(3)) == [0x99, 0x66, 0x33])
-        #expect(Array(pixels.suffix(4).prefix(3)) == [0x99, 0x66, 0x33])
+        if TestHost.isTestServer {
+            // The test server shows one solid colour: blue 0x99, green 0x66, red 0x33.
+            #expect(Array(pixels.prefix(3)) == [0x99, 0x66, 0x33])
+            #expect(Array(pixels.suffix(4).prefix(3)) == [0x99, 0x66, 0x33])
+        }
 
         session.disconnect()
         #expect(session.copyFramebuffer() == nil)
         #expect(!session.poll(timeoutMilliseconds: 10))
     }
 
-    @Test func wrongPasswordIsAnAuthenticationFailure() throws {
+    @Test(.enabled(if: TestHost.allowsFailedLogins, TestHost.failedLoginsNote))
+    func wrongPasswordIsAnAuthenticationFailure() throws {
         let session = try #require(SessionHandle())
         let result = session.connect(to: TestHost.target(password: "not the password")) { _ in true }
 
@@ -180,7 +191,8 @@ struct IntegrationTests {
         #expect(!states.map(\.kind).contains("connected"))
     }
 
-    @Test func wrongPasswordEndsTheSession() async {
+    @Test(.enabled(if: TestHost.allowsFailedLogins, TestHost.failedLoginsNote))
+    func wrongPasswordEndsTheSession() async {
         let delegate = TestHost.delegate(password: "not the password")
         let states = await runToEnd(RDPSession(configuration: TestHost.configuration, delegate: delegate))
 
@@ -204,8 +216,10 @@ struct IntegrationTests {
         #expect(!states.map(\.kind).contains("connected"))
     }
 
-    @Test func connectsAndDisconnectsFiftyTimes() async {
-        for round in 1...50 {
+    /// Fifty rounds against the test server; five against a real host, which
+    /// may throttle repeated sign-ins.
+    @Test func connectsAndDisconnectsRepeatedly() async {
+        for round in 1...(TestHost.isTestServer ? 50 : 5) {
             let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
             let states = await runToEnd(session) { state, session in
                 if case .connected = state { session.disconnect() }
@@ -278,6 +292,7 @@ struct IntegrationTests {
         #expect(received == expected)
     }
 
+    /// Any cursor from a real host; the exact shape from the test server.
     @Test func theServersCursorArrivesWithItsShape() async {
         let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
         var cursor: RDPCursor?
@@ -290,6 +305,8 @@ struct IntegrationTests {
             }
             session.disconnect()
         }
+        #expect(cursor != nil, "the server set no cursor")
+        guard TestHost.isTestServer else { return }
         guard case .image(let shape) = cursor else {
             Issue.record("expected a cursor image, got \(String(describing: cursor))")
             return

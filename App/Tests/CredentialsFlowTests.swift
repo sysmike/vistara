@@ -36,7 +36,7 @@ struct CredentialsFlowTests {
         #expect(model.pendingCredentials == nil)
     }
 
-    @Test(.enabled(if: TestServer.current != nil))
+    @Test(.enabled(if: TestServer.current != nil && TestServer.allowsFailedLogins))
     func aWrongPasswordReturnsToTheSheetAndTheRightOneIsRememberedOnRequest() async throws {
         let server = try #require(TestServer.current)
         let store = InMemoryCredentialStore()
@@ -83,7 +83,7 @@ struct CredentialsFlowTests {
         await waitUntil("the session has ended") { !model.isLive }
     }
 
-    @Test(.enabled(if: TestServer.current != nil))
+    @Test(.enabled(if: TestServer.current != nil && TestServer.allowsFailedLogins))
     func withoutRememberNothingIsSavedAndAnOlderPasswordIsRemoved() async throws {
         let server = try #require(TestServer.current)
         let store = InMemoryCredentialStore()

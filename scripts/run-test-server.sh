@@ -6,7 +6,8 @@
 #
 #   VISTARA_TEST_RDP_HOST, VISTARA_TEST_RDP_PORT,
 #   VISTARA_TEST_RDP_USER, VISTARA_TEST_RDP_PASSWORD,
-#   VISTARA_TEST_SERVER_LOG (the server reports received input there)
+#   VISTARA_TEST_SERVER_LOG (the server reports received input there),
+#   VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS
 #
 # The server keeps running after this script returns. Its PID is in
 # build/test-server/run/server.pid and its log in build/test-server/run/server.log.
@@ -44,6 +45,8 @@ for _ in $(seq 1 50); do
     echo "VISTARA_TEST_RDP_USER=$USER_NAME"
     echo "VISTARA_TEST_RDP_PASSWORD=$PASSWORD"
     echo "VISTARA_TEST_SERVER_LOG=$RUN/server.log"
+    # A throwaway account on a local server: failed logins cost nothing.
+    echo "VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS=1"
     exit 0
   fi
   if ! kill -0 "$(cat "$RUN/server.pid")" 2>/dev/null; then break; fi

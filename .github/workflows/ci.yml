@@ -97,6 +97,15 @@ jobs:
       - name: Test VistaraCore
         run: swift test --package-path Packages/VistaraCore
 
+      # Without a server the integration tests must be skipped, not failed.
+      - name: Integration tests are skipped without a server
+        run: |
+          set -o pipefail
+          mkdir -p build
+          swift test --package-path Packages/RDPKit --filter IntegrationTests 2>&1 | tee build/skipped.log
+          grep -E 'Suite "?IntegrationTests"? skipped' build/skipped.log
+          grep -E 'Suite "?LoggingIntegrationTests"? skipped' build/skipped.log
+
       - name: Start test server
         run: scripts/run-test-server.sh >> "$GITHUB_ENV"
 
@@ -135,6 +144,7 @@ jobs:
           TEST_RUNNER_VISTARA_TEST_RDP_PORT: ${{ env.VISTARA_TEST_RDP_PORT }}
           TEST_RUNNER_VISTARA_TEST_RDP_USER: ${{ env.VISTARA_TEST_RDP_USER }}
           TEST_RUNNER_VISTARA_TEST_RDP_PASSWORD: ${{ env.VISTARA_TEST_RDP_PASSWORD }}
+          TEST_RUNNER_VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS: ${{ env.VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS }}
         run: |
           xcodebuild test -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
