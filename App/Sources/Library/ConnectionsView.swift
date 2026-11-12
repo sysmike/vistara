@@ -191,18 +191,18 @@ struct ConnectionTable: View {
             Group {
                 if width >= 460 {
                     Table(rows, selection: $selection, sortOrder: $model.sortOrder) {
-                        nameColumn(ideal: (width - 140) * 0.45)
-                        hostColumn(ideal: (width - 140) * 0.55)
+                        nameColumn(ideal: (width - 170) * 0.45)
+                        hostColumn(ideal: (width - 170) * 0.55)
                         lastUsedColumn
                     }
                 } else if width >= 300 {
                     Table(rows, selection: $selection, sortOrder: $model.sortOrder) {
-                        nameColumn(ideal: (width - 30) * 0.45)
-                        hostColumn(ideal: (width - 30) * 0.55)
+                        nameColumn(ideal: (width - 50) * 0.45)
+                        hostColumn(ideal: (width - 50) * 0.55)
                     }
                 } else {
                     Table(rows, selection: $selection, sortOrder: $model.sortOrder) {
-                        nameColumn(ideal: width - 20)
+                        nameColumn(ideal: width - 40)
                     }
                 }
             }
