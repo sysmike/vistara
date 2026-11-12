@@ -137,6 +137,12 @@ struct ConnectionEditor: View {
                 Text("Ask on First Use").tag(Connection.CertificatePolicy.askOnFirstUse)
                 Text("Require a Trusted Certificate").tag(Connection.CertificatePolicy.requireTrusted)
             }
+            if draft.certificatePolicy == .requireTrusted {
+                Text("Connects only when your Mac, or you before, already trusted the computer’s certificate.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

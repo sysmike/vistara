@@ -16,6 +16,7 @@ final class SessionHandle {
         var height: UInt32 = 768
         var scalePercent: UInt32 = 100
         var requiresNLA = true
+        var playsAudioOnRemote = false
     }
 
     enum ConnectResult: Equatable {
@@ -108,6 +109,7 @@ final class SessionHandle {
             height: target.height,
             scale_percent: target.scalePercent,
             require_nla: target.requiresNLA,
+            play_audio_on_remote: target.playsAudioOnRemote,
             decide_certificate: nil,
             decide_certificate_context: nil
         )
@@ -128,6 +130,28 @@ final class SessionHandle {
     }
 
     /// FreeRDP's name for the last error, such as `FREERDP_ERROR_CONNECT_FAILED`.
+    /// Settings as FreeRDP holds them, read back after `connect`.
+    struct GivenSettings: Equatable {
+        var nla: Bool
+        var tls: Bool
+        var rdp: Bool
+        var tlsMinimumVersion: UInt16
+        var tlsSecurityLevel: UInt32
+        var remoteConsoleAudio: Bool
+        var desktopScaleFactor: UInt32
+    }
+
+    /// What FreeRDP was told, read back. For tests.
+    var settingsGiven: GivenSettings {
+        var given = vistara_security_settings()
+        vistara_session_read_settings(session, &given)
+        return GivenSettings(
+            nla: given.nla, tls: given.tls, rdp: given.rdp, tlsMinimumVersion: given.tls_min_version,
+            tlsSecurityLevel: given.tls_security_level, remoteConsoleAudio: given.remote_console_audio,
+            desktopScaleFactor: given.desktop_scale_factor
+        )
+    }
+
     /// Refused credentials go back to the credentials question, whichever
     /// of FreeRDP's several codes reported them.
     private static func result(for failure: RDPFailure) -> ConnectResult {

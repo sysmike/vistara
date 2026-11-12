@@ -1,5 +1,14 @@
 import Foundation
 
+/// Where the remote computer's sound goes.
+public enum RDPAudioMode: Sendable, Equatable {
+    /// Sent to this Mac (issue #26 adds the channel that carries it).
+    case thisMac
+    /// Played on the remote computer.
+    case remote
+    case off
+}
+
 /// What a session connects to and how. Holds no password: the session asks
 /// for credentials when it needs them.
 public struct RDPSessionConfiguration: Sendable, Equatable {
@@ -14,6 +23,11 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     /// When false, a server without Network Level Authentication is accepted
     /// over TLS. Legacy RDP security is never used.
     public var requiresNLA: Bool
+    public var audio: RDPAudioMode
+    /// Applied by the clipboard channel (issue #25).
+    public var sharesClipboard: Bool
+    /// Applied by reconnection (issue #28).
+    public var reconnectsAutomatically: Bool
 
     public init(
         host: String,
@@ -23,7 +37,10 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         desktopWidth: UInt32 = 1280,
         desktopHeight: UInt32 = 800,
         scalePercent: UInt32 = 100,
-        requiresNLA: Bool = true
+        requiresNLA: Bool = true,
+        audio: RDPAudioMode = .thisMac,
+        sharesClipboard: Bool = true,
+        reconnectsAutomatically: Bool = true
     ) {
         self.host = host
         self.port = port
@@ -33,6 +50,9 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         self.desktopHeight = desktopHeight
         self.scalePercent = scalePercent
         self.requiresNLA = requiresNLA
+        self.audio = audio
+        self.sharesClipboard = sharesClipboard
+        self.reconnectsAutomatically = reconnectsAutomatically
     }
 }
 

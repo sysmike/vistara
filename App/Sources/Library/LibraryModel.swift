@@ -324,5 +324,10 @@ extension SessionTarget {
         fixedWidth = connection.fixedWidth
         fixedHeight = connection.fixedHeight
         usesHiDPI = connection.usesHiDPI
+        requiresNLA = connection.requiresNLA
+        certificatePolicy = connection.certificatePolicy
+        audioMode = connection.audioMode
+        sharesClipboard = connection.sharesClipboard
+        reconnectsAutomatically = connection.reconnectsAutomatically
     }
 }

@@ -75,6 +75,8 @@ typedef struct {
     /// When false, the server may negotiate TLS without Network Level
     /// Authentication. Legacy RDP security is never offered.
     bool require_nla;
+    /// Ask the server to play sound on the remote computer instead of sending it.
+    bool play_audio_on_remote;
     /// Asked about every server certificate. With NULL, every certificate is
     /// rejected: nothing is ever accepted silently.
     vistara_certificate_decider _Nullable decide_certificate;
@@ -103,6 +105,21 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
 /// is in use: it only signals an event. The caller must make sure the session
 /// is not destroyed concurrently.
 void vistara_session_abort(vistara_session *session);
+
+/// The settings a connection attempt handed to FreeRDP, read back from it.
+/// For tests: the mapping from Vistara's options is checked against
+/// FreeRDP's own values.
+typedef struct {
+    bool nla;
+    bool tls;
+    bool rdp;
+    uint16_t tls_min_version;
+    uint32_t tls_security_level;
+    bool remote_console_audio;
+    uint32_t desktop_scale_factor;
+} vistara_security_settings;
+
+void vistara_session_read_settings(const vistara_session *session, vistara_security_settings *settings);
 
 /// FreeRDP's name for the last error, for example
 /// "FREERDP_ERROR_AUTHENTICATION_FAILED". Static storage.
