@@ -191,18 +191,18 @@ struct ConnectionTable: View {
             Group {
                 if width >= 460 {
                     Table(rows, selection: $selection, sortOrder: $model.sortOrder) {
-                        nameColumn
-                        hostColumn
+                        nameColumn(ideal: (width - 140) * 0.45)
+                        hostColumn(ideal: (width - 140) * 0.55)
                         lastUsedColumn
                     }
                 } else if width >= 300 {
                     Table(rows, selection: $selection, sortOrder: $model.sortOrder) {
-                        nameColumn
-                        hostColumn
+                        nameColumn(ideal: (width - 30) * 0.45)
+                        hostColumn(ideal: (width - 30) * 0.55)
                     }
                 } else {
                     Table(rows, selection: $selection, sortOrder: $model.sortOrder) {
-                        nameColumn
+                        nameColumn(ideal: width - 20)
                     }
                 }
             }
@@ -215,25 +215,27 @@ struct ConnectionTable: View {
         }
     }
 
-    private var nameColumn: some TableColumnContent<Connection, KeyPathComparator<Connection>> {
+    // Ideal widths that add up to the space there is, so nothing starts out
+    // scrolled or cut off.
+    private func nameColumn(ideal: CGFloat) -> some TableColumnContent<Connection, KeyPathComparator<Connection>> {
         TableColumn("Name", value: \Connection.name, comparator: .localizedStandard) { connection in
             Label(SessionTarget(connection: connection).name, systemImage: "desktopcomputer")
         }
-        .width(min: 120, ideal: 200)
+        .width(min: 100, ideal: max(100, ideal))
     }
 
-    private var hostColumn: some TableColumnContent<Connection, KeyPathComparator<Connection>> {
+    private func hostColumn(ideal: CGFloat) -> some TableColumnContent<Connection, KeyPathComparator<Connection>> {
         TableColumn("Host", value: \Connection.host, comparator: .localizedStandard) { connection in
             Text(Self.address(of: connection))
         }
-        .width(min: 120, ideal: 220)
+        .width(min: 100, ideal: max(100, ideal))
     }
 
     private var lastUsedColumn: some TableColumnContent<Connection, KeyPathComparator<Connection>> {
         TableColumn("Last Used", value: \Connection.lastUsedSortKey) { connection in
             Text(LastUsedFormat.string(for: connection.lastConnectedAt))
         }
-        .width(min: 80, ideal: 100, max: 140)
+        .width(min: 80, ideal: 100, max: 120)
     }
 
     static func address(of connection: Connection) -> String {
