@@ -129,7 +129,6 @@ struct ConnectionTable: View {
     let addConnection: () -> Void
 
     @State private var selection = Set<Connection.ID>()
-    @State private var columns = TableColumnCustomization<Connection>()
 
     var body: some View {
         let rows = model.visibleConnections
@@ -184,34 +183,38 @@ struct ConnectionTable: View {
         }
     }
 
+    /// A narrow window drops Last Used first, then Host.
     private func table(_ rows: [Connection]) -> some View {
-        Table(rows, selection: $selection, sortOrder: $model.sortOrder, columnCustomization: $columns) {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            table(rows, showsHost: width >= 300, showsLastUsed: width >= 460)
+        }
+    }
+
+    private func table(_ rows: [Connection], showsHost: Bool, showsLastUsed: Bool) -> some View {
+        Table(rows, selection: $selection, sortOrder: $model.sortOrder) {
             TableColumn("Name", value: \Connection.name, comparator: .localizedStandard) { connection in
                 Label(SessionTarget(connection: connection).name, systemImage: "desktopcomputer")
             }
-            .width(min: 120, ideal: 220)
-            .customizationID("name")
-            TableColumn("Host", value: \Connection.host, comparator: .localizedStandard) { connection in
-                Text(Self.address(of: connection))
+            .width(min: 120, ideal: 200)
+            if showsHost {
+                TableColumn("Host", value: \Connection.host, comparator: .localizedStandard) { connection in
+                    Text(Self.address(of: connection))
+                }
+                .width(min: 120, ideal: 220)
             }
-            .width(min: 120, ideal: 220)
-            .customizationID("host")
-            TableColumn("Last Used", value: \Connection.lastUsedSortKey) { connection in
-                Text(LastUsedFormat.string(for: connection.lastConnectedAt))
+            if showsLastUsed {
+                TableColumn("Last Used", value: \Connection.lastUsedSortKey) { connection in
+                    Text(LastUsedFormat.string(for: connection.lastConnectedAt))
+                }
+                .width(min: 80, ideal: 100, max: 140)
             }
-            .width(min: 80, ideal: 100)
-            .customizationID("lastUsed")
         }
         .contextMenu(forSelectionType: Connection.ID.self) { ids in
             Button("Connect") { open(ids) }
                 .disabled(ids.isEmpty)
         } primaryAction: { ids in
             open(ids)
-        }
-        .onGeometryChange(for: CGFloat.self, of: \.size.width) { width in
-            // A narrow window drops Last Used first, then Host.
-            columns[visibility: "lastUsed"] = width < 460 ? .hidden : .automatic
-            columns[visibility: "host"] = width < 300 ? .hidden : .automatic
         }
     }
 
