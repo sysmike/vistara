@@ -184,6 +184,11 @@ public final class RDPSession: Sendable {
         }
 
         continuation.yield(.connected(width: handle.framebufferWidth, height: handle.framebufferHeight))
+        return run(handle)
+    }
+
+    /// Exchanges input, pictures, and clipboard text until the session ends.
+    private func run(_ handle: SessionHandle) -> RDPDisconnectReason {
         control.withLock { $0.acceptsInput = true }
         defer {
             control.withLock { control in
