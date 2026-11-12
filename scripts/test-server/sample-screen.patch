@@ -13,7 +13,7 @@
  
  #include <freerdp/log.h>
  #include <freerdp/codec/color.h>
-@@ -30,22 +33,54 @@
+@@ -30,22 +33,101 @@
  
  #define TAG SERVER_TAG("shadow.sample")
  
@@ -38,11 +38,58 @@
 +	LeaveCriticalSection(&surface->lock);
 +}
 +
++/* A 16x8 cursor with its hot spot at (3, 5): one colour (blue 0x50, green
++ * 0xC0, red 0x10), except for a transparent pixel in the top left corner. */
++#define VISTARA_CURSOR_WIDTH 16u
++#define VISTARA_CURSOR_HEIGHT 8u
++#define VISTARA_CURSOR_COLOR 0xFF10C050u
++
++static void vistara_message_free(WINPR_ATTR_UNUSED UINT32 id, SHADOW_MSG_OUT* msg)
++{
++	SHADOW_MSG_OUT_POINTER_ALPHA_UPDATE* update = (SHADOW_MSG_OUT_POINTER_ALPHA_UPDATE*)msg;
++	free(update->xorMaskData);
++	free(update->andMaskData);
++	free(update);
++}
++
++static void vistara_send_cursor(rdpShadowSubsystem* subsystem)
++{
++	UINT32 pixels[VISTARA_CURSOR_WIDTH * VISTARA_CURSOR_HEIGHT];
++	for (size_t i = 0; i < ARRAYSIZE(pixels); i++)
++		pixels[i] = VISTARA_CURSOR_COLOR;
++	pixels[0] = 0;
++
++	SHADOW_MSG_OUT_POINTER_ALPHA_UPDATE* msg = calloc(1, sizeof(SHADOW_MSG_OUT_POINTER_ALPHA_UPDATE));
++	if (!msg)
++		return;
++	msg->xHot = 3;
++	msg->yHot = 5;
++	msg->width = VISTARA_CURSOR_WIDTH;
++	msg->height = VISTARA_CURSOR_HEIGHT;
++	if (shadow_subsystem_pointer_convert_alpha_pointer_data_to_format(
++	        (const BYTE*)pixels, PIXEL_FORMAT_BGRA32, FALSE, msg->width, msg->height, msg) < 0)
++	{
++		free(msg);
++		return;
++	}
++	msg->common.Free = vistara_message_free;
++	/* The server frees the message once no client holds it any more. */
++	(void)shadow_client_boardcast_msg(subsystem->server, nullptr,
++	                                  SHADOW_MSG_OUT_POINTER_ALPHA_UPDATE_ID, (SHADOW_MSG_OUT*)msg,
++	                                  nullptr);
++}
++
 +static DWORD WINAPI vistara_tick(LPVOID arg)
 +{
 +	rdpShadowSubsystem* subsystem = (rdpShadowSubsystem*)arg;
++	unsigned ticks = 0;
 +	while (WaitForSingleObject(vistara_stop_event, 100) == WAIT_TIMEOUT)
++	{
 +		shadow_subsystem_frame_update(subsystem);
++		/* Twice a second, so a client that just connected gets the cursor. */
++		if (++ticks % 5 == 0)
++			vistara_send_cursor(subsystem);
++	}
 +	return 0;
 +}
 +
@@ -73,7 +120,35 @@
  	return TRUE;
  }
  
-@@ -91,7 +126,13 @@
+@@ -61,19 +143,22 @@
+ WINPR_ATTR_NODISCARD
+ static BOOL sample_shadow_input_mouse_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
+                                             WINPR_ATTR_UNUSED rdpShadowClient* client,
+-                                            WINPR_ATTR_UNUSED UINT16 flags,
+-                                            WINPR_ATTR_UNUSED UINT16 x, WINPR_ATTR_UNUSED UINT16 y)
++                                            UINT16 flags, UINT16 x, UINT16 y)
+ {
+-	WLog_WARN(TAG, "TODO: Implement!");
++	(void)fprintf(stderr, "vistara-input mouse flags=0x%04x x=0x%04x y=0x%04x\n", (unsigned)flags,
++	              (unsigned)x, (unsigned)y);
++	(void)fflush(stderr);
+ 	return TRUE;
+ }
+ 
+ WINPR_ATTR_NODISCARD
+ static BOOL sample_shadow_input_extended_mouse_event(
+     WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem, WINPR_ATTR_UNUSED rdpShadowClient* client,
+-    WINPR_ATTR_UNUSED UINT16 flags, WINPR_ATTR_UNUSED UINT16 x, WINPR_ATTR_UNUSED UINT16 y)
++    UINT16 flags, UINT16 x, UINT16 y)
+ {
+-	WLog_WARN(TAG, "TODO: Implement!");
++	(void)fprintf(stderr, "vistara-input xmouse flags=0x%04x x=0x%04x y=0x%04x\n", (unsigned)flags,
++	              (unsigned)x, (unsigned)y);
++	(void)fflush(stderr);
+ 	return TRUE;
+ }
+ 
+@@ -91,7 +176,13 @@
  	sampleShadowSubsystem* subsystem = (sampleShadowSubsystem*)arg;
  	WINPR_ASSERT(subsystem);
  
@@ -88,7 +163,7 @@
  
  	WLog_WARN(TAG, "TODO: Implement!");
  
-@@ -124,7 +165,14 @@
+@@ -124,7 +215,14 @@
  	if (!subsystem)
  		return -1;
  
@@ -104,7 +179,7 @@
  
  	return 1;
  }
-@@ -137,7 +185,15 @@
+@@ -137,7 +235,15 @@
  	if (!subsystem)
  		return -1;
  

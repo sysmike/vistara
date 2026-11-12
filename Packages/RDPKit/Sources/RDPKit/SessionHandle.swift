@@ -142,6 +142,37 @@ final class SessionHandle {
             vistara_session_send_lock_state(
                 session, locks.contains(.capsLock), locks.contains(.numLock), locks.contains(.scrollLock)
             )
+        case .pointerMove(let x, let y):
+            vistara_session_send_pointer_move(session, x, y)
+        case .pointerButton(let button, let isDown, let x, let y):
+            vistara_session_send_pointer_button(session, button.rawValue, isDown, x, y)
+        case .wheel(let axis, let rotation, let x, let y):
+            vistara_session_send_wheel(session, axis == .horizontal, rotation, x, y)
+        }
+    }
+
+    /// The cursor the server asked for, if it changed since the last call.
+    func takeCursor() -> RDPCursor? {
+        var cursor = vistara_cursor()
+        guard vistara_session_take_cursor(session, &cursor) else { return nil }
+        switch cursor.kind {
+        case VISTARA_CURSOR_HIDDEN:
+            return .hidden
+        case VISTARA_CURSOR_IMAGE:
+            let width = Int(cursor.width)
+            let height = Int(cursor.height)
+            guard let pixels = cursor.pixels, width > 0, height > 0 else { return .systemDefault }
+            return .image(
+                RDPCursorImage(
+                    width: width,
+                    height: height,
+                    hotspotX: Int(cursor.hotspot_x),
+                    hotspotY: Int(cursor.hotspot_y),
+                    pixels: Data(bytes: pixels, count: width * height * 4)
+                )
+            )
+        default:
+            return .systemDefault
         }
     }
 

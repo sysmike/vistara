@@ -35,12 +35,39 @@ public struct RDPLockState: OptionSet, Sendable, Hashable {
     public static let scrollLock = RDPLockState(rawValue: 1 << 2)
 }
 
+public enum RDPPointerButton: UInt8, Sendable, Hashable, CaseIterable {
+    case left = 0
+    case right = 1
+    case middle = 2
+    /// The extra buttons on the side of a mouse.
+    case back = 3
+    case forward = 4
+}
+
+public enum RDPWheelAxis: Sendable, Hashable {
+    case vertical
+    case horizontal
+}
+
 /// Something the user did that the remote computer should know about.
 /// Input is never logged.
+///
+/// Pointer positions are in remote desktop pixels, origin at the top left.
 public enum RDPInputEvent: Sendable, Hashable {
     case key(RDPScancode, isDown: Bool)
     /// States the lock keys. The server also treats every key as released.
     case lockState(RDPLockState)
+    case pointerMove(x: UInt16, y: UInt16)
+    case pointerButton(RDPPointerButton, isDown: Bool, x: UInt16, y: UInt16)
+    /// `rotation` is in wheel units: 120 is one notch, positive is up or
+    /// right. Smaller values scroll smoothly where the remote program
+    /// supports it. Values beyond -255...255 are limited to that range.
+    case wheel(RDPWheelAxis, rotation: Int16, x: UInt16, y: UInt16)
+
+    var isPointerMove: Bool {
+        if case .pointerMove = self { return true }
+        return false
+    }
 
     /// A press followed by a release.
     public static func tap(_ scancode: RDPScancode) -> [RDPInputEvent] {

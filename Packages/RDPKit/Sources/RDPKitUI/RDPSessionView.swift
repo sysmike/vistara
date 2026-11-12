@@ -23,6 +23,9 @@ public final class RDPSessionView: MTKView {
     public var translatesEditingShortcuts = true
 
     private var translator = KeyboardTranslator()
+    private var pointer = PointerTranslator()
+    private var remoteCursor = RDPCursor.systemDefault
+    private var pointerTracking: NSTrackingArea?
 
     /// Number of frames drawn so far. For tests and diagnostics.
     public private(set) var drawCount = 0
@@ -64,7 +67,7 @@ public final class RDPSessionView: MTKView {
 
     /// The remote desktop's frame inside the view, in view coordinates.
     public var desktopFrame: CGRect {
-        FitLayout.frame(content: renderer?.desktopSize ?? .zero, container: bounds.size)
+        FitLayout.frame(content: desktopSize, container: bounds.size)
     }
 
     override public func viewDidMoveToWindow() {
@@ -87,6 +90,9 @@ public final class RDPSessionView: MTKView {
 
     /// Uploads whatever changed and asks for one redraw.
     func consumeUpdate() {
+        if let cursor = framebuffer.takeCursor() {
+            showRemoteCursor(cursor)
+        }
         guard let renderer, let update = framebuffer.takeUpdate() else { return }
         if renderer.apply(update) {
             needsDisplay = true
@@ -167,6 +173,7 @@ public final class RDPSessionView: MTKView {
     /// stays stuck on the remote computer.
     func keyboardFocusLeft() {
         send(translator.releaseAll())
+        send(pointer.releaseButtons())
     }
 
     private func observeKeyWindow() {
@@ -188,5 +195,115 @@ public final class RDPSessionView: MTKView {
 
     @objc private func windowDidResignKey(_ notification: Notification) {
         keyboardFocusLeft()
+    }
+
+    // MARK: Pointer
+
+    /// Size of the remote desktop in its own pixels.
+    private var desktopSize: CGSize {
+        let size = framebuffer.size
+        return CGSize(width: size.width, height: size.height)
+    }
+
+    private var geometry: PointerTranslator.Geometry {
+        PointerTranslator.Geometry(viewSize: bounds.size, desktopSize: desktopSize)
+    }
+
+    override public func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pointerTracking { removeTrackingArea(pointerTracking) }
+        // Moves are followed only in the key window, like any Mac window.
+        let area = NSTrackingArea(
+            rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self
+        )
+        addTrackingArea(area)
+        pointerTracking = area
+    }
+
+    override public func mouseMoved(with event: NSEvent) { pointerMoved(event) }
+    override public func mouseDragged(with event: NSEvent) { pointerMoved(event) }
+    override public func rightMouseDragged(with event: NSEvent) { pointerMoved(event) }
+    override public func otherMouseDragged(with event: NSEvent) { pointerMoved(event) }
+
+    override public func mouseDown(with event: NSEvent) { button(.left, isDown: true, event) }
+    override public func mouseUp(with event: NSEvent) { button(.left, isDown: false, event) }
+    override public func rightMouseDown(with event: NSEvent) { button(.right, isDown: true, event) }
+    override public func rightMouseUp(with event: NSEvent) { button(.right, isDown: false, event) }
+
+    override public func otherMouseDown(with event: NSEvent) {
+        guard let which = Self.otherButton(event.buttonNumber) else { return }
+        button(which, isDown: true, event)
+    }
+
+    override public func otherMouseUp(with event: NSEvent) {
+        guard let which = Self.otherButton(event.buttonNumber) else { return }
+        button(which, isDown: false, event)
+    }
+
+    override public func scrollWheel(with event: NSEvent) {
+        let delta = PointerTranslator.ScrollDelta(
+            x: event.scrollingDeltaX,
+            y: event.scrollingDeltaY,
+            isPrecise: event.hasPreciseScrollingDeltas,
+            startsGesture: event.phase.contains(.began)
+        )
+        send(pointer.scrolled(delta, at: location(of: event), in: geometry))
+    }
+
+    /// The third button is the middle one; the next two are back and forward.
+    static func otherButton(_ buttonNumber: Int) -> RDPPointerButton? {
+        switch buttonNumber {
+        case 2: .middle
+        case 3: .back
+        case 4: .forward
+        default: nil
+        }
+    }
+
+    private func location(of event: NSEvent) -> CGPoint {
+        convert(event.locationInWindow, from: nil)
+    }
+
+    private func pointerMoved(_ event: NSEvent) {
+        send(pointer.moved(to: location(of: event), in: geometry))
+    }
+
+    private func button(_ button: RDPPointerButton, isDown: Bool, _ event: NSEvent) {
+        send(pointer.button(button, isDown: isDown, at: location(of: event), in: geometry))
+    }
+
+    // MARK: Cursor
+
+    /// How large one remote pixel is drawn, in points.
+    private var pointsPerPixel: CGFloat {
+        let width = desktopSize.width
+        return width > 0 ? desktopFrame.width / width : 1
+    }
+
+    /// The cursor shown over the desktop: the remote computer's, scaled like
+    /// the desktop. Nil means the system's arrow.
+    var desktopCursor: NSCursor? {
+        CursorFactory.cursor(for: remoteCursor, pointsPerPixel: pointsPerPixel)
+    }
+
+    private func showRemoteCursor(_ cursor: RDPCursor) {
+        remoteCursor = cursor
+        guard let window else { return }
+        window.invalidateCursorRects(for: self)
+        // Cursor rectangles take effect with the next move; a pointer that
+        // rests over the desktop changes now.
+        let location = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if window.isKeyWindow, desktopFrame.contains(location) {
+            (desktopCursor ?? .arrow).set()
+        }
+    }
+
+    /// The remote cursor applies over the desktop only. Beside it, and
+    /// outside the view, the Mac's own cursor returns by itself.
+    override public func resetCursorRects() {
+        super.resetCursorRects()
+        if let desktopCursor {
+            addCursorRect(desktopFrame, cursor: desktopCursor)
+        }
     }
 }

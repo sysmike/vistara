@@ -5,7 +5,9 @@
 
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
+#include <freerdp/codec/color.h>
 #include <freerdp/gdi/gdi.h>
+#include <freerdp/graphics.h>
 #include <freerdp/input.h>
 #include <freerdp/settings.h>
 #include <freerdp/update.h>
@@ -25,6 +27,11 @@ struct vistara_session {
     // Union of everything painted since the last vistara_session_take_dirty().
     bool has_dirty;
     int32_t dirty_left, dirty_top, dirty_right, dirty_bottom;
+    // The cursor the server asked for last, as a copy this session owns.
+    bool cursor_changed;
+    vistara_cursor_kind cursor_kind;
+    uint8_t *cursor_pixels;
+    uint32_t cursor_width, cursor_height, cursor_hotspot_x, cursor_hotspot_y;
 };
 
 // FreeRDP allocates ContextSize bytes and treats the start as rdpContext, so
@@ -141,6 +148,123 @@ static BOOL desktop_resize(rdpContext *context) {
     return TRUE;
 }
 
+// MARK: Cursor
+
+// Larger than any pointer RDP defines (384 with the large pointer capability).
+#define VISTARA_MAX_CURSOR_SIDE 512u
+
+// FreeRDP allocates `size` bytes per pointer, so the decoded pixels ride
+// along behind its own fields.
+typedef struct {
+    rdpPointer base;
+    uint8_t *pixels;
+} vistara_pointer;
+
+static BOOL pointer_new(rdpContext *context, rdpPointer *pointer) {
+    vistara_pointer *own = (vistara_pointer *)pointer;
+    const uint32_t width = pointer->width;
+    const uint32_t height = pointer->height;
+    if (width == 0 || height == 0 || width > VISTARA_MAX_CURSOR_SIDE ||
+        height > VISTARA_MAX_CURSOR_SIDE || !context->gdi) {
+        return FALSE;
+    }
+    own->pixels = calloc((size_t)width * height, 4);
+    if (!own->pixels) {
+        return FALSE;
+    }
+    if (!freerdp_image_copy_from_pointer_data(own->pixels, PIXEL_FORMAT_BGRA32, width * 4, 0, 0,
+                                              width, height, pointer->xorMaskData,
+                                              pointer->lengthXorMask, pointer->andMaskData,
+                                              pointer->lengthAndMask, pointer->xorBpp,
+                                              &context->gdi->palette)) {
+        free(own->pixels);
+        own->pixels = NULL;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void pointer_free(rdpContext *context, rdpPointer *pointer) {
+    (void)context;
+    vistara_pointer *own = (vistara_pointer *)pointer;
+    free(own->pixels);
+    own->pixels = NULL;
+}
+
+static BOOL pointer_set(rdpContext *context, rdpPointer *pointer) {
+    vistara_session *session = session_of(context);
+    const vistara_pointer *own = (const vistara_pointer *)pointer;
+    if (!own->pixels) {
+        return FALSE;
+    }
+    // A copy, because FreeRDP may free the pointer before Swift has read it.
+    const size_t length = (size_t)pointer->width * pointer->height * 4;
+    uint8_t *copy = malloc(length);
+    if (!copy) {
+        return FALSE;
+    }
+    memcpy(copy, own->pixels, length);
+    free(session->cursor_pixels);
+    session->cursor_pixels = copy;
+    session->cursor_width = pointer->width;
+    session->cursor_height = pointer->height;
+    session->cursor_hotspot_x = pointer->xPos < pointer->width ? pointer->xPos : pointer->width - 1;
+    session->cursor_hotspot_y = pointer->yPos < pointer->height ? pointer->yPos : pointer->height - 1;
+    session->cursor_kind = VISTARA_CURSOR_IMAGE;
+    session->cursor_changed = true;
+    return TRUE;
+}
+
+static BOOL pointer_set_kind(rdpContext *context, vistara_cursor_kind kind) {
+    vistara_session *session = session_of(context);
+    session->cursor_kind = kind;
+    session->cursor_changed = true;
+    return TRUE;
+}
+
+static BOOL pointer_set_null(rdpContext *context) {
+    return pointer_set_kind(context, VISTARA_CURSOR_HIDDEN);
+}
+
+static BOOL pointer_set_default(rdpContext *context) {
+    return pointer_set_kind(context, VISTARA_CURSOR_DEFAULT);
+}
+
+static BOOL pointer_set_position(rdpContext *context, UINT32 x, UINT32 y) {
+    // The server moving the pointer is not followed: the Mac's pointer stays
+    // where the user put it.
+    (void)context, (void)x, (void)y;
+    return TRUE;
+}
+
+static void register_pointer(rdpContext *context) {
+    rdpPointer prototype = {0};
+    prototype.size = sizeof(vistara_pointer);
+    prototype.New = pointer_new;
+    prototype.Free = pointer_free;
+    prototype.Set = pointer_set;
+    prototype.SetNull = pointer_set_null;
+    prototype.SetDefault = pointer_set_default;
+    prototype.SetPosition = pointer_set_position;
+    graphics_register_pointer(context->graphics, &prototype);
+}
+
+bool vistara_session_take_cursor(vistara_session *session, vistara_cursor *cursor) {
+    if (!session->cursor_changed) {
+        return false;
+    }
+    session->cursor_changed = false;
+    const bool is_image = session->cursor_kind == VISTARA_CURSOR_IMAGE && session->cursor_pixels;
+    cursor->kind = is_image || session->cursor_kind != VISTARA_CURSOR_IMAGE ? session->cursor_kind
+                                                                           : VISTARA_CURSOR_DEFAULT;
+    cursor->width = is_image ? session->cursor_width : 0;
+    cursor->height = is_image ? session->cursor_height : 0;
+    cursor->hotspot_x = is_image ? session->cursor_hotspot_x : 0;
+    cursor->hotspot_y = is_image ? session->cursor_hotspot_y : 0;
+    cursor->pixels = is_image ? session->cursor_pixels : NULL;
+    return true;
+}
+
 // MARK: Connection callbacks
 
 static BOOL pre_connect(freerdp *instance) {
@@ -156,6 +280,7 @@ static BOOL post_connect(freerdp *instance) {
     update->BeginPaint = begin_paint;
     update->EndPaint = end_paint;
     update->DesktopResize = desktop_resize;
+    register_pointer(instance->context);
     return TRUE;
 }
 
@@ -209,6 +334,7 @@ void vistara_session_destroy(vistara_session *session) {
     freerdp_context_free(session->instance);
     freerdp_free(session->instance);
     (void)CloseHandle(session->wake_event);
+    free(session->cursor_pixels);
     free(session);
 }
 
@@ -227,7 +353,10 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            // Legacy RDP security is never offered.
            freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, options->require_nla ? FALSE : TRUE) &&
-           freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE);
+           freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE) &&
+           // Offered to the server; each is used only if the server has it too.
+           freerdp_settings_set_bool(settings, FreeRDP_HasHorizontalWheel, TRUE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_HasExtendedMouseEvent, TRUE);
 }
 
 vistara_connect_result vistara_session_connect(vistara_session *session,
@@ -320,6 +449,51 @@ bool vistara_session_send_lock_state(vistara_session *session, bool caps_lock, b
     if (num_lock) flags |= KBD_SYNC_NUM_LOCK;
     if (scroll_lock) flags |= KBD_SYNC_SCROLL_LOCK;
     return freerdp_input_send_synchronize_event(session->instance->context->input, flags);
+}
+
+bool vistara_session_send_pointer_move(vistara_session *session, uint16_t x, uint16_t y) {
+    if (!session->connected) {
+        return false;
+    }
+    return freerdp_input_send_mouse_event(session->instance->context->input, PTR_FLAGS_MOVE, x, y);
+}
+
+bool vistara_session_send_pointer_button(vistara_session *session, uint8_t button, bool down,
+                                         uint16_t x, uint16_t y) {
+    if (!session->connected) {
+        return false;
+    }
+    rdpInput *input = session->instance->context->input;
+    switch (button) {
+    case 0:
+        return freerdp_input_send_mouse_event(input, PTR_FLAGS_BUTTON1 | (down ? PTR_FLAGS_DOWN : 0), x, y);
+    case 1:
+        return freerdp_input_send_mouse_event(input, PTR_FLAGS_BUTTON2 | (down ? PTR_FLAGS_DOWN : 0), x, y);
+    case 2:
+        return freerdp_input_send_mouse_event(input, PTR_FLAGS_BUTTON3 | (down ? PTR_FLAGS_DOWN : 0), x, y);
+    case 3:
+        return freerdp_input_send_extended_mouse_event(
+            input, PTR_XFLAGS_BUTTON1 | (down ? PTR_XFLAGS_DOWN : 0), x, y);
+    case 4:
+        return freerdp_input_send_extended_mouse_event(
+            input, PTR_XFLAGS_BUTTON2 | (down ? PTR_XFLAGS_DOWN : 0), x, y);
+    default:
+        return false;
+    }
+}
+
+bool vistara_session_send_wheel(vistara_session *session, bool horizontal, int16_t rotation,
+                                uint16_t x, uint16_t y) {
+    if (!session->connected || rotation == 0) {
+        return false;
+    }
+    if (rotation > 255) rotation = 255;
+    if (rotation < -255) rotation = -255;
+    // The rotation is a 9-bit two's complement number whose sign bit is
+    // PTR_FLAGS_WHEEL_NEGATIVE.
+    UINT16 flags = (horizontal ? PTR_FLAGS_HWHEEL : PTR_FLAGS_WHEEL) |
+                   ((UINT16)rotation & (WheelRotationMask));
+    return freerdp_input_send_mouse_event(session->instance->context->input, flags, x, y);
 }
 
 // MARK: Framebuffer

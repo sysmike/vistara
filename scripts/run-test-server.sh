@@ -33,7 +33,7 @@ mkdir -p "$RUN/config"
 
 # The server writes its self-signed certificate under XDG_CONFIG_HOME.
 XDG_CONFIG_HOME="$RUN/config" HOME="$RUN" nohup "$PREFIX/bin/freerdp-shadow-cli" \
-  "/port:$PORT" /bind-address:127.0.0.1 /sec:nla "/sam-file:$RUN/SAM" \
+  "/port:$PORT" /bind-address:127.0.0.1 /sec:nla "/sam-file:$RUN/SAM" +server-side-cursor \
   >"$RUN/server.log" 2>&1 &
 echo $! >"$RUN/server.pid"
 

@@ -71,7 +71,13 @@ public final class RDPSession: Sendable {
         guard !events.isEmpty else { return }
         control.withLock { control in
             guard control.acceptsInput else { return }
-            control.pendingInput.append(contentsOf: events)
+            for event in events {
+                // Only the latest position matters while moves pile up.
+                if event.isPointerMove, control.pendingInput.last?.isPointerMove == true {
+                    control.pendingInput.removeLast()
+                }
+                control.pendingInput.append(event)
+            }
             control.abortToken?.wake()
         }
     }
@@ -158,6 +164,7 @@ public final class RDPSession: Sendable {
             }
             sendPendingInput(to: handle)
             publishChanges(from: handle)
+            if let cursor = handle.takeCursor() { framebuffer.setCursor(cursor) }
         }
         handle.disconnect()
         return .userRequested

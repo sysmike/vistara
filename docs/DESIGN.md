@@ -204,6 +204,25 @@ A few keys have no exact counterpart. *Judgment:*
 When the keyboard focus leaves a session, every key the remote computer
 believes is held is released, so Command-Tab never leaves a modifier stuck.
 
+### Pointer
+
+- The pointer acts on the remote pixel under it, at any window size and on
+  any display. Beside the desktop, in the bars that appear when the window
+  has another shape, clicks and moves are not sent; a drag that leaves the
+  desktop continues along its edge.
+- The first click in an inactive session window only activates it, as in any
+  Mac window. *Judgment: an accidental click should not land on a remote
+  button.*
+- Scrolling follows the system's natural scrolling setting (HIG Settings:
+  "Respect people's systemwide settings"). Trackpad distances are sent a
+  quarter of a wheel notch at a time, so programs that scroll smoothly follow
+  the fingers.
+- Over the desktop the cursor is the remote computer's, scaled with the
+  desktop. Everywhere else it is the Mac's.
+- Control-click is sent as Control and a click, because Control belongs to
+  the remote computer. A right click needs the secondary click of the mouse
+  or trackpad.
+
 ### Menu bar
 
 Every command is in the menu bar, including each toolbar and context menu item

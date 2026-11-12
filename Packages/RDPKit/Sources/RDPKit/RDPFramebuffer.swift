@@ -61,6 +61,8 @@ public final class RDPFramebuffer: Sendable {
         /// BGRA, `width * 4` bytes per row.
         var pixels: [UInt8] = []
         var dirty: Rect?
+        var cursor = RDPCursor.systemDefault
+        var cursorChanged = false
     }
 
     static let bytesPerPixel = 4
@@ -82,6 +84,26 @@ public final class RDPFramebuffer: Sendable {
     /// Current size of the remote desktop, zero before the first paint.
     public var size: (width: Int, height: Int) {
         storage.withLock { ($0.width, $0.height) }
+    }
+
+    /// Returns the pointer shape if it changed since the last call. It is
+    /// announced on `changes` like the pixels.
+    public func takeCursor() -> RDPCursor? {
+        storage.withLock { storage -> RDPCursor? in
+            guard storage.cursorChanged else { return nil }
+            storage.cursorChanged = false
+            return storage.cursor
+        }
+    }
+
+    func setCursor(_ cursor: RDPCursor) {
+        let hasChanged = storage.withLock { storage -> Bool in
+            guard storage.cursor != cursor else { return false }
+            storage.cursor = cursor
+            storage.cursorChanged = true
+            return true
+        }
+        if hasChanged { continuation.yield() }
     }
 
     /// Returns everything that changed since the last call, or nil if nothing did.
