@@ -27,10 +27,48 @@ struct ScreenshotTests {
         validUntil: Date(timeIntervalSince1970: 1_990_000_000)
     )
 
+    private static let librarySize = NSSize(width: 780, height: 420)
+
+    @Test(arguments: [
+        ("library", NSAppearance.Name.aqua),
+        ("library-dark", .darkAqua),
+        ("library-contrast", .accessibilityHighContrastAqua),
+        ("library-dark-contrast", .accessibilityHighContrastDarkAqua)
+    ])
+    func library(name: String, appearance: NSAppearance.Name) async throws {
+        let (model, _) = try await temporaryLibrary(SampleLibrary.library)
+        let view = ConnectionsView(model: model) { _ in }
+        let bytes = try await Screenshots.write(view, size: Self.librarySize, name: name, appearance: appearance)
+        #expect(bytes > 0)
+    }
+
     @Test
-    func launcher() async throws {
-        let size = NSSize(width: 380, height: 100)
-        let bytes = try await Screenshots.write(LauncherView { _ in }, size: size, name: "launcher")
+    func libraryNarrow() async throws {
+        let (model, _) = try await temporaryLibrary(SampleLibrary.library)
+        let view = ConnectionsView(model: model) { _ in }
+        let size = NSSize(width: 560, height: 320)
+        let bytes = try await Screenshots.write(view, size: size, name: "library-narrow")
+        #expect(bytes > 0)
+    }
+
+    @Test
+    func libraryEmptyAndNoResults() async throws {
+        let (empty, _) = try await temporaryLibrary()
+        let first = try await Screenshots.write(
+            ConnectionsView(model: empty) { _ in }, size: Self.librarySize, name: "library-empty"
+        )
+        let (model, _) = try await temporaryLibrary(SampleLibrary.library)
+        model.searchText = "printer"
+        let second = try await Screenshots.write(
+            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-no-results"
+        )
+        #expect(first > 0 && second > 0)
+    }
+
+    @Test
+    func newConnection() async throws {
+        let view = NewConnectionSheet { _ in }
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 400, height: 170), name: "new-connection")
         #expect(bytes > 0)
     }
 
