@@ -39,7 +39,14 @@ struct LibraryMenuTests {
 
     @Test
     func windowHasConnectionsWithCommandZero() {
-        let connections = item("Connections", in: "Window")
+        let window = NSApp.mainMenu?.items.first { $0.title == "Window" }?.submenu
+        window?.delegate?.menuNeedsUpdate?(window!)
+        window?.update()
+        let described = (window?.items ?? []).map {
+            "\($0.title)[\($0.keyEquivalent)]<\($0.action.map(NSStringFromSelector) ?? "nil")>"
+        }
+        let connections = window?.items.first { $0.title == "Connections" }
+        #expect(connections != nil, "Window: \(described)")
         #expect(connections?.keyEquivalent == "0")
         #expect(modifiers(connections) == .command)
     }
