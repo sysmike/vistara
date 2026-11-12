@@ -198,7 +198,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,77 @@
+@@ -37,6 +37,118 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -228,22 +228,63 @@
 +	return CHANNEL_RC_OK;
 +}
 +
-+static DispServerContext* vistara_disp_open(rdpShadowClient* client)
++/* One client's display control channel. Lives on that client's thread. */
++typedef struct
 +{
++	DispServerContext* disp;
++	UINT32 channelId;
++	BOOL tried;
++	BOOL created;
++	BOOL capsSent;
++} vistaraDisp;
++
++static BOOL vistara_disp_channel_id(DispServerContext* context, UINT32 channelId)
++{
++	vistaraDisp* state = context->custom;
++	state->channelId = channelId;
++	return TRUE;
++}
++
++/* The client has answered the request to create a dynamic channel. */
++static BOOL vistara_dvc_created(void* userdata, UINT32 channelId, INT32 creationStatus)
++{
++	vistaraDisp* state = userdata;
++	if (state->disp && (channelId == state->channelId) && (creationStatus >= 0))
++		state->created = TRUE;
++	return TRUE;
++}
++
++static void vistara_disp_open(rdpShadowClient* client, vistaraDisp* state)
++{
++	state->tried = TRUE;
 +	DispServerContext* disp = disp_server_context_new(client->vcm);
 +	if (!disp)
-+		return nullptr;
-+	disp->custom = client;
++		return;
++	disp->custom = state;
 +	disp->MaxNumMonitors = 1;
 +	disp->MaxMonitorAreaFactorA = 8192;
 +	disp->MaxMonitorAreaFactorB = 8192;
 +	disp->DispMonitorLayout = vistara_disp_layout;
++	disp->ChannelIdAssigned = vistara_disp_channel_id;
++	state->disp = disp;
++	WTSVirtualChannelManagerSetDVCCreationCallback(client->vcm, vistara_dvc_created, state);
 +	if (disp->Open(disp) != CHANNEL_RC_OK)
 +	{
++		state->disp = nullptr;
 +		disp_server_context_free(disp);
-+		return nullptr;
 +	}
-+	return disp;
++}
++
++/* Display control has no negotiation: the server states its limits as soon
++ * as the client has the channel, and the client may then ask for a size. */
++static void vistara_disp_send_caps(vistaraDisp* state)
++{
++	if (!state->disp || !state->created || state->capsSent)
++		return;
++	state->capsSent = TRUE;
++	const UINT rc = state->disp->DisplayControlCaps(state->disp);
++	(void)fprintf(stderr, "vistara-disp caps sent rc=%u\n", (unsigned)rc);
++	(void)fflush(stderr);
 +}
 +
 +/* Runs on the client's own thread, which also sends its updates. */
@@ -276,44 +317,42 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -2845,6 +2916,8 @@
+@@ -2845,6 +2957,7 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
-+	DispServerContext* vistara_disp = nullptr;
-+	BOOL vistara_disp_tried = FALSE;
++	vistaraDisp vistara_disp = WINPR_C_ARRAY_INIT;
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3023,8 @@
+@@ -2950,6 +3063,9 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
++		vistara_disp_send_caps(&vistara_disp);
 +		vistara_apply_resize(client);
 +
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3112,11 @@
+@@ -3037,6 +3153,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
-+					if (!vistara_disp_tried)
-+					{
-+						vistara_disp_tried = TRUE;
-+						vistara_disp = vistara_disp_open(client);
-+					}
++					if (!vistara_disp.tried)
++						vistara_disp_open(client, &vistara_disp);
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3270,12 @@
+@@ -3190,6 +3308,13 @@
  
  fail:
  
-+	if (vistara_disp)
++	if (vistara_disp.disp)
 +	{
-+		(void)vistara_disp->Close(vistara_disp);
-+		disp_server_context_free(vistara_disp);
++		WTSVirtualChannelManagerSetDVCCreationCallback(client->vcm, nullptr, nullptr);
++		(void)vistara_disp.disp->Close(vistara_disp.disp);
++		disp_server_context_free(vistara_disp.disp);
 +	}
 +
  	/* Free channels early because we establish channels in post connect */
