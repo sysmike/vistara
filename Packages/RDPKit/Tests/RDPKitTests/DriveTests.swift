@@ -5,13 +5,15 @@ import Testing
 
 /// What the test server did with one shared folder, from its log. For each
 /// drive it lists the top folder, reads hello.txt, tries to open
-/// ..\outside.txt, and writes from-server.txt.
+/// ..\outside.txt (and reads it, if that opened), and writes from-server.txt.
 struct DriveReport {
     var isAnnounced = false
     var listed: [String] = []
     var readStatus: UInt32?
     var readData = Data()
     var escapeStatus: UInt32?
+    /// What the server read after its escape opened, if it did.
+    var escapeData: Data?
     var writeStatus: UInt32?
     var isDone = false
 
@@ -56,6 +58,7 @@ struct DriveReport {
                 readStatus = status
                 readData = Self.bytes(hex: fields["data"] ?? "")
             case "escape": escapeStatus = status
+            case "escape-read": escapeData = Self.bytes(hex: fields["data"] ?? "")
             case "write": writeStatus = status
             case "done": isDone = true
             default: break
@@ -144,8 +147,9 @@ struct DriveIntegrationTests {
 
         let report = DriveReport(name: fixture.name)
         #expect(report.isDone)
-        #expect(report.escapeStatus != nil)
-        #expect(report.escapeStatus != DriveReport.success)
+        // The shim says no, instead of FreeRDP's success without a file.
+        #expect(report.escapeStatus == DriveReport.accessDenied)
+        #expect(report.escapeData == nil)
     }
 
     @Test func aReadOnlyFolderCanBeReadButNotChanged() throws {
@@ -159,6 +163,7 @@ struct DriveIntegrationTests {
         #expect(report.readStatus == DriveReport.success)
         #expect(String(bytes: report.readData, encoding: .utf8) == Self.helloText)
         #expect(report.writeStatus == DriveReport.accessDenied)
+        #expect(report.escapeStatus == DriveReport.accessDenied)
         #expect(fixture.writtenByServer == nil)
         #expect(SessionHandle.refusedDriveRequests > refusedBefore)
     }

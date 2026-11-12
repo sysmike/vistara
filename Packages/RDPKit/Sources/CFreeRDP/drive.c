@@ -29,9 +29,50 @@ atomic_uint_fast64_t vistara_drive_refused_requests;
 // which read-only drives call for what they let through.
 static _Atomic(pcIRPRequest) drive_irp_request;
 
-// FreeRDP's device registration, while its drive service registers a
-// read-only drive. The service calls it before it returns, on this thread.
+// FreeRDP's device registration, and whether the drive is read-only, while
+// its drive service registers a drive. The service registers before it
+// returns, on this thread.
 static _Thread_local pcRegisterDevice register_device;
+static _Thread_local bool registering_read_only;
+
+/// Whether a create request's path has a ".." component, which would climb
+/// out of the folder.
+static bool leaves_folder(IRP *irp) {
+    if (irp->MajorFunction != IRP_MJ_CREATE) {
+        return false;
+    }
+    // Seven fields before the path, the last its length in bytes.
+    if (Stream_GetRemainingLength(irp->input) < 6 * 4 + 8) {
+        return true;
+    }
+    const BYTE *request = Stream_ConstPointer(irp->input);
+    const UINT32 length = (UINT32)request[28] | (UINT32)request[29] << 8 | (UINT32)request[30] << 16 |
+                          (UINT32)request[31] << 24;
+    if (Stream_GetRemainingLength(irp->input) - 32 < length) {
+        return true;
+    }
+    // UTF-16LE: a component of exactly two dots between separators.
+    const BYTE *path = request + 32;
+    size_t component = 0;
+    bool only_dots = true;
+    for (size_t index = 0; index + 1 < length; index += 2) {
+        const UINT16 unit = (UINT16)(path[index] | path[index + 1] << 8);
+        if (unit == '\\' || unit == '/' || unit == 0) {
+            if (component == 2 && only_dots) {
+                return true;
+            }
+            component = 0;
+            only_dots = true;
+            if (unit == 0) {
+                break;
+            }
+            continue;
+        }
+        component++;
+        only_dots = only_dots && unit == '.';
+    }
+    return component == 2 && only_dots;
+}
 
 /// Whether a request would change the folder.
 static bool changes_folder(IRP *irp) {
@@ -89,23 +130,30 @@ static UINT refuse(IRP *irp) {
     return irp->Complete(irp);
 }
 
-static UINT read_only_irp_request(DEVICE *device, IRP *irp) {
-    if (changes_folder(irp)) {
+static UINT guarded_irp_request(DEVICE *device, IRP *irp) {
+    if (leaves_folder(irp)) {
         return refuse(irp);
     }
     return atomic_load(&drive_irp_request)(device, irp);
 }
 
-static UINT register_read_only(DEVMAN *devman, DEVICE *device) {
+static UINT read_only_irp_request(DEVICE *device, IRP *irp) {
+    if (leaves_folder(irp) || changes_folder(irp)) {
+        return refuse(irp);
+    }
+    return atomic_load(&drive_irp_request)(device, irp);
+}
+
+static UINT register_guarded(DEVMAN *devman, DEVICE *device) {
     pcIRPRequest expected = NULL;
     if (!atomic_compare_exchange_strong(&drive_irp_request, &expected, device->IRPRequest) &&
         expected != device->IRPRequest) {
         // Not the handler the other drives use: better not to share the
         // folder than to share it writable.
-        WLog_ERR(TAG, "unexpected drive service; the read-only folder is not shared");
+        WLog_ERR(TAG, "unexpected drive service; the folder is not shared");
         return ERROR_INTERNAL_ERROR;
     }
-    device->IRPRequest = read_only_irp_request;
+    device->IRPRequest = registering_read_only ? read_only_irp_request : guarded_irp_request;
     return register_device(devman, device);
 }
 
@@ -123,13 +171,11 @@ UINT VCAPITYPE vistara_drive_service_entry(PDEVICE_SERVICE_ENTRY_POINTS entry_po
     if (!service) {
         return ERROR_INTERNAL_ERROR;
     }
-    if (!vistara_drive_is_read_only(entry_points->rdpcontext, drive->Path)) {
-        return service(entry_points);
-    }
-    DEVICE_SERVICE_ENTRY_POINTS read_only = *entry_points;
+    DEVICE_SERVICE_ENTRY_POINTS guarded = *entry_points;
     register_device = entry_points->RegisterDevice;
-    read_only.RegisterDevice = register_read_only;
-    const UINT result = service(&read_only);
+    registering_read_only = vistara_drive_is_read_only(entry_points->rdpcontext, drive->Path);
+    guarded.RegisterDevice = register_guarded;
+    const UINT result = service(&guarded);
     register_device = NULL;
     return result;
 }

@@ -255,7 +255,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,473 @@
+@@ -37,6 +37,481 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -469,7 +469,8 @@
 +
 +/* Vistara test server: shared folders. For every drive a client announces,
 + * the server lists its top folder, reads hello.txt, tries to leave the folder
-+ * through "..", and writes from-server.txt, reporting each result. Tests
++ * through ".." (and reads what it got, if the client said yes), and writes
++ * from-server.txt, reporting each result. Tests
 + * check that only the shared folders arrive and what each operation did. */
 +#include <freerdp/server/rdpdr.h>
 +
@@ -487,6 +488,7 @@
 +	VISTARA_DRIVE_READ,
 +	VISTARA_DRIVE_READ_CLOSE,
 +	VISTARA_DRIVE_ESCAPE_OPEN,
++	VISTARA_DRIVE_ESCAPE_READ,
 +	VISTARA_DRIVE_ESCAPE_CLOSE,
 +	VISTARA_DRIVE_WRITE_OPEN,
 +	VISTARA_DRIVE_WRITE,
@@ -603,10 +605,15 @@
 +			return;
 +		case VISTARA_DRIVE_ESCAPE_OPEN:
 +			vistara_drive_report(run, "escape", status);
-+			if (status == STATUS_SUCCESS)
-+				vistara_drive_close(context, run, VISTARA_DRIVE_ESCAPE_CLOSE);
-+			else
++			if (status != STATUS_SUCCESS)
++			{
 +				vistara_drive_write_open(context, run);
++				return;
++			}
++			run->step = VISTARA_DRIVE_ESCAPE_READ;
++			if (context->DriveReadFile(context, run, run->deviceId, fileId, 4096, 0) !=
++			    CHANNEL_RC_OK)
++				vistara_drive_done(run);
 +			return;
 +		case VISTARA_DRIVE_WRITE_OPEN:
 +			if (status != STATUS_SUCCESS)
@@ -630,13 +637,14 @@
 +                               const char* buffer, UINT32 length)
 +{
 +	vistaraDriveRun* run = data;
-+	(void)fprintf(stderr, "vistara-drive read name=%s status=0x%08x data=", run->name,
-+	              (unsigned)status);
++	const BOOL escaped = run->step == VISTARA_DRIVE_ESCAPE_READ;
++	(void)fprintf(stderr, "vistara-drive %s name=%s status=0x%08x data=",
++	              escaped ? "escape-read" : "read", run->name, (unsigned)status);
 +	for (UINT32 i = 0; buffer && (i < length); i++)
 +		(void)fprintf(stderr, "%02x", (unsigned)(BYTE)buffer[i]);
 +	(void)fprintf(stderr, "\n");
 +	(void)fflush(stderr);
-+	vistara_drive_close(context, run, VISTARA_DRIVE_READ_CLOSE);
++	vistara_drive_close(context, run, escaped ? VISTARA_DRIVE_ESCAPE_CLOSE : VISTARA_DRIVE_READ_CLOSE);
 +}
 +
 +static void vistara_drive_written(RdpdrServerContext* context, void* data, UINT32 status,
@@ -729,7 +737,7 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -2845,6 +3312,9 @@
+@@ -2845,6 +3320,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -739,7 +747,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3420,11 @@
+@@ -2950,6 +3428,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -751,7 +759,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3512,8 @@
+@@ -3037,6 +3520,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -760,7 +768,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3667,15 @@
+@@ -3190,6 +3675,15 @@
  
  fail:
  
