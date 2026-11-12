@@ -8,8 +8,8 @@ struct VistaraApp: App {
     var body: some Scene {
         // Temporary: the connections window (issue #21) replaces this launcher.
         WindowGroup("Connect", id: "launcher") {
-            LauncherView { target, password in
-                coordinator.open(target, password: password)
+            LauncherView { target in
+                coordinator.open(target)
             }
         }
         .windowResizability(.contentSize)

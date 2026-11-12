@@ -2,6 +2,7 @@ import AppKit
 import RDPKit
 import SwiftUI
 import Testing
+import VistaraCore
 @testable import Vistara
 
 /// Renders every state of the session window to a PNG. CI uploads the files
@@ -25,14 +26,14 @@ struct ScreenshotTests {
 
     @Test
     func launcher() async throws {
-        let size = NSSize(width: 380, height: 170)
-        let bytes = try await Screenshots.write(LauncherView { _, _ in }, size: size, name: "launcher")
+        let size = NSSize(width: 380, height: 100)
+        let bytes = try await Screenshots.write(LauncherView { _ in }, size: size, name: "launcher")
         #expect(bytes > 0)
     }
 
     @Test(arguments: [false, true])
     func connecting(dark: Bool) async throws {
-        let model = SessionModel(target: Self.target, password: "", phase: .connecting)
+        let model = SessionModel(target: Self.target, credentialStore: InMemoryCredentialStore(), phase: .connecting)
         let name = dark ? "connecting-dark" : "connecting"
         let view = SessionContentView(model: model)
         let bytes = try await Screenshots.write(view, size: Self.windowSize, name: name, dark: dark)
@@ -49,11 +50,34 @@ struct ScreenshotTests {
             ("certificate-rejected", .certificateRejected)
         ]
         for example in examples {
-            let model = SessionModel(target: Self.target, password: "", phase: .disconnected(example.reason))
+            let model = SessionModel(
+                target: Self.target, credentialStore: InMemoryCredentialStore(), phase: .disconnected(example.reason)
+            )
             let view = SessionContentView(model: model)
             let bytes = try await Screenshots.write(view, size: Self.windowSize, name: example.name)
             #expect(bytes > 0)
         }
+    }
+
+    @Test(arguments: [false, true])
+    func credentialsSheet(dark: Bool) async throws {
+        let request = CredentialsRequest(username: "", domain: "", remember: false)
+        let view = CredentialsSheet(name: "Build Server", request: request) { _ in }
+        let size = NSSize(width: 420, height: 230)
+        let name = dark ? "credentials-dark" : "credentials"
+        let bytes = try await Screenshots.write(view, size: size, name: name, dark: dark)
+        #expect(bytes > 0)
+    }
+
+    @Test
+    func credentialsSheetAfterARefusal() async throws {
+        let request = CredentialsRequest(
+            username: "alice", domain: "CORP", remember: true, message: "The user name or password is incorrect."
+        )
+        let view = CredentialsSheet(name: "Build Server", request: request) { _ in }
+        let size = NSSize(width: 420, height: 260)
+        let bytes = try await Screenshots.write(view, size: size, name: "credentials-refused")
+        #expect(bytes > 0)
     }
 
     @Test

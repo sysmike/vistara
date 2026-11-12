@@ -22,8 +22,9 @@ struct DisconnectMessage: Equatable {
             explanation = "You chose not to trust this computer’s certificate."
             action = "Try Again"
         case .authenticationFailed:
+            // Normally the credentials sheet returns instead of this.
             title = "The user name or password is incorrect"
-            explanation = "Close this window and connect again."
+            action = "Try Again"
         case .connectionFailed(let code):
             title = "Can’t connect to “\(name)”"
             explanation = "Check the name and your network connection, and that Remote Desktop is enabled on "

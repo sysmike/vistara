@@ -31,6 +31,13 @@ struct SessionContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: credentialsArePresented) {
+            if let request = model.pendingCredentials {
+                CredentialsSheet(name: model.target.name, request: request) { answer in
+                    model.answerCredentials(answer)
+                }
+            }
+        }
         .sheet(isPresented: certificateIsPresented) {
             if let certificate = model.pendingCertificate {
                 CertificateSheet(certificate: certificate) { trust in
@@ -38,6 +45,15 @@ struct SessionContentView: View {
                 }
             }
         }
+    }
+
+    private var credentialsArePresented: Binding<Bool> {
+        Binding(
+            get: { model.pendingCredentials != nil },
+            set: { isPresented in
+                if !isPresented { model.answerCredentials(nil) }
+            }
+        )
     }
 
     private var certificateIsPresented: Binding<Bool> {

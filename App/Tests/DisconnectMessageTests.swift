@@ -20,12 +20,6 @@ struct DisconnectMessageTests {
         #expect(message.detail == "FREERDP_ERROR_X")
     }
 
-    @Test
-    func wrongCredentialsOfferNoRetryThatWouldFailAgain() {
-        let message = DisconnectMessage(reason: .authenticationFailed, name: "Build Server")
-        #expect(message.action == nil)
-    }
-
     @Test(arguments: [
         RDPDisconnectReason.userRequested, .credentialsCancelled, .certificateRejected, .authenticationFailed,
         .connectionFailed(code: "CODE"), .connectionLost(code: "CODE")

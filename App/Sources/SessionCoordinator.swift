@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import VistaraCore
 
 /// Owns the session windows and knows which one the Session menu acts on.
 @MainActor
@@ -10,6 +11,12 @@ final class SessionCoordinator {
     /// The session in the main window, if that is a session window.
     private(set) var activeModel: SessionModel?
     @ObservationIgnored private var controllers: [SessionWindowController] = []
+    @ObservationIgnored private let credentialStore: any CredentialStore
+
+    /// Passwords go to the Keychain unless a test says otherwise.
+    init(credentialStore: any CredentialStore = KeychainCredentialStore()) {
+        self.credentialStore = credentialStore
+    }
 
     var liveSessionCount: Int {
         controllers.filter { $0.model.isLive }.count
@@ -18,13 +25,13 @@ final class SessionCoordinator {
     /// Opens a window and connects. A computer that already has a window gets
     /// that window brought forward instead of a second one.
     @discardableResult
-    func open(_ target: SessionTarget, password: String) -> SessionWindowController {
-        if let existing = controllers.first(where: { $0.model.target == target }) {
+    func open(_ target: SessionTarget) -> SessionWindowController {
+        if let existing = controllers.first(where: { $0.model.target.credentialKey == target.credentialKey }) {
             existing.show()
             return existing
         }
 
-        let model = SessionModel(target: target, password: password)
+        let model = SessionModel(target: target, credentialStore: credentialStore)
         let controller = SessionWindowController(model: model)
         controller.onMainChange = { [weak self, weak model] isMain in
             guard let self, let model else { return }

@@ -120,4 +120,14 @@ struct RDPSessionTests {
             .key(.delete, isDown: false), .key(.leftAlt, isDown: false), .key(.leftControl, isDown: false)
         ])
     }
+
+    @Test func printingCredentialsNeverShowsThePassword() {
+        let credentials = RDPCredentials(username: "alice", domain: "CORP", password: "correct horse")
+        var dumped = ""
+        dump(credentials, to: &dumped)
+        for text in ["\(credentials)", String(reflecting: credentials), dumped, "\([credentials])"] {
+            #expect(!text.contains("correct horse"))
+            #expect(!text.contains("alice"))
+        }
+    }
 }
