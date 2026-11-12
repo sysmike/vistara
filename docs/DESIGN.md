@@ -105,7 +105,9 @@ A sheet on the Connections window, grouped like a System Settings form.
 │  Devices and Audio                               │
 │    ☑ Share clipboard                             │
 │    Sound         [ Play on This Mac  ⌄]          │
-│    Shared folders  [ ~/Transfer ]  [+] [−]       │
+│  Shared Folders                                  │
+│    📁 Transfer  ~/Transfer       ☐ Read only  ⊖  │
+│    [ Add Folder… ]                               │
 │  Security                                        │
 │    ☑ Reconnect if the connection drops           │
 │    ☑ Require Network Level Authentication        │
@@ -126,7 +128,10 @@ A sheet on the Connections window, grouped like a System Settings form.
 - Return saves, Escape cancels, Tab order follows the visual order.
 - Problems show once a field has been edited, so a new, empty connection
   does not open with a list of complaints. *Judgment.*
-- Shared folders arrive with folder redirection (issue #27).
+- Shared folders are a section of their own, because each folder has its own
+  Read only checkbox and its own button to stop sharing it. Add Folder… opens
+  the standard open panel and may add several folders at once. A folder that
+  can no longer be found says so in its row, and is not shared.
 - Edit > Delete Connection (Command-Delete) is named for what it deletes,
   because Edit > Delete already deletes text. In a text field Command-Delete
   keeps its usual meaning. A deleted connection's Keychain item is removed at
@@ -311,6 +316,18 @@ The Dock menu lists favorites and open sessions.
 - Items marked concealed or transient by password managers (the
   `org.nspasteboard` convention) are never offered.
 - Line endings are converted. Files and images come later.
+
+### Shared folders
+
+- The remote computer sees only the folders listed in the connection, each as
+  a drive named after the folder. Nothing else is ever shared: not the home
+  folder, not other disks, and not disks connected later.
+- Access survives relaunches through a security-scoped bookmark made when the
+  folder is chosen, and is opened only while a session runs.
+- A read-only folder can be browsed and read; every request to change it is
+  refused, so the remote computer reports that access is denied.
+- A folder that cannot be found when connecting is left out; the session
+  still starts.
 
 ### Sound
 

@@ -92,6 +92,24 @@ struct ScreenshotTests {
         #expect(bytes > 0)
     }
 
+    /// One folder shared read-only, one that can no longer be found.
+    @Test(arguments: [false, true])
+    func editorWithSharedFolders(dark: Bool) async throws {
+        let transfer = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vistara-screenshot-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("Transfer", isDirectory: true)
+        try FileManager.default.createDirectory(at: transfer, withIntermediateDirectories: true)
+        var draft = ConnectionDraft(SampleLibrary.library.connections[0])
+        draft.share([
+            try SharedFolderAccess.sharedFolder(for: transfer, readOnly: true),
+            Connection.SharedFolder(path: "/Volumes/Archive/Projects", bookmark: nil)
+        ])
+        let view = ConnectionEditor(draft: draft, folders: []) { _ in }
+        let name = dark ? "editor-shared-folders-dark" : "editor-shared-folders"
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 480, height: 1150), name: name, dark: dark)
+        #expect(bytes > 0)
+    }
+
     @Test
     func editorForANewConnectionWithAProblem() async throws {
         var draft = ConnectionDraft()

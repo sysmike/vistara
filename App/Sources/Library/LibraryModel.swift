@@ -329,5 +329,6 @@ extension SessionTarget {
         audioMode = connection.audioMode
         sharesClipboard = connection.sharesClipboard
         reconnectsAutomatically = connection.reconnectsAutomatically
+        sharedFolders = connection.sharedFolders
     }
 }

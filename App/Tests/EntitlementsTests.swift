@@ -16,6 +16,13 @@ struct EntitlementsTests {
         #expect(entitlement("com.apple.security.app-sandbox") as? Bool == true)
     }
 
+    /// Shared folders: chosen in the open panel and kept with bookmarks.
+    @Test
+    func chosenFoldersCanBeUsedAndKept() {
+        #expect(entitlement("com.apple.security.files.user-selected.read-write") as? Bool == true)
+        #expect(entitlement("com.apple.security.files.bookmarks.app-scope") as? Bool == true)
+    }
+
     /// Sound from the remote computer plays through the output only.
     @Test
     func theMicrophoneIsNeverAskedFor() {

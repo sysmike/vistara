@@ -156,6 +156,8 @@ jobs:
           TEST_RUNNER_VISTARA_TEST_RDP_USER: ${{ env.VISTARA_TEST_RDP_USER }}
           TEST_RUNNER_VISTARA_TEST_RDP_PASSWORD: ${{ env.VISTARA_TEST_RDP_PASSWORD }}
           TEST_RUNNER_VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS: ${{ env.VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS }}
+          # The sandboxed tests cannot read the log; they only learn it is the test server.
+          TEST_RUNNER_VISTARA_TEST_SERVER_LOG: ${{ env.VISTARA_TEST_SERVER_LOG }}
         run: |
           xcodebuild test -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData

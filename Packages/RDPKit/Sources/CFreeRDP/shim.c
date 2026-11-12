@@ -1,5 +1,6 @@
 #include "CFreeRDP.h"
 #include "audio.h"
+#include "drive.h"
 #include "probe.h"
 
 #include <errno.h>
@@ -77,6 +78,10 @@ struct vistara_session {
     // The sound channel's arguments, which it reads when it connects.
     ADDIN_ARGV *audio_args;
     vistara_audio_stats audio;
+    // How many folders are shared, and the paths of those shared read-only.
+    size_t shared_folder_count;
+    char **read_only_paths;
+    size_t read_only_count;
     // A size asked for that has not been sent yet: the channel comes up a few
     // round trips after connecting, and a request made before that must not
     // be lost. Session thread only.
@@ -549,11 +554,65 @@ static PVIRTUALCHANNELENTRY load_addin_entry(LPCSTR name, LPCSTR subsystem, LPCS
         strcmp(subsystem, VISTARA_AUDIO_SUBSYSTEM) == 0) {
         return WINPR_FUNC_PTR_CAST(&vistara_rdpsnd_device_entry, PVIRTUALCHANNELENTRY);
     }
+    if (name && type && strcmp(name, VISTARA_DRIVE_SERVICE_NAME) == 0 && strcmp(type, "DeviceServiceEntry") == 0) {
+        return WINPR_FUNC_PTR_CAST(&vistara_drive_service_entry, PVIRTUALCHANNELENTRY);
+    }
     return freerdp_channels_load_static_addin_entry(name, subsystem, type, flags);
 }
 
 static void register_addin_provider(void) {
     (void)freerdp_register_addin_provider(load_addin_entry, 0);
+}
+
+bool vistara_drive_is_read_only(rdpContext *context, const char *path) {
+    if (!context || !path) {
+        return false;
+    }
+    const vistara_session *session = session_of(context);
+    for (size_t index = 0; index < session->read_only_count; index++) {
+        if (strcmp(session->read_only_paths[index], path) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+uint64_t vistara_drive_refused_count(void) {
+    return atomic_load(&vistara_drive_refused_requests);
+}
+
+/// Adds each shared folder as a drive. A folder without a name or an
+/// absolute path fails the connection instead of being left out silently.
+static bool add_shared_folders(vistara_session *session, rdpSettings *settings,
+                               const vistara_connect_options *options) {
+    session->shared_folder_count = options->shared_folders ? options->shared_folder_count : 0;
+    if (session->shared_folder_count == 0) {
+        return freerdp_settings_set_bool(settings, FreeRDP_DeviceRedirection, FALSE);
+    }
+    session->read_only_paths = calloc(session->shared_folder_count, sizeof(char *));
+    if (!session->read_only_paths) {
+        return false;
+    }
+    for (size_t index = 0; index < session->shared_folder_count; index++) {
+        const vistara_shared_folder *folder = &options->shared_folders[index];
+        if (!folder->name || !folder->name[0] || !folder->path || folder->path[0] != '/') {
+            return false;
+        }
+        const char *const arguments[] = {folder->name, folder->path};
+        RDPDR_DEVICE *device = freerdp_device_new(RDPDR_DTYP_FILESYSTEM, ARRAYSIZE(arguments), arguments);
+        if (!device || !freerdp_device_collection_add(settings, device)) {
+            freerdp_device_free(device);
+            return false;
+        }
+        if (folder->read_only) {
+            char *path = strdup(folder->path);
+            if (!path) {
+                return false;
+            }
+            session->read_only_paths[session->read_only_count++] = path;
+        }
+    }
+    return freerdp_settings_set_bool(settings, FreeRDP_DeviceRedirection, TRUE);
 }
 
 vistara_audio_stats *vistara_audio_stats_for(rdpContext *context) {
@@ -584,6 +643,11 @@ static BOOL load_channels(freerdp *instance) {
     rdpContext *context = instance->context;
     // Sound only when it plays here: otherwise none is sent to this Mac.
     if (session_of(context)->play_audio_here && !load_audio_channel(context)) {
+        return FALSE;
+    }
+    // Device redirection only for shared folders, and with only them.
+    if (session_of(context)->shared_folder_count > 0 &&
+        !load_static_channel(context, RDPDR_SVC_CHANNEL_NAME, context->settings)) {
         return FALSE;
     }
     // The clipboard only when shared: unloaded, no clipboard data can pass.
@@ -821,6 +885,10 @@ void vistara_session_destroy(vistara_session *session) {
     free(session->local_text);
     free(session->remote_text);
     freerdp_addin_argv_free(session->audio_args);
+    for (size_t index = 0; index < session->read_only_count; index++) {
+        free(session->read_only_paths[index]);
+    }
+    free(session->read_only_paths);
     pthread_mutex_destroy(&session->clipboard_lock);
     free(session);
 }
@@ -865,6 +933,9 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            // Without it the server is told not to send sound at all.
            freerdp_settings_set_bool(settings, FreeRDP_AudioPlayback, options->play_audio_here) &&
            freerdp_settings_set_bool(settings, FreeRDP_RedirectClipboard, options->share_clipboard) &&
+           // Never the home folder or all drives: only the folders given.
+           freerdp_settings_set_bool(settings, FreeRDP_RedirectHomeDrive, FALSE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_RedirectDrives, FALSE) &&
            // Text only, both ways: never files.
            freerdp_settings_set_uint32(settings, FreeRDP_ClipboardFeatureMask,
                                        CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL) &&
@@ -894,7 +965,8 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     session->play_audio_here = options->play_audio_here && !options->play_audio_on_remote;
     session->decide_certificate = options->decide_certificate;
     session->decide_certificate_context = options->decide_certificate_context;
-    if (!apply_options(session->instance->context->settings, options)) {
+    if (!apply_options(session->instance->context->settings, options) ||
+        !add_shared_folders(session, session->instance->context->settings, options)) {
         return VISTARA_CONNECT_FAILED;
     }
 

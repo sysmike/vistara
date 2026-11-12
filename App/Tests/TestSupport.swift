@@ -15,6 +15,12 @@ struct TestServer {
         ProcessInfo.processInfo.environment["VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS"] == "1"
     }
 
+    /// The FreeRDP test server from scripts/run-test-server.sh, which does
+    /// known things with what it is given, such as writing into shared folders.
+    static var isFreeRDPTestServer: Bool {
+        current != nil && ProcessInfo.processInfo.environment["VISTARA_TEST_SERVER_LOG"] != nil
+    }
+
     static var current: TestServer? {
         let environment = ProcessInfo.processInfo.environment
         guard let host = environment["VISTARA_TEST_RDP_HOST"], !host.isEmpty,
