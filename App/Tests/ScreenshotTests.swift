@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import RDPKit
 import SwiftUI
 import Testing
@@ -44,11 +45,16 @@ struct ScreenshotTests {
 
     @Test
     func disconnected() async throws {
+        let refused = RDPFailure(
+            kind: .refused, code: 0x0002_0006, name: "ERRCONNECT_CONNECT_FAILED",
+            description: "A configuration error prevented a connection to be established.", osError: ECONNREFUSED
+        )
         let examples: [(name: String, reason: RDPDisconnectReason)] = [
             ("cancelled", .userRequested),
-            ("failed", .connectionFailed(code: "ERRCONNECT_CONNECT_TRANSPORT_FAILED")),
-            ("lost", .connectionLost(code: "ERRINFO_RPC_INITIATED_DISCONNECT")),
-            ("wrong-password", .authenticationFailed),
+            ("refused", .connectionFailed(refused)),
+            ("not-found", .connectionFailed(RDPFailure(kind: .hostNotFound))),
+            ("lost", .connectionLost(RDPFailure(kind: .networkLost))),
+            ("account-restricted", .connectionFailed(RDPFailure(kind: .accountRestricted))),
             ("certificate-rejected", .certificateRejected)
         ]
         for example in examples {

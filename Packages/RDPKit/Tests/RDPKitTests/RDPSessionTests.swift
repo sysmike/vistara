@@ -77,19 +77,35 @@ struct RDPSessionTests {
         #expect(Date().timeIntervalSince(started) < 3)
     }
 
-    @Test func unreachableServerIsAConnectionFailure() async {
+    /// Connects to `configuration` and returns how the attempt failed.
+    private func failure(connectingTo configuration: RDPSessionConfiguration) async -> RDPFailure? {
         let delegate = RDPSessionDelegate(
             credentials: { _ in RDPCredentials(username: "nobody", password: "nothing") },
             certificateDecision: { _ in true }
         )
-        let states = await runToEnd(RDPSession(configuration: nobodyHome, delegate: delegate))
-
+        let states = await runToEnd(RDPSession(configuration: configuration, delegate: delegate))
         #expect(states.map(\.kind) == ["connecting", "awaitingCredentials", "connecting", "disconnected"])
-        guard case .disconnected(.connectionFailed(let code)) = states.last else {
+        guard case .disconnected(.connectionFailed(let failure)) = states.last else {
             Issue.record("expected a connection failure, got \(String(describing: states.last))")
-            return
+            return nil
         }
-        #expect(!code.isEmpty)
+        return failure
+    }
+
+    @Test func aClosedPortIsARefusedConnection() async throws {
+        let failure = try #require(await failure(connectingTo: nobodyHome))
+        #expect(failure.kind == .refused)
+        #expect(failure.osError == ECONNREFUSED)
+        #expect(failure.name == "ERRCONNECT_CONNECT_FAILED")
+        #expect(failure.technicalDetail.contains("Connection refused"))
+    }
+
+    @Test func aNameThatDoesNotExistIsNotFound() async throws {
+        // .invalid is reserved and never resolves (RFC 6761).
+        let nowhere = RDPSessionConfiguration(host: "vistara-test.invalid", port: 3389, username: "nobody")
+        let failure = try #require(await failure(connectingTo: nowhere))
+        #expect(failure.kind == .hostNotFound)
+        #expect(failure.name.hasPrefix("ERRCONNECT_DNS"))
     }
 
     @Test func startingTwiceRunsOnce() async {

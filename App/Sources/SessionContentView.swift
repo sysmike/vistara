@@ -1,3 +1,4 @@
+import AppKit
 import RDPKit
 import RDPKitUI
 import SwiftUI
@@ -28,8 +29,13 @@ struct SessionContentView: View {
                 }
             case .disconnected(let reason):
                 DisconnectedView(
-                    message: DisconnectMessage(reason: reason, name: model.target.name),
-                    reconnect: { model.reconnect() }
+                    message: DisconnectMessage(reason: reason, name: model.target.name, host: model.target.host),
+                    perform: { action in
+                        switch action {
+                        case .connect: model.reconnect()
+                        case .useAnotherAccount: model.reconnectWithAnotherAccount()
+                        }
+                    }
                 )
             }
         }
@@ -89,32 +95,47 @@ struct ConnectingView: View {
 
 struct DisconnectedView: View {
     let message: DisconnectMessage
-    let reconnect: () -> Void
+    let perform: (DisconnectMessage.Action) -> Void
+
+    @State private var showsDetails = false
 
     var body: some View {
         VStack(spacing: 8) {
             Text(message.title)
                 .font(.title2)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             if let explanation = message.explanation {
                 Text(explanation)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let action = message.action {
-                Button(action, action: reconnect)
+                Button(action.title) { perform(action) }
                     .keyboardShortcut(.defaultAction)
                     .padding(.top, 12)
             }
             if let detail = message.detail {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.top, 12)
+                DisclosureGroup("Details", isExpanded: $showsDetails) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(detail)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Copy Details") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(detail, forType: .string)
+                        }
+                        .controlSize(.small)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+                }
+                .padding(.top, 16)
             }
         }
-        .frame(maxWidth: 420)
+        .frame(maxWidth: 440)
         .padding(40)
     }
 }

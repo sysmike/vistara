@@ -124,4 +124,31 @@ struct CredentialsFlowTests {
         try store.remove(for: key)
         try #expect(store.credentials(for: key) == nil)
     }
+
+    @Test(.enabled(if: TestServer.current != nil))
+    func useAnotherAccountAsksEvenWhenAPasswordIsSaved() async throws {
+        let server = try #require(TestServer.current)
+        let model = SessionModel(target: server.address, credentialStore: try server.storeWithCredentials())
+        model.connect()
+        await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
+        model.answerCertificate(trust: true)
+        await waitUntil("the session is connected") { model.phase == .connected }
+        model.disconnect()
+        await waitUntil("the session has ended") { !model.isLive }
+
+        model.reconnectWithAnotherAccount()
+        await waitUntil("the credentials sheet is open") { model.pendingCredentials != nil }
+        // Asked, with the saved user name to start from, and no complaint.
+        #expect(model.pendingCredentials?.username == server.target.username)
+        #expect(model.pendingCredentials?.message == nil)
+        model.answerCredentials(nil)
+        await waitUntil("the session has ended") { !model.isLive }
+
+        // The next plain reconnect uses the saved password again.
+        model.reconnect()
+        await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
+        #expect(model.pendingCredentials == nil)
+        model.answerCertificate(trust: false)
+        await waitUntil("the session has ended") { !model.isLive }
+    }
 }

@@ -360,11 +360,26 @@ password.
 
 | Situation | Title | Explanation | Buttons |
 | --- | --- | --- | --- |
-| Name does not resolve | Can't find "build01.example.com" | Check the host name, or your VPN and network connection. | Edit Connection, Try Again |
+| Name does not resolve | Can't find "build01.example.com" | Check the computer's name, and your network and VPN connection. | Try Again |
+| No route | Can't reach "Build Server" | Your Mac has no route to that computer. Check your network and VPN connection. | Try Again |
 | No answer | "Build Server" isn't responding | The computer may be off, asleep, or blocked by a firewall. | Try Again |
-| Refused | "Build Server" refused the connection | Remote Desktop may be turned off on that computer, or it uses a different port. | Edit Connection, Try Again |
+| Refused | "Build Server" refused the connection | Remote Desktop may be turned off on that computer, or it uses a different port. | Try Again |
+| Still starting | "Build Server" is still starting up | Wait a moment, then try again. | Try Again |
+| Any other failure to connect | Can't connect to "Build Server" | Check the computer's name and your network connection, and that Remote Desktop is enabled there. | Try Again |
 | Wrong credentials | The user name or password is incorrect | | *Returns to the credentials sheet* |
+| Password expired | The password for this account has expired | Change it on a computer that can sign in, or ask your administrator, then connect again. | Use Another Account |
 | Account not allowed | This account can't sign in remotely | Ask the computer's administrator to allow Remote Desktop for this account. | Use Another Account |
+| No common sign-in | "Build Server" requires a kind of sign-in Vistara doesn't support | Ask the computer's administrator which sign-in methods Remote Desktop accepts there. | Try Again |
 | Certificate rejected | Connection cancelled | You chose not to trust this computer's certificate. | Try Again |
-| Ended by the server | "Build Server" ended the session | Another user may have signed in, or the session timed out. | Reconnect |
-| Network lost | The connection was lost | Vistara will reconnect when the network is back. | Reconnect Now |
+| Ended by the server | "Build Server" ended the session | An administrator or a program on that computer disconnected you. | Reconnect |
+| Taken over | Another connection took over this session | The same account connected to "Build Server" from somewhere else. | Reconnect |
+| Idle | "Build Server" ended the session after a period of inactivity | Reconnect to continue where you left off. | Reconnect |
+| Signed out | You signed out of "Build Server" | Connect again to start a new session. | Connect |
+| Network lost | The connection to "Build Server" was lost | Check your network connection, then reconnect. Your session keeps running on the computer. | Reconnect |
+| No license | "Build Server" has no Remote Desktop license for this connection | Ask the computer's administrator to check its Remote Desktop licensing. | Try Again |
+| Anything else | "Build Server" closed the connection unexpectedly | Try again. If it keeps happening, copy the details below into a bug report. | Try Again |
+
+On screen the quotes and apostrophes are typographic. Edit Connection joins
+Try Again where the address or port may be wrong once the connection editor
+exists (issue #22). A lost connection reconnects by itself once issue #28 is
+done; until then the message promises nothing.

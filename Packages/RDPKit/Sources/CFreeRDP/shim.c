@@ -1,5 +1,6 @@
 #include "CFreeRDP.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +22,7 @@
 #include <freerdp/graphics.h>
 #include <freerdp/input.h>
 #include <freerdp/settings.h>
+#include <freerdp/transport_io.h>
 #include <freerdp/update.h>
 #include <winpr/cast.h>
 #include <winpr/handle.h>
@@ -28,6 +30,9 @@
 
 struct vistara_session {
     freerdp *instance;
+    // FreeRDP's own TCP connect, which tcp_connect() wraps.
+    pTCPConnect default_tcp_connect;
+    int tcp_os_error;
     // Signalled by vistara_session_wake() to end a poll early.
     HANDLE wake_event;
     bool connect_attempted;
@@ -382,6 +387,51 @@ static void post_disconnect(freerdp *instance) {
     gdi_free(instance);
 }
 
+// MARK: Errors
+
+/// Calls FreeRDP's TCP connect and keeps errno when it fails, because FreeRDP
+/// reports every failure to connect as FREERDP_ERROR_CONNECT_FAILED.
+static int tcp_connect(rdpContext *context, rdpSettings *settings, const char *hostname, int port,
+                       DWORD timeout) {
+    vistara_session *session = session_of(context);
+    errno = 0;
+    const int socket = session->default_tcp_connect(context, settings, hostname, port, timeout);
+    if (socket < 0) {
+        session->tcp_os_error = errno;
+    }
+    return socket;
+}
+
+static bool wrap_tcp_connect(vistara_session *session) {
+    rdpContext *context = session->instance->context;
+    const rdpTransportIo *io = freerdp_get_io_callbacks(context);
+    if (!io || !io->TCPConnect) {
+        return false;
+    }
+    rdpTransportIo wrapped = *io;
+    session->default_tcp_connect = io->TCPConnect;
+    wrapped.TCPConnect = tcp_connect;
+    return freerdp_set_io_callbacks(context, &wrapped);
+}
+
+uint32_t vistara_session_last_error_code(const vistara_session *session) {
+    return freerdp_get_last_error(session->instance->context);
+}
+
+int32_t vistara_session_last_os_error(const vistara_session *session) {
+    return session->tcp_os_error;
+}
+
+const char *vistara_error_name(uint32_t code) {
+    const char *name = freerdp_get_last_error_name(code);
+    return name ? name : "";
+}
+
+const char *vistara_error_description(uint32_t code) {
+    const char *description = freerdp_get_last_error_string(code);
+    return description ? description : "";
+}
+
 // MARK: Lifecycle
 
 vistara_session *vistara_session_create(void) {
@@ -418,7 +468,8 @@ vistara_session *vistara_session_create(void) {
         return NULL;
     }
     ((vistara_context *)instance->context)->session = session;
-    if (PubSub_SubscribeChannelConnected(instance->context->pubSub, channel_connected) < 0 ||
+    if (!wrap_tcp_connect(session) ||
+        PubSub_SubscribeChannelConnected(instance->context->pubSub, channel_connected) < 0 ||
         PubSub_SubscribeChannelDisconnected(instance->context->pubSub, channel_disconnected) < 0) {
         vistara_session_destroy(session);
         return NULL;
@@ -472,6 +523,7 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
         return VISTARA_CONNECT_FAILED;
     }
     session->connect_attempted = true;
+    session->tcp_os_error = 0;
 
     session->decide_certificate = options->decide_certificate;
     session->decide_certificate_context = options->decide_certificate_context;

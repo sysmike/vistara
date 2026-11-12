@@ -97,6 +97,9 @@ final class SessionModel {
     @ObservationIgnored private var enteredCredentials: CredentialsAnswer?
     /// The last attempt was refused: ask again instead of using what is saved.
     @ObservationIgnored private var wasRefused = false
+    /// The user asked to sign in with another account: ask once, without
+    /// saying that anything was wrong.
+    @ObservationIgnored private var asksForAnotherAccount = false
 
     init(
         target: SessionTarget,
@@ -179,6 +182,13 @@ final class SessionModel {
         connect()
     }
 
+    /// Connects again and asks for credentials, even when some are saved.
+    func reconnectWithAnotherAccount() {
+        guard !isLive else { return }
+        asksForAnotherAccount = true
+        connect()
+    }
+
     /// Answers the certificate question, if one is open.
     func answerCertificate(_ decision: CertificateDecision) {
         let answer = certificateAnswer
@@ -243,7 +253,9 @@ final class SessionModel {
     /// session is disconnected meanwhile.
     private func credentials() async -> RDPCredentials? {
         let saved = try? credentialStore.credentials(for: target.credentialKey)
-        if !wasRefused, let saved {
+        let mustAsk = wasRefused || asksForAnotherAccount
+        asksForAnotherAccount = false
+        if !mustAsk, let saved {
             return RDPCredentials(username: saved.username, domain: saved.domain, password: saved.password)
         }
         let request = CredentialsRequest(
