@@ -80,6 +80,7 @@ struct FullScreenTests {
     }
 
     /// The full-screen notifications a window posts, for failure messages.
+    @MainActor
     private final class TransitionLog {
         private(set) var names: [String] = []
         private var observers: [NSObjectProtocol] = []
@@ -92,13 +93,15 @@ struct FullScreenTests {
             ]
             observers = watched.map { name in
                 center.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
-                    MainActor.assumeIsolated { self?.names.append(note.name.rawValue) }
+                    let name = note.name.rawValue
+                    MainActor.assumeIsolated { self?.names.append(name) }
                 }
             }
         }
 
-        deinit {
+        func stop() {
             observers.forEach(NotificationCenter.default.removeObserver)
+            observers.removeAll()
         }
     }
 
@@ -157,6 +160,7 @@ struct FullScreenTests {
             !model.isFullScreen && !window.styleMask.contains(.fullScreen),
             "before: \(before); after: \(describe(window, of: model)); notifications: \(transitions.names)"
         )
+        transitions.stop()
         await waitUntil("the desktop fills the window again") { desktopFills(window, of: model) }
         model.disconnect()
         await waitUntil("the session has ended") { !model.isLive }
