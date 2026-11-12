@@ -42,10 +42,9 @@ public enum RDPLogging {
         let level = ProcessInfo.processInfo.environment["WLOG_LEVEL"]
             .flatMap(Self.level(named:)) ?? defaultFreeRDPLevel
         vistara_logging_install({ level, function, text in
-            guard let text else { return }
             RDPLogging.forward(
                 level: FreeRDPLevel(rawValue: level) ?? .error,
-                function: function.map { String(cString: $0) } ?? "",
+                function: String(cString: function),
                 text: String(cString: text)
             )
         }, level.rawValue)

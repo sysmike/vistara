@@ -83,7 +83,8 @@ public final class LogRedactor: Sendable {
             count += matches
         }
         if count > 0 {
-            state.withLock { $0.redactions += count }
+            let made = count
+            state.withLock { $0.redactions += made }
         }
         return result
     }
