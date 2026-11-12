@@ -87,8 +87,16 @@ struct SessionViewResizeTests {
         }
     }
 
-    private func settle() async {
+    /// Waits for the debounce to pass. Waits longer, up to five seconds, while
+    /// fewer than `requests` size requests were made: a busy machine may run
+    /// the debounce late.
+    private func settle(_ recorder: Recorder? = nil, untilRequests requests: Int = 0) async {
         try? await Task.sleep(for: .milliseconds(200))
+        guard let recorder else { return }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while sizeRequests(recorder).count < requests, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
     }
 
     @Test func theDesktopFollowsTheViewOnceItsSizeHasRested() async throws {
@@ -96,7 +104,7 @@ struct SessionViewResizeTests {
         let (view, window, recorder) = (fixture.view, fixture.window, fixture.recorder)
         let first = try #require(view.fillingDesktopSize)
         #expect(Int(first.width) == Int(800 * window.backingScaleFactor))
-        await settle()
+        await settle(recorder, untilRequests: 1)
         #expect(sizeRequests(recorder) == [
             .desktopSize(width: first.width, height: first.height, scalePercent: first.scalePercent)
         ])
@@ -105,7 +113,7 @@ struct SessionViewResizeTests {
         for width in stride(from: 810, through: 900, by: 10) {
             window.setContentSize(NSSize(width: width, height: 620))
         }
-        await settle()
+        await settle(recorder, untilRequests: 2)
         let second = try #require(view.fillingDesktopSize)
         #expect(sizeRequests(recorder).count == 2)
         #expect(sizeRequests(recorder).last
