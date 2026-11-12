@@ -7,6 +7,7 @@ struct LibraryCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             NewConnectionMenuItem()
+            NewFolderMenuItem()
             ConnectMenuItem()
         }
         CommandGroup(after: .pasteboard) {
@@ -39,6 +40,16 @@ private struct NewConnectionMenuItem: View {
     }
 }
 
+private struct NewFolderMenuItem: View {
+    @FocusedValue(\.libraryActions) private var actions
+
+    var body: some View {
+        Button("New Folder") { actions?.newFolder?() }
+            .keyboardShortcut("n", modifiers: [.shift, .command])
+            .disabled(actions?.newFolder == nil)
+    }
+}
+
 private struct ConnectMenuItem: View {
     @FocusedValue(\.libraryActions) private var actions
 
@@ -63,6 +74,17 @@ private struct ConnectionEditingMenuItems: View {
         Button("Delete Connection") { deleteUnlessTyping() }
             .keyboardShortcut(.delete, modifiers: .command)
             .disabled(actions?.delete == nil)
+        Divider()
+        Button(actions?.favoriteTitle ?? "Add to Favorites") { actions?.favorite?() }
+            .disabled(actions?.favorite == nil)
+        MoveToFolderMenu(folders: actions?.folders ?? [], current: actions?.currentFolder ?? nil) { folderID in
+            actions?.move?(folderID)
+        }
+        .disabled(actions?.move == nil)
+        Button("Rename Folder") { actions?.renameFolder?() }
+            .disabled(actions?.renameFolder == nil)
+        Button("Delete Folder") { actions?.deleteFolder?() }
+            .disabled(actions?.deleteFolder == nil)
         Divider()
         // In a session window Command-F goes to the remote computer instead.
         Button("Find") { actions?.find() }

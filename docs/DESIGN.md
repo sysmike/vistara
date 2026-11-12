@@ -71,6 +71,16 @@ Consequences:
   and collapses on its own when the window gets narrow (HIG Sidebars).
 - Sidebar icons are SF Symbols in the accent color. Tags are shown by name; a
   tag never relies on color alone (HIG Accessibility).
+- File > New Folder makes "New Folder" and puts its name in edit, as Finder
+  does. Rename Folder and Delete Folder are in the folder's context menu and
+  the Edit menu. Deleting a folder asks nothing: its context menu says
+  beforehand that its connections stay in All Connections, and Undo brings
+  the folder back with them.
+- Connections are dragged onto a folder to move them, or onto Favorites.
+  Edit > Move to Folder does the same from the keyboard, and Undo reverses a
+  move. Favorites show a star next to the name, a shape and not a colour.
+- Recents shows the 20 connections used last, newest first, until the table
+  is sorted otherwise.
 - Search is a toolbar search field that filters the list as you type, across
   name, host, user, and tags.
 - Double-click or Return connects. Empty states say what to do next: "No
@@ -116,8 +126,7 @@ A sheet on the Connections window, grouped like a System Settings form.
 - Return saves, Escape cancels, Tab order follows the visual order.
 - Problems show once a field has been edited, so a new, empty connection
   does not open with a list of complaints. *Judgment.*
-- Tags arrive with folders and favorites (issue #23), shared folders with
-  folder redirection (issue #27).
+- Shared folders arrive with folder redirection (issue #27).
 - Edit > Delete Connection (Command-Delete) is named for what it deletes,
   because Edit > Delete already deletes text. In a text field Command-Delete
   keeps its usual meaning. A deleted connection's Keychain item is removed at

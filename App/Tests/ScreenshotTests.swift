@@ -43,6 +43,20 @@ struct ScreenshotTests {
     }
 
     @Test
+    func libraryRecentsAndAFolderBeingNamed() async throws {
+        let (model, _) = try await temporaryLibrary(SampleLibrary.library)
+        model.selection = .recents
+        let recents = try await Screenshots.write(
+            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-recents"
+        )
+        model.addFolder()
+        let naming = try await Screenshots.write(
+            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-new-folder"
+        )
+        #expect(recents > 0 && naming > 0)
+    }
+
+    @Test
     func libraryNarrow() async throws {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         let view = ConnectionsView(model: model) { _ in }
@@ -68,11 +82,13 @@ struct ScreenshotTests {
     @Test(arguments: [false, true])
     func editor(dark: Bool) async throws {
         var draft = ConnectionDraft(SampleLibrary.library.connections[0])
+        draft.tags = ["prod", "ci"]
         draft.resolutionMode = .fixed
         draft.requiresNLA = false
-        let view = ConnectionEditor(draft: draft, folders: [SampleLibrary.lab, SampleLibrary.office]) { _ in }
+        let folders = [SampleLibrary.lab, SampleLibrary.office]
+        let view = ConnectionEditor(draft: draft, folders: folders, knownTags: ["prod", "test"]) { _ in }
         let name = dark ? "editor-dark" : "editor"
-        let bytes = try await Screenshots.write(view, size: NSSize(width: 480, height: 760), name: name, dark: dark)
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 480, height: 800), name: name, dark: dark)
         #expect(bytes > 0)
     }
 

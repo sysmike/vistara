@@ -10,6 +10,7 @@ struct ConnectionDraft: Equatable {
     var username = ""
     var domain = ""
     var folderID: UUID?
+    var tags: [String] = []
 
     var resolutionMode = Connection.ResolutionMode.matchWindow
     var fixedWidth = "1920"
@@ -37,6 +38,7 @@ struct ConnectionDraft: Equatable {
         username = connection.username
         domain = connection.domain
         folderID = connection.folderID
+        tags = connection.tags
         resolutionMode = connection.resolutionMode
         fixedWidth = String(connection.fixedWidth)
         fixedHeight = String(connection.fixedHeight)
@@ -100,6 +102,17 @@ struct ConnectionDraft: Equatable {
         requiresNLA ? nil : "The computer will show its sign-in screen to anyone before checking who they are."
     }
 
+    /// Tags without blanks and without repeats that differ only in case,
+    /// in the order typed.
+    static func normalizedTags(_ tags: [String]) -> [String] {
+        var seen = Set<String>()
+        return tags.compactMap { tag in
+            let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { return nil }
+            return trimmed
+        }
+    }
+
     // MARK: Result
 
     /// The connection to save, or nil while something is invalid.
@@ -116,6 +129,7 @@ struct ConnectionDraft: Equatable {
         connection.username = user.username
         connection.domain = typedDomain.isEmpty ? user.domain ?? "" : typedDomain
         connection.folderID = folderID
+        connection.tags = Self.normalizedTags(tags)
         connection.resolutionMode = resolutionMode
         if resolutionMode == .fixed, let width = Int(fixedWidth), let height = Int(fixedHeight) {
             connection.fixedWidth = width
