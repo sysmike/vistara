@@ -18,6 +18,7 @@ public struct RDPScancode: Sendable, Hashable {
     public static let leftAlt = RDPScancode(0x38)
     public static let rightAlt = RDPScancode(0x38, extended: true)
     public static let leftWindows = RDPScancode(0x5B, extended: true)
+    public static let rightWindows = RDPScancode(0x5C, extended: true)
     public static let capsLock = RDPScancode(0x3A)
     public static let delete = RDPScancode(0x53, extended: true)
 }

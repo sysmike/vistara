@@ -9,17 +9,23 @@ import RDPKit
 ///   Mac's menus, which is also how the keyboard is released from a session.
 /// - Familiar editing shortcuts (Command-C, V, X, A, Z, F, S and
 ///   Shift-Command-Z) are sent as their Control equivalents.
+/// - When chosen in Settings, Right Command is the Windows key: it is sent,
+///   and keys pressed with it go to the remote computer.
 /// - Everything else goes to the remote computer: Control, Option as Alt,
 ///   Shift, and every other key by its position.
 public struct KeyboardTranslator: Sendable {
     public var keyboard: MacKeyboardKind
+    /// Right Command is sent as the right Windows key instead of staying
+    /// with the Mac.
+    public var rightCommandIsWindowsKey = false
 
     /// Pressed keys by Mac key code, with what was sent for each.
     private var pressedKeys: [UInt16: RDPScancode] = [:]
     private var heldModifiers: [RDPScancode] = []
 
-    public init(keyboard: MacKeyboardKind = .ansi) {
+    public init(keyboard: MacKeyboardKind = .ansi, rightCommandIsWindowsKey: Bool = false) {
         self.keyboard = keyboard
+        self.rightCommandIsWindowsKey = rightCommandIsWindowsKey
     }
 
     /// True while the remote computer believes any key is held.
@@ -45,7 +51,8 @@ public struct KeyboardTranslator: Sendable {
     /// modifier flags, which tells left from right. Sends only the difference
     /// to what is held, so a missed event corrects itself with the next one.
     public mutating func modifiersChanged(flags: UInt) -> [RDPInputEvent] {
-        let wanted = Self.modifiers(in: flags)
+        var wanted = Self.modifiers(in: flags)
+        if isWindowsCombination(flags: flags) { wanted.append(.rightWindows) }
         var events: [RDPInputEvent] = []
         for scancode in heldModifiers where !wanted.contains(scancode) {
             events.append(.key(scancode, isDown: false))
@@ -67,6 +74,21 @@ public struct KeyboardTranslator: Sendable {
     public func editingShortcut(keyCode: UInt16) -> [RDPInputEvent] {
         guard let scancode = MacKeyMap.scancode(forKeyCode: keyCode, keyboard: keyboard) else { return [] }
         return [.key(.leftControl, isDown: true)] + RDPInputEvent.tap(scancode) + [.key(.leftControl, isDown: false)]
+    }
+
+    /// Whether only Right Command is held of the Command keys, and it is the
+    /// Windows key: keys pressed now belong to the remote computer.
+    public func isWindowsCombination(flags: UInt) -> Bool {
+        rightCommandIsWindowsKey && flags & Self.command != 0 && flags & Self.rightCommand != 0
+            && flags & Self.leftCommand == 0
+    }
+
+    /// A key pressed with Right Command as the Windows key. Sent as a whole
+    /// press and release, because the Mac reports no key-up while Command is
+    /// held. The Windows key itself is held through `modifiersChanged`.
+    public func windowsCombination(keyCode: UInt16) -> [RDPInputEvent] {
+        guard let scancode = MacKeyMap.scancode(forKeyCode: keyCode, keyboard: keyboard) else { return [] }
+        return RDPInputEvent.tap(scancode)
     }
 
     /// Releases everything the remote computer believes is held. Call this
@@ -91,12 +113,15 @@ public struct KeyboardTranslator: Sendable {
     private static let shift: UInt = 1 << 17
     private static let control: UInt = 1 << 18
     private static let option: UInt = 1 << 19
+    private static let command: UInt = 1 << 20
     // Device-dependent flags that tell the left key from the right one.
     private static let leftControl: UInt = 0x0001
     private static let leftShift: UInt = 0x0002
     private static let rightShift: UInt = 0x0004
     private static let leftOption: UInt = 0x0020
     private static let rightOption: UInt = 0x0040
+    private static let leftCommand: UInt = 0x0008
+    private static let rightCommand: UInt = 0x0010
     private static let rightControl: UInt = 0x2000
 
     private static func modifiers(in flags: UInt) -> [RDPScancode] {

@@ -6,8 +6,9 @@ import SwiftUI
 /// The content of a session window: exactly one state at a time.
 struct SessionContentView: View {
     let model: SessionModel
-    /// The switch for this arrives with Settings > Keyboard (issue #30).
+    /// Settings > Keyboard.
     @AppStorage("TranslateEditingShortcuts") private var translatesEditingShortcuts = true
+    @AppStorage(KeyboardSettingsView.rightCommandKey) private var rightCommandIsWindowsKey = false
 
     var body: some View {
         Group {
@@ -20,6 +21,7 @@ struct SessionContentView: View {
                         framebuffer: framebuffer,
                         name: model.target.name,
                         translatesEditingShortcuts: translatesEditingShortcuts,
+                        rightCommandIsWindowsKey: rightCommandIsWindowsKey,
                         resizesDesktop: model.target.resolutionMode == .matchWindow,
                         usesHiDPI: model.target.usesHiDPI,
                         connectedScale: model.connectedScale,
@@ -216,6 +218,7 @@ struct RemoteDesktopView: NSViewRepresentable {
     let framebuffer: RDPFramebuffer
     let name: String
     let translatesEditingShortcuts: Bool
+    let rightCommandIsWindowsKey: Bool
     /// Whether the remote desktop follows the size of the window.
     let resizesDesktop: Bool
     let usesHiDPI: Bool
@@ -231,6 +234,7 @@ struct RemoteDesktopView: NSViewRepresentable {
     func updateNSView(_ view: RDPSessionView, context: Context) {
         view.connectionName = name
         view.translatesEditingShortcuts = translatesEditingShortcuts
+        view.rightCommandIsWindowsKey = rightCommandIsWindowsKey
         view.inputHandler = input
         view.connectedScale = connectedScale
         view.usesHiDPI = usesHiDPI

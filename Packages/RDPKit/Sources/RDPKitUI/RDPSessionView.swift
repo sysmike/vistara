@@ -21,6 +21,10 @@ public final class RDPSessionView: MTKView {
     /// equivalents. When off, those shortcuts stay with the Mac like every
     /// other Command shortcut.
     public var translatesEditingShortcuts = true
+    /// Right Command is the Windows key on the remote computer.
+    public var rightCommandIsWindowsKey = false {
+        didSet { translator.rightCommandIsWindowsKey = rightCommandIsWindowsKey }
+    }
 
     /// Asks the remote computer to resize its desktop to fill this view
     /// whenever the view changes size or moves to another kind of display.

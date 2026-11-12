@@ -34,9 +34,8 @@ struct VistaraApp: App {
             SessionCommands(coordinator: coordinator)
         }
 
-        // The other panes arrive with issue #30.
         Settings {
-            SecuritySettingsView(trustStore: coordinator.trustStore)
+            SettingsView(trustStore: coordinator.trustStore)
         }
     }
 }

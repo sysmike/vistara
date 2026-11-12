@@ -219,6 +219,30 @@ struct KeyboardTranslatorTests {
     @Test func capsLockIsPressedAndReleased() {
         #expect(KeyboardTranslator().capsLockToggled() == [press(0x3A), release(0x3A)])
     }
+
+    // Command and the device bit for the right Command key.
+    private static let rightCommand: UInt = (1 << 20) | 0x0010
+    private static let leftCommand: UInt = (1 << 20) | 0x0008
+
+    @Test func rightCommandIsTheWindowsKeyOnlyWhenChosen() {
+        var mac = KeyboardTranslator()
+        #expect(mac.modifiersChanged(flags: Self.rightCommand).isEmpty)
+        #expect(!mac.isWindowsCombination(flags: Self.rightCommand))
+
+        var windows = KeyboardTranslator(rightCommandIsWindowsKey: true)
+        #expect(windows.modifiersChanged(flags: Self.rightCommand) == [press(0x5C, extended: true)])
+        #expect(windows.isWindowsCombination(flags: Self.rightCommand))
+        #expect(windows.modifiersChanged(flags: 0) == [release(0x5C, extended: true)])
+        // Left Command stays with the Mac, also together with the right one.
+        #expect(windows.modifiersChanged(flags: Self.leftCommand).isEmpty)
+        #expect(!windows.isWindowsCombination(flags: Self.leftCommand | Self.rightCommand))
+    }
+
+    @Test func aKeyWithTheWindowsKeyIsPressedAndReleased() {
+        let windows = KeyboardTranslator(rightCommandIsWindowsKey: true)
+        // R, by position.
+        #expect(windows.windowsCombination(keyCode: 0x0F) == [press(0x13), release(0x13)])
+    }
 }
 
 @Suite(.serialized)
@@ -324,6 +348,28 @@ struct SessionViewKeyboardTests {
         view.translatesEditingShortcuts = false
         #expect(!view.performKeyEquivalent(with: copy))
         #expect(recorder.events.isEmpty)
+        window.contentView = nil
+    }
+
+    @Test func rightCommandShortcutsGoToTheRemoteComputerWhenItIsTheWindowsKey() throws {
+        let (view, recorder) = makeView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 150), styleMask: [.titled], backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        recorder.events.removeAll()
+        let rightCommand = NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.command.rawValue | 0x0010)
+        let windowsR = try key(.keyDown, keyCode: 0x0F, characters: "r", flags: rightCommand)
+
+        // By default, Command belongs to the Mac.
+        #expect(!view.performKeyEquivalent(with: windowsR))
+        #expect(recorder.events.isEmpty)
+
+        view.rightCommandIsWindowsKey = true
+        #expect(view.performKeyEquivalent(with: windowsR))
+        #expect(recorder.events == [press(0x13), release(0x13)])
         window.contentView = nil
     }
 }

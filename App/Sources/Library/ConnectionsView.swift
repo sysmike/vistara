@@ -42,7 +42,7 @@ struct ConnectionsView: View {
 
     private func draft(for request: LibraryModel.EditorRequest) -> ConnectionDraft {
         switch request {
-        case .new: ConnectionDraft()
+        case .new: ConnectionDraft(defaults: .load())
         case .edit(let id): model.connection(id).map(ConnectionDraft.init) ?? ConnectionDraft()
         }
     }
