@@ -90,8 +90,11 @@ struct DockMenuTests {
             favorites: [.init(title: "Finance VM") { chosen.append("connect") }]
         )
         for item in menu.items where !item.isSectionHeader && !item.isSeparatorItem {
-            let action = try #require(item.action)
-            NSApp.sendAction(action, to: item.target, from: item)
+            // Compared, not sent: a selector taken through #require arrived
+            // at the target unrecognized and stopped the test host.
+            #expect(item.action == #selector(DockMenuTarget.perform(_:)))
+            let target = try #require(item.target as? DockMenuTarget)
+            target.perform(item)
         }
         #expect(chosen == ["show", "connect"])
     }
