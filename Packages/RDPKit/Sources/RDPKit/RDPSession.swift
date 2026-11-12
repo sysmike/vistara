@@ -88,10 +88,21 @@ public final class RDPSession: Sendable {
         control.withLock { $0.stopRequested }
     }
 
+    private static let log = RDPLogging.logger("Session")
+
     private func run() {
+        let redactor = RDPLogging.redactor
+        redactor.add(configuration.host, as: .host)
+        redactor.add(configuration.username, as: .user)
+        redactor.add(configuration.domain ?? "", as: .user)
+        Self.log.notice(
+            "Connecting to \(self.configuration.host, privacy: .private):\(self.configuration.port, privacy: .public)"
+        )
         continuation.yield(.connecting)
         let reason = connectAndServe()
-        continuation.yield(.disconnected(isStopRequested ? .userRequested : reason))
+        let final = isStopRequested ? RDPDisconnectReason.userRequested : reason
+        Self.log.notice("Session ended: \(final.logDescription, privacy: .public)")
+        continuation.yield(.disconnected(final))
         continuation.finish()
         framebuffer.finish()
     }
@@ -103,6 +114,13 @@ public final class RDPSession: Sendable {
         guard let answer = ask({ await delegate.credentials(configuration) }), let credentials = answer else {
             return .credentialsCancelled
         }
+        // Kept out of FreeRDP's log lines. The password only while this
+        // session can use it.
+        let redactor = RDPLogging.redactor
+        redactor.add(credentials.username, as: .user)
+        redactor.add(credentials.domain ?? "", as: .user)
+        redactor.add(credentials.password, as: .secret)
+        defer { redactor.remove(credentials.password) }
         guard let handle = SessionHandle() else {
             return .connectionFailed(RDPFailure(kind: .cannotConnect, name: "out of memory"))
         }
@@ -135,6 +153,7 @@ public final class RDPSession: Sendable {
         let delegate = delegate
 
         let result = handle.connect(to: target) { certificate in
+            RDPLogging.redactor.add(certificate.commonName, as: .host)
             // A certificate macOS trusts on its own needs no question.
             if RDPCertificateVerifier.isTrustedBySystem(certificate) { return true }
             self.continuation.yield(.awaitingCertificateDecision(certificate))

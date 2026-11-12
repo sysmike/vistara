@@ -28,6 +28,7 @@
 #include <winpr/cast.h>
 #include <winpr/handle.h>
 #include <winpr/synch.h>
+#include <winpr/wlog.h>
 
 struct vistara_session {
     freerdp *instance;
@@ -71,6 +72,47 @@ typedef struct {
 
 static vistara_session *session_of(rdpContext *context) {
     return ((vistara_context *)context)->session;
+}
+
+// MARK: Logging
+
+static vistara_log_sink log_sink = NULL;
+
+static BOOL log_message(const wLogMessage *message) {
+    vistara_log_sink sink = log_sink;
+    if (sink && message && message->TextString) {
+        sink(message->Level, message->FunctionName ? message->FunctionName : "", message->TextString);
+    }
+    return TRUE;
+}
+
+// Raw data, images, and packets may hold anything, credentials included.
+static BOOL log_dropped(const wLogMessage *message) {
+    (void)message;
+    return TRUE;
+}
+
+void vistara_logging_install(vistara_log_sink sink, uint32_t level) {
+    log_sink = sink;
+    wLog *root = WLog_GetRoot();
+    if (!root) {
+        return;
+    }
+    (void)WLog_SetLogAppenderType(root, WLOG_APPENDER_CALLBACK);
+    wLogAppender *appender = WLog_GetLogAppender(root);
+    if (appender) {
+        wLogCallbacks callbacks = {
+            .data = log_dropped, .image = log_dropped, .message = log_message, .package = log_dropped};
+        (void)WLog_ConfigureAppender(appender, "callbacks", &callbacks);
+    }
+    (void)WLog_SetLogLevel(root, level);
+}
+
+void vistara_logging_set_level(uint32_t level) {
+    wLog *root = WLog_GetRoot();
+    if (root) {
+        (void)WLog_SetLogLevel(root, level);
+    }
 }
 
 const char *vistara_freerdp_version(void) {

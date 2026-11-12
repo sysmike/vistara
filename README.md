@@ -61,6 +61,23 @@ The test server is a build of FreeRDP's own server with a 1024x768
 screen filled with one colour. It checks the protocol path (TLS, Network Level Authentication,
 graphics updates). It is not a substitute for testing against Windows.
 
+## Logs
+
+Vistara writes to the unified log under the subsystem
+`io.github.sysmike.vistara`. To collect what it says while you reproduce a
+problem:
+
+```bash
+log stream --level debug --predicate 'subsystem == "io.github.sysmike.vistara"'
+```
+
+FreeRDP's own messages appear under the category `FreeRDP`. Before they are
+logged, the hosts, user names, domains, and passwords of your sessions, and
+anything that looks like an IP address, are replaced with `<host>`, `<user>`,
+`<redacted>`, or `<address>`, so the output is meant to be safe to paste into
+a bug report. Read it before you post it anyway. FreeRDP logs warnings and
+errors only; set `WLOG_LEVEL=DEBUG` in the environment for more.
+
 ## Building FreeRDP
 
 Vistara embeds FreeRDP as libraries built from a pinned release.
