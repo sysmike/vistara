@@ -14,18 +14,20 @@ struct SessionTarget: Equatable, Sendable {
     var username = ""
     var domain: String?
 
-    /// How the remote desktop gets its size. Chosen per connection once the
-    /// connection editor exists (issue #22); until then every session follows
-    /// its window at full Retina resolution.
+    /// How the remote desktop gets its size: from the saved connection, or
+    /// following the window at full Retina resolution.
     var resolutionMode = Connection.ResolutionMode.matchWindow
     var fixedWidth = 1920
     var fixedHeight = 1080
     var usesHiDPI = true
 
-    /// Identifies this computer's item in the credential store. A saved
-    /// connection will use its own identifier here (issue #21).
+    /// The saved connection this target comes from, if any.
+    var connectionID: UUID?
+
+    /// Identifies this target's item in the credential store: the saved
+    /// connection's identifier, or else the computer's address.
     var credentialKey: String {
-        "\(host.lowercased()):\(port)"
+        connectionID?.uuidString ?? "\(host.lowercased()):\(port)"
     }
 }
 

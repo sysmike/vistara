@@ -85,7 +85,9 @@ enum Screenshots {
     /// Shows the view in a window of the given content size, renders it, and
     /// returns the file's size in bytes.
     @discardableResult
-    static func write(_ view: some View, size: NSSize, name: String, dark: Bool = false) async throws -> Int {
+    static func write(
+        _ view: some View, size: NSSize, name: String, dark: Bool = false, appearance: NSAppearance.Name? = nil
+    ) async throws -> Int {
         let content = view
             .frame(width: size.width, height: size.height)
             .background(Color(nsColor: .windowBackgroundColor))
@@ -97,7 +99,7 @@ enum Screenshots {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.appearance = NSAppearance(named: appearance ?? (dark ? .darkAqua : .aqua))
         window.contentView = hosting
         window.setContentSize(size)
         window.center()
@@ -132,5 +134,46 @@ extension NSView {
             if let match = subview as? T ?? subview.firstDescendant(type) { return match }
         }
         return nil
+    }
+}
+
+/// A library in a folder of its own.
+@MainActor
+func temporaryLibrary(_ library: Library = Library()) async throws -> (model: LibraryModel, directory: URL) {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("vistara-library-\(UUID().uuidString)", isDirectory: true)
+    let store = ConnectionStore(directory: directory)
+    if !library.connections.isEmpty || !library.folders.isEmpty {
+        try await store.save(library)
+    }
+    let model = LibraryModel(store: store)
+    await model.load()
+    return (model, directory)
+}
+
+/// A few connections, folders, and tags, as in the design's wireframe.
+enum SampleLibrary {
+    static let office = Folder(name: "Office")
+    static let lab = Folder(name: "Lab")
+
+    static var library: Library {
+        let now = Date()
+        var build = Connection(name: "Build Server", host: "build01.example.com")
+        build.username = "alice"
+        build.tags = ["prod"]
+        build.isFavorite = true
+        build.folderID = lab.id
+        build.lastConnectedAt = now
+        var finance = Connection(name: "Finance VM", host: "10.0.4.17")
+        finance.tags = ["prod", "finance"]
+        finance.folderID = office.id
+        finance.lastConnectedAt = now.addingTimeInterval(-86_400)
+        var jump = Connection(name: "Jump Host", host: "jump.example.com")
+        jump.port = 3390
+        jump.username = "ops"
+        jump.tags = ["test"]
+        var lab1 = Connection(name: "Lab Desktop", host: "lab-01.example.com")
+        lab1.folderID = lab.id
+        return Library(connections: [build, finance, jump, lab1], folders: [office, lab])
     }
 }
