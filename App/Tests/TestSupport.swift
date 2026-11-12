@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+import VistaraCore
 @testable import Vistara
 
 /// The test server started by scripts/run-test-server.sh, if any.
@@ -19,6 +20,21 @@ struct TestServer {
             target: SessionTarget(name: "Test Server", host: host, port: port, username: user, domain: nil),
             password: password
         )
+    }
+}
+
+extension TestServer {
+    /// A store that already holds the server's account, so no sheet appears.
+    func storeWithCredentials() throws -> InMemoryCredentialStore {
+        let store = InMemoryCredentialStore()
+        let credentials = StoredCredentials(username: target.username, password: password)
+        try store.save(credentials, for: target.credentialKey, label: "Test")
+        return store
+    }
+
+    /// The server's address without an account, as the launcher gives it.
+    var address: SessionTarget {
+        SessionTarget(name: target.name, host: target.host, port: target.port)
     }
 }
 

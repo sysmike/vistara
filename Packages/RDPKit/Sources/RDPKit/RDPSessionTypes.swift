@@ -48,6 +48,14 @@ public struct RDPCredentials: Sendable {
     }
 }
 
+/// Printing or dumping credentials never shows them, so a password cannot
+/// reach a log or a crash report that way.
+extension RDPCredentials: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public var description: String { "RDPCredentials(<redacted>)" }
+    public var debugDescription: String { description }
+    public var customMirror: Mirror { Mirror(self, children: [:]) }
+}
+
 /// A server certificate that could not be verified automatically and needs a
 /// decision.
 public struct RDPCertificate: Sendable, Equatable {
