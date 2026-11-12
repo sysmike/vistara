@@ -69,7 +69,8 @@ struct DockMenuTests {
             sessions: [.init(title: "Build Server") {}],
             favorites: [.init(title: "Finance VM") {}, .init(title: "Lab Desktop") {}]
         )
-        #expect(menu.items.map(\.title) == ["Open Sessions", "Build Server", "", "Favorites", "Finance VM", "Lab Desktop"])
+        let titles = ["Open Sessions", "Build Server", "", "Favorites", "Finance VM", "Lab Desktop"]
+        #expect(menu.items.map(\.title) == titles)
         #expect(menu.items[0].isSectionHeader)
         #expect(menu.items[2].isSeparatorItem)
     }
