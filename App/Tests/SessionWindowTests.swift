@@ -102,12 +102,12 @@ struct SessionWindowTests {
         await waitUntil("the session is connected") { model.phase == .connected }
 
         var desktop: RDPSessionView?
+        // Drawn with a picture, not only cleared before the first one arrived.
         await waitUntil("the desktop has been drawn") {
             desktop = controller.window.contentView?.firstDescendant(RDPSessionView.self)
-            return (desktop?.drawCount ?? 0) > 0
+            return (desktop?.drawCount ?? 0) > 0 && (desktop?.desktopFrame.width ?? 0) > 0
         }
         let view = try #require(desktop)
-        #expect(view.desktopFrame.width > 0)
         #expect(view.accessibilityLabel() == "Remote desktop, Test Server")
         // The remote desktop is resized to fill the window, pixel for pixel.
         let filling = try #require(

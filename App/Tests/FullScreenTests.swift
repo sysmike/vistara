@@ -27,14 +27,39 @@ struct FullScreenTests {
         controller.window.close()
     }
 
+    /// What the menu bar holds, for a failure message.
+    private func describeMenuBar() -> String {
+        (NSApp.mainMenu?.items ?? []).map { top in
+            let entries = (top.submenu?.items ?? []).map { item in
+                item.isSeparatorItem ? "—" : "\(item.title)<\(item.action.map(NSStringFromSelector) ?? "nil")>"
+            }
+            return "\(top.title): " + entries.joined(separator: ", ")
+        }.joined(separator: " | ")
+    }
+
+    /// Lets every menu prepare itself as if it were about to open, which is
+    /// when AppKit adds some of its standard items.
+    private func prepareMenus() {
+        for top in NSApp.mainMenu?.items ?? [] {
+            guard let menu = top.submenu else { continue }
+            menu.delegate?.menuNeedsUpdate?(menu)
+            menu.delegate?.menuWillOpen?(menu)
+            menu.update()
+            menu.delegate?.menuDidClose?(menu)
+        }
+    }
+
     @Test
     func theMenuBarHasOneFullScreenCommand() {
-        let fullScreen = items(in: NSApp.mainMenu).filter { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
+        prepareMenus()
+        let fullScreen = items(in: NSApp.mainMenu).filter {
+            $0.action == #selector(NSWindow.toggleFullScreen(_:)) || $0.title.hasSuffix("Full Screen")
+        }
         let described = fullScreen.map {
             "\($0.title) [\($0.keyEquivalent)] \(String($0.keyEquivalentModifierMask.rawValue, radix: 16)) "
                 + "in \($0.menu?.title ?? "?")"
         }
-        #expect(fullScreen.count == 1, "full screen items: \(described)")
+        #expect(fullScreen.count == 1, "full screen items: \(described); menu bar: \(describeMenuBar())")
         #expect(fullScreen.first?.menu?.title == "View", "full screen items: \(described)")
     }
 
@@ -84,7 +109,7 @@ struct FullScreenTests {
         await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
         model.answerCertificate(.trustOnce)
         await waitUntil("the session is connected") { model.phase == .connected }
-        #expect(fillsTheWindow())
+        await waitUntil("the reconnected desktop fills the screen") { fillsTheWindow() }
 
         // Leaving full screen is the user's choice, and the desktop follows back.
         window.toggleFullScreen(nil)
