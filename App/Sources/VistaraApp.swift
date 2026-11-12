@@ -8,7 +8,7 @@ struct VistaraApp: App {
 
     var body: some Scene {
         // The primary window, one per app. Window > Connections (Command-0)
-        // brings it back.
+        // brings it back; see LibraryCommands.
         Window("Connections", id: "connections") {
             ConnectionsView(model: library) { connection in
                 coordinator.open(SessionTarget(connection: connection))
@@ -16,7 +16,6 @@ struct VistaraApp: App {
             }
             .task { await library.load() }
         }
-        .keyboardShortcut("0")
         .defaultSize(width: 780, height: 480)
         .commands {
             SidebarCommands()

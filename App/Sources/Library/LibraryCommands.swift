@@ -9,6 +9,12 @@ struct LibraryCommands: Commands {
         CommandGroup(after: .pasteboard) {
             FindMenuItem()
         }
+        // SwiftUI adds no Window menu item for a Window scene, so this is
+        // Vistara's own, as in Mail and Messages.
+        CommandGroup(before: .windowArrangement) {
+            ConnectionsWindowMenuItem()
+            Divider()
+        }
     }
 }
 
@@ -26,6 +32,16 @@ private struct NewConnectionMenuItem: View {
             }
         }
         .keyboardShortcut("n")
+    }
+}
+
+/// Opens the connections window, or brings it forward.
+private struct ConnectionsWindowMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Connections") { openWindow(id: "connections") }
+            .keyboardShortcut("0")
     }
 }
 
