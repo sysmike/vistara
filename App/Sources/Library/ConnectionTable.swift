@@ -143,7 +143,6 @@ struct ConnectionTable: View {
         connection.port == Connection.defaultPort ? connection.host : "\(connection.host):\(connection.port)"
     }
 
-
     /// The same commands as the menu bar, for the rows clicked.
     @ViewBuilder
     private func contextMenu(for ids: Set<Connection.ID>) -> some View {
