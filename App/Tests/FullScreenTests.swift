@@ -37,30 +37,31 @@ struct FullScreenTests {
         }.joined(separator: " | ")
     }
 
-    /// Lets every menu prepare itself as if it were about to open, which is
-    /// when AppKit adds some of its standard items.
-    private func prepareMenus() {
-        for top in NSApp.mainMenu?.items ?? [] {
-            guard let menu = top.submenu else { continue }
-            menu.delegate?.menuNeedsUpdate?(menu)
-            menu.delegate?.menuWillOpen?(menu)
-            menu.update()
-            menu.delegate?.menuDidClose?(menu)
-        }
-    }
-
     @Test
-    func theMenuBarHasOneFullScreenCommand() {
-        prepareMenus()
+    func theViewMenuHasOneFullScreenCommandForTheSessionWindow() async throws {
+        let coordinator = SessionCoordinator(
+            credentialStore: InMemoryCredentialStore(), trustStore: temporaryTrustStore()
+        )
+        let controller = coordinator.open(Self.nowhere)
+        defer { controller.window.close() }
+        NSApp.activate(ignoringOtherApps: true)
+        controller.window.makeKeyAndOrderFront(nil)
+        await waitUntil("the session window is main") { coordinator.activeModel === controller.model }
+        try await Task.sleep(for: .milliseconds(300))
+
+        let view = try #require(NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu)
+        view.delegate?.menuNeedsUpdate?(view)
+        view.update()
         let fullScreen = items(in: NSApp.mainMenu).filter {
             $0.action == #selector(NSWindow.toggleFullScreen(_:)) || $0.title.hasSuffix("Full Screen")
         }
-        let described = fullScreen.map {
-            "\($0.title) [\($0.keyEquivalent)] \(String($0.keyEquivalentModifierMask.rawValue, radix: 16)) "
-                + "in \($0.menu?.title ?? "?")"
-        }
-        #expect(fullScreen.count == 1, "full screen items: \(described); menu bar: \(describeMenuBar())")
-        #expect(fullScreen.first?.menu?.title == "View", "full screen items: \(described)")
+        let context: Comment = "menu bar: \(describeMenuBar())"
+        #expect(fullScreen.count == 1, context)
+        let item = try #require(fullScreen.first, context)
+        #expect(item.menu === view)
+        #expect(item.title == "Enter Full Screen")
+        #expect(item.keyEquivalent == "f")
+        #expect(item.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask) == [.control, .command])
     }
 
     @Test(.enabled(if: TestServer.current != nil && NSScreen.main != nil))
@@ -80,9 +81,9 @@ struct FullScreenTests {
 
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
-        window.toggleFullScreen(nil)
+        coordinator.toggleFullScreen(model)
         await waitUntil("the window is in full screen", within: .seconds(20)) {
-            window.styleMask.contains(.fullScreen)
+            window.styleMask.contains(.fullScreen) && model.isFullScreen
         }
         try #require(window.styleMask.contains(.fullScreen))
 
@@ -112,10 +113,19 @@ struct FullScreenTests {
         await waitUntil("the reconnected desktop fills the screen") { fillsTheWindow() }
 
         // Leaving full screen is the user's choice, and the desktop follows back.
-        window.toggleFullScreen(nil)
+        let state = {
+            """
+            key \(window.isKeyWindow), main \(window.isMainWindow), sheet \(window.attachedSheet != nil), \
+            visible \(window.isVisible), app active \(NSApp.isActive), full screen \(model.isFullScreen), \
+            style \(String(window.styleMask.rawValue, radix: 16))
+            """
+        }
+        let before = state()
+        coordinator.toggleFullScreen(model)
         await waitUntil("the window has left full screen", within: .seconds(20)) {
             !window.styleMask.contains(.fullScreen)
         }
+        #expect(!model.isFullScreen, "before: \(before); after: \(state())")
         await waitUntil("the desktop fills the window again") { fillsTheWindow() }
         model.disconnect()
         await waitUntil("the session has ended") { !model.isLive }
