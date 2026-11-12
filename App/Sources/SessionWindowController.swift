@@ -119,6 +119,28 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         onMainChange?(false)
     }
 
+    /// Enters or leaves the system's full screen.
+    func toggleFullScreen() {
+        window.toggleFullScreen(nil)
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        model.isFullScreen = true
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        model.isFullScreen = false
+    }
+
+    // A transition the system could not finish leaves the window as it was.
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        model.isFullScreen = window.styleMask.contains(.fullScreen)
+    }
+
+    func windowDidFailToExitFullScreen(_ window: NSWindow) {
+        model.isFullScreen = window.styleMask.contains(.fullScreen)
+    }
+
     /// Closing disconnects without asking: the remote session keeps running
     /// and Reconnect brings it back.
     func windowWillClose(_ notification: Notification) {

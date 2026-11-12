@@ -76,6 +76,9 @@ final class SessionModel {
     /// The desktop of the current or last session.
     private(set) var framebuffer: RDPFramebuffer?
 
+    /// Whether the session window is in full screen. Set by the window.
+    var isFullScreen = false
+
     /// The scale the current session was connected with, in percent.
     private(set) var connectedScale: UInt16 = 100
     /// The desktop size that fills the session window now. Set by the window.
