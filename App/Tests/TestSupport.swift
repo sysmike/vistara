@@ -9,6 +9,12 @@ struct TestServer {
     let target: SessionTarget
     let password: String
 
+    /// Wrong passwords count towards an account lockout on Windows, so tests
+    /// that sign in with one run only when this is set.
+    static var allowsFailedLogins: Bool {
+        ProcessInfo.processInfo.environment["VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS"] == "1"
+    }
+
     static var current: TestServer? {
         let environment = ProcessInfo.processInfo.environment
         guard let host = environment["VISTARA_TEST_RDP_HOST"], !host.isEmpty,
@@ -16,8 +22,9 @@ struct TestServer {
               let password = environment["VISTARA_TEST_RDP_PASSWORD"]
         else { return nil }
         let port = environment["VISTARA_TEST_RDP_PORT"].flatMap { UInt16($0) } ?? 3389
+        let domain = environment["VISTARA_TEST_RDP_DOMAIN"].flatMap { $0.isEmpty ? nil : $0 }
         return TestServer(
-            target: SessionTarget(name: "Test Server", host: host, port: port, username: user, domain: nil),
+            target: SessionTarget(name: "Test Server", host: host, port: port, username: user, domain: domain),
             password: password
         )
     }
@@ -41,7 +48,7 @@ extension TestServer {
     /// A store that already holds the server's account, so no sheet appears.
     func storeWithCredentials() throws -> InMemoryCredentialStore {
         let store = InMemoryCredentialStore()
-        let credentials = StoredCredentials(username: target.username, password: password)
+        let credentials = StoredCredentials(username: target.username, domain: target.domain, password: password)
         try store.save(credentials, for: target.credentialKey, label: "Test")
         return store
     }

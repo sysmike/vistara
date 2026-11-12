@@ -34,8 +34,10 @@ struct LoggingIntegrationTests {
         var closed = TestHost.configuration
         closed.port = 1
         _ = await runToEnd(RDPSession(configuration: closed, delegate: TestHost.delegate()))
-        let wrong = TestHost.delegate(password: "not the password")
-        _ = await runToEnd(RDPSession(configuration: TestHost.configuration, delegate: wrong))
+        if TestHost.allowsFailedLogins {
+            let wrong = TestHost.delegate(password: "not the password")
+            _ = await runToEnd(RDPSession(configuration: TestHost.configuration, delegate: wrong))
+        }
         let right = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
         _ = await runToEnd(right) { state, session in
             if case .connected = state { session.disconnect() }
