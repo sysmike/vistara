@@ -28,7 +28,6 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
 
         let target = model.target
         window.isReleasedWhenClosed = false
-        window.title = target.name
         // Session tabs are a later feature (issue #37).
         window.tabbingMode = .disallowed
         // The system's own full screen: the green button, View > Enter Full
@@ -47,17 +46,22 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // Restores size and position from the last window for this computer.
         window.setFrameAutosaveName("Session \(target.host):\(target.port)")
         window.delegate = self
-        model.windowDesktopSize = { [weak window] in
-            guard let window else { return nil }
+        model.windowDesktopSize = { [weak window, weak model] in
+            guard let window, let model else { return nil }
             return DesktopSize.filling(
                 viewSize: window.contentLayoutRect.size,
                 backingScale: window.backingScaleFactor,
-                usesHiDPI: target.usesHiDPI
+                usesHiDPI: model.target.usesHiDPI
             )
         }
-        if target.name != target.host {
-            window.subtitle = target.host
-        }
+        updateTitle()
+    }
+
+    /// The connection's name, and the host when that says something more.
+    func updateTitle() {
+        let target = model.target
+        window.title = target.name
+        window.subtitle = target.name == target.host ? "" : target.host
     }
 
     /// Starts watching for a changed certificate, which is shown as an alert

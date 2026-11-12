@@ -29,11 +29,15 @@ struct SessionContentView: View {
                 }
             case .disconnected(let reason):
                 DisconnectedView(
-                    message: DisconnectMessage(reason: reason, name: model.target.name, host: model.target.host),
+                    message: DisconnectMessage(
+                        reason: reason, name: model.target.name, host: model.target.host,
+                        canEditConnection: model.onEditConnection != nil
+                    ),
                     perform: { action in
                         switch action {
                         case .connect: model.reconnect()
                         case .useAnotherAccount: model.reconnectWithAnotherAccount()
+                        case .editConnection: model.onEditConnection?()
                         }
                     }
                 )
@@ -120,9 +124,14 @@ struct DisconnectedView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let action = message.action {
-                Button(action.title) { perform(action) }
-                    .keyboardShortcut(.defaultAction)
-                    .padding(.top, 12)
+                HStack {
+                    if let secondary = message.secondaryAction {
+                        Button(secondary.title) { perform(secondary) }
+                    }
+                    Button(action.title) { perform(action) }
+                        .keyboardShortcut(.defaultAction)
+                }
+                .padding(.top, 12)
             }
             if let detail = message.detail {
                 DisclosureGroup("Details", isExpanded: $showsDetails) {

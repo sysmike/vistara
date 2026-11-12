@@ -47,6 +47,8 @@ public protocol CredentialStore: Sendable {
     func save(_ credentials: StoredCredentials, for key: String, label: String) throws
     /// Removes the item. Does nothing if there is none.
     func remove(for key: String) throws
+    /// The keys of every item this store holds.
+    func keys() throws -> [String]
 }
 
 public struct CredentialStoreError: Error, Equatable, CustomStringConvertible {
@@ -103,6 +105,24 @@ public struct KeychainCredentialStore: CredentialStore {
         guard status == errSecSuccess else { throw CredentialStoreError(status: status) }
     }
 
+    public func keys() throws -> [String] {
+        // Attributes only: listing never reads a password, so it never asks.
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecMatchLimit: kSecMatchLimitAll,
+            kSecReturnAttributes: true
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else { throw CredentialStoreError(status: status) }
+        let items = result as? [[CFString: Any]] ?? []
+        return items.compactMap { item in
+            guard let service = item[kSecAttrService] as? String, service.hasPrefix(servicePrefix) else { return nil }
+            return String(service.dropFirst(servicePrefix.count))
+        }
+    }
+
     public func remove(for key: String) throws {
         let status = SecItemDelete(baseQuery(for: key) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
@@ -128,5 +148,9 @@ public final class InMemoryCredentialStore: CredentialStore {
 
     public func remove(for key: String) throws {
         items.withLock { storage[key] = nil }
+    }
+
+    public func keys() throws -> [String] {
+        items.withLock { Array(storage.keys) }
     }
 }

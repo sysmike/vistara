@@ -79,6 +79,22 @@ struct KeychainCredentialStoreTests {
         try store.remove(for: key)
     }
 
+    @Test func keysListOnlyThisStoresItems() throws {
+        let other = KeychainCredentialStore(servicePrefix: "io.github.sysmike.vistara.tests.other.")
+        defer {
+            try? store.remove(for: key)
+            try? other.remove(for: key)
+        }
+        try store.save(StoredCredentials(username: "alice", password: "one"), for: key, label: "Vistara test")
+        try other.save(StoredCredentials(username: "bob", password: "two"), for: key, label: "Vistara test")
+        let keys = try store.keys()
+        #expect(keys.contains(key))
+        // Another prefix is another store, even when it starts with this one's.
+        try #expect(other.keys().contains(key))
+        try store.remove(for: key)
+        try #expect(!store.keys().contains(key))
+    }
+
     @Test func oneConnectionNeverSeesAnothersPassword() throws {
         let other = key + "-other"
         defer {

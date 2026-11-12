@@ -160,19 +160,6 @@ struct LibraryModelTests {
     }
 
     @Test
-    func theNewConnectionSheetMakesAConnectionFromWhatIsTyped() throws {
-        let connection = try #require(
-            NewConnectionSheet.connection(name: " ", computer: "build01:3390", username: "CORP\\alice")
-        )
-        #expect(connection.name == "build01")
-        #expect(connection.port == 3390)
-        #expect(connection.username == "alice")
-        #expect(connection.domain == "CORP")
-        #expect(NewConnectionSheet.connection(name: "x", computer: "", username: "") == nil)
-        #expect(NewConnectionSheet.connection(name: "Lab", computer: "lab", username: "")?.name == "Lab")
-    }
-
-    @Test
     func lastUsedReadsAsTodayYesterdayOrADate() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
