@@ -286,7 +286,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,481 @@
+@@ -37,6 +37,493 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -382,6 +382,23 @@
 +#include <winpr/string.h>
 +#include <winpr/user.h>
 +
++/* Logs "<prefix><bytes in hex>" as one line with one write, so that lines
++ * from other threads cannot land inside it. */
++static void vistara_log_hex(const char* prefix, const BYTE* bytes, size_t length)
++{
++	const size_t prefixLength = strlen(prefix);
++	char* line = calloc(prefixLength + 2 * length + 2, 1);
++	if (!line)
++		return;
++	memcpy(line, prefix, prefixLength);
++	for (size_t i = 0; i < length; i++)
++		(void)sprintf(&line[prefixLength + 2 * i], "%02x", (unsigned)bytes[i]);
++	line[prefixLength + 2 * length] = '\n';
++	(void)fputs(line, stderr);
++	(void)fflush(stderr);
++	free(line);
++}
++
 +static const char vistara_clipboard_text[] = "Gr\xc3\xbc\xc3\x9f" "e aus dem Testserver \xe2\x9c\x93\r\nZweite Zeile";
 +
 +typedef struct
@@ -457,11 +474,8 @@
 +{
 +	if (!(response->common.msgFlags & CB_RESPONSE_OK) || !response->requestedFormatData)
 +		return CHANNEL_RC_OK;
-+	(void)fprintf(stderr, "vistara-clipboard from-client ");
-+	for (UINT32 i = 0; i < response->common.dataLen; i++)
-+		(void)fprintf(stderr, "%02x", (unsigned)response->requestedFormatData[i]);
-+	(void)fprintf(stderr, "\n");
-+	(void)fflush(stderr);
++	vistara_log_hex("vistara-clipboard from-client ", response->requestedFormatData,
++	                response->common.dataLen);
 +	return CHANNEL_RC_OK;
 +}
 +
@@ -669,12 +683,10 @@
 +{
 +	vistaraDriveRun* run = data;
 +	const BOOL escaped = run->step == VISTARA_DRIVE_ESCAPE_READ;
-+	(void)fprintf(stderr, "vistara-drive %s name=%s status=0x%08x data=",
-+	              escaped ? "escape-read" : "read", run->name, (unsigned)status);
-+	for (UINT32 i = 0; buffer && (i < length); i++)
-+		(void)fprintf(stderr, "%02x", (unsigned)(BYTE)buffer[i]);
-+	(void)fprintf(stderr, "\n");
-+	(void)fflush(stderr);
++	char prefix[96] = { 0 };
++	(void)snprintf(prefix, sizeof(prefix), "vistara-drive %s name=%s status=0x%08x data=",
++	               escaped ? "escape-read" : "read", run->name, (unsigned)status);
++	vistara_log_hex(prefix, (const BYTE*)buffer, buffer ? length : 0);
 +	vistara_drive_close(context, run, escaped ? VISTARA_DRIVE_ESCAPE_CLOSE : VISTARA_DRIVE_READ_CLOSE);
 +}
 +
@@ -768,7 +780,7 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -2845,6 +3320,9 @@
+@@ -2845,6 +3332,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -778,7 +790,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3428,11 @@
+@@ -2950,6 +3440,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -790,7 +802,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3520,8 @@
+@@ -3037,6 +3532,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -799,7 +811,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3675,15 @@
+@@ -3190,6 +3687,15 @@
  
  fail:
  
