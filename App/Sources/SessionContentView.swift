@@ -124,7 +124,7 @@ struct ReconnectingView: View {
                 Image(decorative: lastFrame, scale: 1)
                     .resizable()
                     .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
+                    .scaledToFit()
                     .opacity(0.4)
             }
             VStack(spacing: 12) {
