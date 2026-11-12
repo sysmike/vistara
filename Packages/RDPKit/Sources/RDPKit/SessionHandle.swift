@@ -23,7 +23,7 @@ final class SessionHandle {
         case certificateRejected
         case authenticationFailed
         case cancelled
-        case failed(errorName: String)
+        case failed(RDPFailure)
     }
 
     /// Lets another thread interrupt a blocking `connect` or end `poll`.
@@ -92,7 +92,7 @@ final class SessionHandle {
             for pointer in [hostCopy, usernameCopy, domain, passwordCopy] { free(pointer) }
         }
         guard let host = hostCopy, let username = usernameCopy, let password = passwordCopy else {
-            return .failed(errorName: "out of memory")
+            return .failed(RDPFailure(kind: .cannotConnect, name: "out of memory"))
         }
 
         let decider = decideCertificate.map(CertificateDecider.init)
@@ -120,12 +120,33 @@ final class SessionHandle {
             case VISTARA_CONNECT_CERTIFICATE_UNTRUSTED: .certificateRejected
             case VISTARA_CONNECT_AUTHENTICATION_FAILED: .authenticationFailed
             case VISTARA_CONNECT_CANCELLED: .cancelled
-            default: .failed(errorName: lastErrorName)
+            default: Self.result(for: lastFailure(whileConnected: false))
             }
         }
     }
 
     /// FreeRDP's name for the last error, such as `FREERDP_ERROR_CONNECT_FAILED`.
+    /// Refused credentials go back to the credentials question, whichever
+    /// of FreeRDP's several codes reported them.
+    private static func result(for failure: RDPFailure) -> ConnectResult {
+        failure.kind == .wrongCredentials ? .authenticationFailed : .failed(failure)
+    }
+
+    /// The last error, classified.
+    func lastFailure(whileConnected: Bool) -> RDPFailure {
+        let code = vistara_session_last_error_code(session)
+        let osError = vistara_session_last_os_error(session)
+        return RDPFailure(
+            kind: RDPFailure.kind(
+                code: code, osError: osError == 0 ? nil : osError, whileConnected: whileConnected
+            ),
+            code: code,
+            name: String(cString: vistara_error_name(code)),
+            description: String(cString: vistara_error_description(code)),
+            osError: osError == 0 ? nil : osError
+        )
+    }
+
     var lastErrorName: String {
         String(cString: vistara_session_last_error_name(session))
     }
@@ -220,5 +241,17 @@ extension RDPCertificate {
         let bytes = UnsafeRawBufferPointer(start: UnsafeRawPointer(certificate.pem), count: certificate.pem_length)
         guard let pem = String(bytes: bytes, encoding: .utf8) else { return nil }
         self.init(host: String(cString: certificate.host), port: certificate.port, pemChain: pem)
+    }
+}
+
+extension RDPFailure {
+    /// FreeRDP's name for an error code, from the linked library.
+    static func freeRDPName(code: UInt32) -> String {
+        String(cString: vistara_error_name(code))
+    }
+
+    /// The shim's diagnostic connection, for tests.
+    static func probe(host: String, port: UInt16, timeoutMilliseconds: Int32) -> Int32 {
+        vistara_probe_connection(host, port, timeoutMilliseconds)
     }
 }

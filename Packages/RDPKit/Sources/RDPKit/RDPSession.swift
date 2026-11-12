@@ -104,7 +104,7 @@ public final class RDPSession: Sendable {
             return .credentialsCancelled
         }
         guard let handle = SessionHandle() else {
-            return .connectionFailed(code: "out of memory")
+            return .connectionFailed(RDPFailure(kind: .cannotConnect, name: "out of memory"))
         }
 
         // The token must be gone before the handle is, so both happen here.
@@ -147,7 +147,7 @@ public final class RDPSession: Sendable {
         case .certificateRejected: return .certificateRejected
         case .authenticationFailed: return .authenticationFailed
         case .cancelled: return .userRequested
-        case .failed(let errorName): return .connectionFailed(code: errorName)
+        case .failed(let failure): return .connectionFailed(failure)
         }
 
         continuation.yield(.connected(width: handle.framebufferWidth, height: handle.framebufferHeight))
@@ -160,9 +160,9 @@ public final class RDPSession: Sendable {
         }
         while !isStopRequested {
             if !handle.poll(timeoutMilliseconds: 100) {
-                let code = handle.lastErrorName
+                let failure = handle.lastFailure(whileConnected: true)
                 handle.disconnect()
-                return .connectionLost(code: code)
+                return .connectionLost(failure)
             }
             sendPendingInput(to: handle)
             publishChanges(from: handle)

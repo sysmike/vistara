@@ -108,10 +108,10 @@ public enum RDPDisconnectReason: Sendable, Equatable {
     case credentialsCancelled
     case certificateRejected
     case authenticationFailed
-    /// The connection could not be established. `code` is FreeRDP's error name.
-    case connectionFailed(code: String)
-    /// An established connection ended. `code` is FreeRDP's error name.
-    case connectionLost(code: String)
+    /// The connection could not be established.
+    case connectionFailed(RDPFailure)
+    /// An established connection ended.
+    case connectionLost(RDPFailure)
 }
 
 public enum RDPSessionState: Sendable, Equatable {

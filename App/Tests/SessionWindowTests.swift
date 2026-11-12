@@ -46,7 +46,7 @@ struct SessionWindowTests {
         #expect(model.isLive)
 
         await waitUntil("the session has ended") { !model.isLive }
-        guard case .disconnected(.connectionFailed) = model.phase else {
+        guard case .disconnected(.connectionFailed(let failure)) = model.phase, failure.kind == .refused else {
             Issue.record("expected a failed connection, got \(model.phase)")
             return
         }

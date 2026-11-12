@@ -95,6 +95,23 @@ void vistara_session_abort(vistara_session *session);
 /// "FREERDP_ERROR_AUTHENTICATION_FAILED". Static storage.
 const char *vistara_session_last_error_name(const vistara_session *session);
 
+/// FreeRDP's code for the last error: the class in the upper 16 bits (1 for
+/// errors the server reported, 2 for connection errors), the error below.
+uint32_t vistara_session_last_error_code(const vistara_session *session);
+
+/// Why the last TCP connection attempt failed, as an errno value
+/// (ECONNREFUSED, ETIMEDOUT, EHOSTUNREACH, ...), or 0 when unknown. FreeRDP
+/// reports a refused and an unanswered connection alike; this tells them
+/// apart. Learning it may cost one short extra connection attempt.
+int32_t vistara_session_last_os_error(const vistara_session *session);
+
+/// Tries one TCP connection and returns how it failed, as above. For tests.
+int32_t vistara_probe_connection(const char *hostname, uint16_t port, int32_t timeout_ms);
+
+/// FreeRDP's name and English description for an error code. Static storage.
+const char *vistara_error_name(uint32_t code);
+const char *vistara_error_description(uint32_t code);
+
 /// Waits up to timeout_ms for network activity and processes it. Returns
 /// false once the session is disconnected.
 bool vistara_session_poll(vistara_session *session, uint32_t timeout_ms);
