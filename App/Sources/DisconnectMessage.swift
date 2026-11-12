@@ -31,10 +31,11 @@ struct DisconnectMessage: Equatable {
 
     /// `name` is the connection's name, `host` the address connected to.
     /// `canEditConnection` offers Edit Connection where a wrong address or
-    /// port is a likely cause.
+    /// port is a likely cause. `gaveUpReconnecting` says Vistara already tried
+    /// to bring a lost session back.
     init(
         reason: RDPDisconnectReason, name: String, host: String, canEditConnection: Bool = false,
-        refusedByPolicy: Bool = false
+        refusedByPolicy: Bool = false, gaveUpReconnecting: Bool = false
     ) {
         if reason == .certificateRejected, refusedByPolicy {
             self.init(
@@ -61,6 +62,10 @@ struct DisconnectMessage: Equatable {
             self.init(failure.kind, name: name, host: host)
             if canEditConnection, [.hostNotFound, .refused, .cannotConnect].contains(failure.kind) {
                 secondaryAction = .editConnection
+            }
+            if gaveUpReconnecting, failure.kind == .networkLost {
+                explanation = "Vistara couldn’t reconnect for a minute. Check your network connection, "
+                    + "then reconnect. Your session keeps running on the computer."
             }
             let detail = failure.technicalDetail
             self.detail = detail.isEmpty ? nil : detail

@@ -1,11 +1,12 @@
 --- a/server/shadow/Sample/sample_shadow.c
 +++ b/server/shadow/Sample/sample_shadow.c
-@@ -17,9 +17,13 @@
+@@ -17,9 +17,14 @@
   * limitations under the License.
   */
  
 +#include <math.h>
 +#include <stdio.h>
++#include <sys/socket.h>
 +
  #include <winpr/crt.h>
  #include <winpr/synch.h>
@@ -14,7 +15,7 @@
  
  #include <freerdp/log.h>
  #include <freerdp/codec/color.h>
-@@ -30,22 +34,155 @@
+@@ -30,22 +35,165 @@
  
  #define TAG SERVER_TAG("shadow.sample")
  
@@ -161,21 +162,32 @@
  	return TRUE;
  }
  
++/* Pressing F24 (scancode 0x76) cuts the client's connection without a word,
++ * as a network that goes away would, so tests can check reconnection. */
++#define VISTARA_DROP_SCANCODE 0x76
++
  WINPR_ATTR_NODISCARD
  static BOOL sample_shadow_input_keyboard_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
-                                                WINPR_ATTR_UNUSED rdpShadowClient* client,
+-                                               WINPR_ATTR_UNUSED rdpShadowClient* client,
 -                                               WINPR_ATTR_UNUSED UINT16 flags,
 -                                               WINPR_ATTR_UNUSED UINT8 code)
-+                                               UINT16 flags, UINT8 code)
++                                               rdpShadowClient* client, UINT16 flags, UINT8 code)
  {
 -	WLog_WARN(TAG, "TODO: Implement!");
 +	(void)fprintf(stderr, "vistara-input key flags=0x%04x code=0x%02x\n", (unsigned)flags,
 +	              (unsigned)code);
 +	(void)fflush(stderr);
++	if ((code == VISTARA_DROP_SCANCODE) && !(flags & KBD_FLAGS_RELEASE) && client &&
++	    client->context.peer)
++	{
++		(void)fprintf(stderr, "vistara-drop\n");
++		(void)fflush(stderr);
++		(void)shutdown(client->context.peer->sockfd, SHUT_RDWR);
++	}
  	return TRUE;
  }
  
-@@ -61,19 +198,22 @@
+@@ -61,19 +209,22 @@
  WINPR_ATTR_NODISCARD
  static BOOL sample_shadow_input_mouse_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
                                              WINPR_ATTR_UNUSED rdpShadowClient* client,
@@ -203,7 +215,7 @@
  	return TRUE;
  }
  
-@@ -91,7 +231,15 @@
+@@ -91,7 +242,15 @@
  	sampleShadowSubsystem* subsystem = (sampleShadowSubsystem*)arg;
  	WINPR_ASSERT(subsystem);
  
@@ -220,7 +232,7 @@
  
  	WLog_WARN(TAG, "TODO: Implement!");
  
-@@ -124,7 +272,14 @@
+@@ -124,7 +283,14 @@
  	if (!subsystem)
  		return -1;
  
@@ -236,7 +248,7 @@
  
  	return 1;
  }
-@@ -137,7 +292,15 @@
+@@ -137,7 +303,15 @@
  	if (!subsystem)
  		return -1;
  

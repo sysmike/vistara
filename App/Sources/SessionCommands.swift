@@ -38,9 +38,10 @@ private struct SessionMenuItems: View {
     var body: some View {
         let model = coordinator.activeModel
 
+        // While reconnecting by itself: try now instead of waiting.
         Button("Reconnect") { model?.reconnect() }
             .keyboardShortcut("r")
-            .disabled(model?.isLive != false)
+            .disabled(model.map { $0.isLive && !$0.phase.isReconnecting } ?? true)
         // Same as closing the window.
         Button("Disconnect") {
             if let model { coordinator.disconnect(model) }

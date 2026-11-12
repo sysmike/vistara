@@ -96,6 +96,20 @@ public final class RDPFramebuffer: Sendable {
         }
     }
 
+    /// The whole picture as it is now, or nil before the first paint. Leaves
+    /// what `takeUpdate()` reports untouched.
+    public func snapshot() -> RDPFrameUpdate? {
+        storage.withLock { storage -> RDPFrameUpdate? in
+            guard storage.width > 0, storage.height > 0 else { return nil }
+            return RDPFrameUpdate(
+                desktopWidth: storage.width,
+                desktopHeight: storage.height,
+                rect: Rect(x: 0, y: 0, width: storage.width, height: storage.height),
+                pixels: Data(storage.pixels)
+            )
+        }
+    }
+
     func setCursor(_ cursor: RDPCursor) {
         let hasChanged = storage.withLock { storage -> Bool in
             guard storage.cursor != cursor else { return false }

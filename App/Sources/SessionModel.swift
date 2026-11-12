@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 import RDPKit
@@ -99,7 +100,14 @@ final class SessionModel {
     enum Phase: Equatable {
         case connecting
         case connected
+        /// The network went away; the session is being brought back.
+        case reconnecting(Reconnection)
         case disconnected(RDPDisconnectReason)
+
+        var isReconnecting: Bool {
+            if case .reconnecting = self { return true }
+            return false
+        }
     }
 
     private(set) var target: SessionTarget
@@ -125,6 +133,14 @@ final class SessionModel {
     @ObservationIgnored private var clipboard: ClipboardBridge?
     /// The shared folders, open while a session runs.
     @ObservationIgnored private var folderAccess: SharedFolderAccess?
+
+    /// The last picture of a lost session, shown dimmed while reconnecting.
+    var lastFrame: CGImage?
+    /// Reconnecting ran out of attempts; the window says so.
+    var didGiveUpReconnecting = false
+    @ObservationIgnored var reconnectionPolicy = ReconnectionPolicy()
+    @ObservationIgnored var reconnectWait: Task<Void, Never>?
+    @ObservationIgnored var reconnectionTriggers: ReconnectionTriggers?
 
     /// The desktop size that fills the session window now. Set by the window.
     @ObservationIgnored var windowDesktopSize: (() -> DesktopSize?)?
@@ -191,7 +207,11 @@ final class SessionModel {
     /// Starts a session unless one is running.
     func connect() {
         guard session == nil else { return }
-        phase = .connecting
+        // A reconnection attempt keeps showing the reconnecting state.
+        if !phase.isReconnecting {
+            phase = .connecting
+            didGiveUpReconnecting = false
+        }
 
         let delegate = RDPSessionDelegate(
             credentials: { [weak self] _ in await self?.credentials() },
@@ -231,12 +251,34 @@ final class SessionModel {
 
     /// Ends the session, or cancels connecting. The window shows the result.
     func disconnect() {
+        if phase.isReconnecting {
+            cancelReconnecting()
+            return
+        }
         session?.disconnect()
     }
 
+    /// Connects again after the session ended; while reconnecting, tries now.
     func reconnect() {
+        if phase.isReconnecting {
+            reconnectNow()
+            return
+        }
         guard !isLive else { return }
         connect()
+    }
+
+    /// Drops the attempt in progress at once, without waiting for it to end.
+    func abandonAttempt() {
+        if let session {
+            self.session = nil
+            session.disconnect()
+            folderAccess?.stop()
+            folderAccess = nil
+            enteredCredentials = nil
+        }
+        answerCertificate(trust: false)
+        answerCredentials(nil)
     }
 
     /// Connects again and asks for credentials, even when some are saved.
@@ -284,13 +326,15 @@ final class SessionModel {
         guard source === session else { return }
         switch state {
         case .connecting, .awaitingCredentials, .awaitingCertificateDecision:
-            phase = .connecting
+            if !phase.isReconnecting { phase = .connecting }
         case .connected:
+            endReconnection()
             startClipboard(for: source)
             keepOrForgetEnteredCredentials()
             wasRefused = false
             phase = .connected
         case .disconnected(let reason):
+            let wasConnected = phase == .connected
             clipboard?.stop()
             clipboard = nil
             folderAccess?.stop()
@@ -305,11 +349,17 @@ final class SessionModel {
                 connect()
             } else {
                 wasRefused = false
-                phase = .disconnected(reason)
+                if !continueReconnecting(after: reason, wasConnected: wasConnected) {
+                    phase = .disconnected(reason)
+                }
             }
         }
     }
+}
 
+// MARK: Questions for the user
+
+extension SessionModel {
     /// The credentials for a connection attempt: what is saved, or else what
     /// the user enters in the sheet. Returns nil when the user cancels or the
     /// session is disconnected meanwhile.

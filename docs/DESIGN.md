@@ -145,7 +145,7 @@ The content area shows exactly one of these states. None of them is an alert.
 | --- | --- |
 | Connecting | Progress indicator, "Connecting to Build Server…", Cancel button. Appears at once |
 | Connected | The remote desktop, edge to edge |
-| Reconnecting | The last frame, dimmed, with "Reconnecting…" and Cancel |
+| Reconnecting | The last frame, dimmed, with "Reconnecting…", Cancel, and Reconnect Now |
 | Disconnected | What happened, what to do, and one or two buttons (see Errors) |
 
 Sheets on the session window, each a single short task with Cancel:
@@ -440,6 +440,19 @@ password.
 | Anything else | "Build Server" closed the connection unexpectedly | Try again. If it keeps happening, copy the details below into a bug report. | Try Again |
 
 On screen the quotes and apostrophes are typographic. Edit Connection joins
-Try Again where the address or port may be wrong once the connection editor
-exists (issue #22). A lost connection reconnects by itself once issue #28 is
-done; until then the message promises nothing.
+Try Again where the address or port may be wrong.
+
+### Reconnecting
+
+- Only a lost network brings a session back by itself, and only when the
+  connection's "Reconnect if the connection drops" is on. A session the
+  server, an administrator, or the user ended stays ended.
+- Attempts wait 1, 2, 4, 8, 15, and 30 seconds, about a minute in all. When
+  the Mac wakes from sleep or its network comes back, the next attempt starts
+  at once. Reconnect Now (also Session > Reconnect) does the same by hand.
+- Every attempt is a whole new connection: the certificate is checked again,
+  so a changed certificate stops with its warning, and a password that is not
+  saved is asked for again. A refused password or a "no" ends reconnecting.
+- Cancel, or closing the window, stops at once. If no attempt succeeds, the
+  window says the connection was lost and that Vistara could not reconnect,
+  with Reconnect.

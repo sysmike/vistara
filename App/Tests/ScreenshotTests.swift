@@ -110,6 +110,30 @@ struct ScreenshotTests {
         #expect(bytes > 0)
     }
 
+    /// The lost session's last picture, dimmed, while Vistara reconnects.
+    @Test(arguments: [false, true])
+    func reconnecting(dark: Bool) async throws {
+        let view = ReconnectingView(
+            name: "Build Server", lastFrame: Self.sampleDesktop(), isTrying: false, cancel: {}, reconnectNow: {}
+        )
+        let name = dark ? "reconnecting-dark" : "reconnecting"
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 800, height: 500), name: name, dark: dark)
+        #expect(bytes > 0)
+    }
+
+    /// A desktop of blue with one light window on it.
+    private static func sampleDesktop() -> CGImage? {
+        let context = CGContext(
+            data: nil, width: 1280, height: 800, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        )
+        context?.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.6, alpha: 1))
+        context?.fill(CGRect(x: 0, y: 0, width: 1280, height: 800))
+        context?.setFillColor(CGColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1))
+        context?.fill(CGRect(x: 160, y: 140, width: 700, height: 480))
+        return context?.makeImage()
+    }
+
     @Test
     func editorForANewConnectionWithAProblem() async throws {
         var draft = ConnectionDraft()
