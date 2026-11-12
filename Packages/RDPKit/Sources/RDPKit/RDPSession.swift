@@ -161,7 +161,7 @@ public final class RDPSession: Sendable {
             height: configuration.desktopHeight,
             scalePercent: configuration.scalePercent,
             requiresNLA: configuration.requiresNLA,
-            playsAudioOnRemote: configuration.audio == .remote,
+            audio: configuration.audio,
             sharesClipboard: configuration.sharesClipboard
         )
         let delegate = delegate

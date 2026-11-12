@@ -40,9 +40,16 @@ struct SettingsMappingTests {
         }
     }
 
-    @Test func soundOnTheRemoteComputerIsAskedFor() throws {
-        try #expect(!settings().remoteConsoleAudio)
-        try #expect(settings { $0.playsAudioOnRemote = true }.remoteConsoleAudio)
+    @Test func eachSoundChoiceTellsTheServerWhereSoundGoes() throws {
+        // Remote console audio: played there. Audio playback: sent here.
+        let expected: [RDPAudioMode: (remote: Bool, here: Bool)] = [
+            .thisMac: (false, true), .remote: (true, false), .off: (false, false)
+        ]
+        for (mode, flags) in expected {
+            let given = try settings { $0.audio = mode }
+            #expect(given.remoteConsoleAudio == flags.remote, "\(mode)")
+            #expect(given.audioPlayback == flags.here, "\(mode)")
+        }
     }
 
     @Test func theDesktopScaleIsPassedOn() throws {

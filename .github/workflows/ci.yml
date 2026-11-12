@@ -135,7 +135,18 @@ jobs:
           # build setting here. The signed release build is checked in #34.
           xcodebuild -project Vistara.xcodeproj -scheme Vistara -showBuildSettings |
             grep -E '^ +ENABLE_HARDENED_RUNTIME = YES$'
-          codesign --display --entitlements - "$app" 2>/dev/null | tee /dev/stderr | grep -q 'com.apple.security.app-sandbox'
+          entitlements="$(codesign --display --entitlements - "$app" 2>/dev/null)"
+          echo "$entitlements"
+          grep -q 'com.apple.security.app-sandbox' <<<"$entitlements"
+          # Sound plays without the microphone: never ask for it.
+          if grep -qE 'com\.apple\.security\.device\.(audio-input|microphone)' <<<"$entitlements"; then
+            echo "error: the app must not ask for the microphone" >&2
+            exit 1
+          fi
+          if /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist" >/dev/null 2>&1; then
+            echo "error: Info.plist must not describe microphone use" >&2
+            exit 1
+          fi
 
       # The tests run inside the sandboxed app and connect to the test server.
       - name: Test app
