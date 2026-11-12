@@ -22,10 +22,29 @@ public final class RDPSessionView: MTKView {
     /// other Command shortcut.
     public var translatesEditingShortcuts = true
 
-    private var translator = KeyboardTranslator()
-    private var pointer = PointerTranslator()
+    /// Asks the remote computer to resize its desktop to fill this view
+    /// whenever the view changes size or moves to another kind of display.
+    /// When off, or when the server cannot resize, the desktop keeps its size
+    /// and is scaled to fit.
+    public var resizesDesktop = false {
+        didSet { if resizesDesktop != oldValue { desktopSizeMayHaveChanged() } }
+    }
+
+    /// Gives the desktop every pixel of a Retina display. See `DesktopSize`.
+    public var usesHiDPI = true {
+        didSet { if usesHiDPI != oldValue { desktopSizeMayHaveChanged() } }
+    }
+
+    /// How long the view's size has to rest before the desktop follows.
+    var resizeDelay = Duration.milliseconds(250)
+
+    private var requestedDesktopSize: DesktopSize?
+    private var pendingResize: Task<Void, Never>?
+
+    var translator = KeyboardTranslator()
+    var pointer = PointerTranslator()
     private var remoteCursor = RDPCursor.systemDefault
-    private var pointerTracking: NSTrackingArea?
+    var pointerTracking: NSTrackingArea?
 
     /// Number of frames drawn so far. For tests and diagnostics.
     public private(set) var drawCount = 0
@@ -78,6 +97,7 @@ public final class RDPSessionView: MTKView {
         guard let window else { return }
         // The desktop is the window's content, so typing goes to it.
         window.makeFirstResponder(self)
+        desktopSizeMayHaveChanged()
 
         consumeUpdate()
         let changes = framebuffer.changes
@@ -92,6 +112,10 @@ public final class RDPSessionView: MTKView {
     func consumeUpdate() {
         if let cursor = framebuffer.takeCursor() {
             showRemoteCursor(cursor)
+        }
+        // The first picture has arrived: now there is a desktop to resize.
+        if resizesDesktop, requestedDesktopSize == nil, pendingResize == nil {
+            desktopSizeMayHaveChanged()
         }
         guard let renderer, let update = framebuffer.takeUpdate() else { return }
         if renderer.apply(update) {
@@ -108,168 +132,69 @@ public final class RDPSessionView: MTKView {
         drawCount += 1
     }
 
-    // MARK: Keyboard
+    // MARK: Desktop size
 
-    override public var acceptsFirstResponder: Bool { true }
-
-    override public func becomeFirstResponder() -> Bool {
-        if window?.isKeyWindow == true { keyboardFocusArrived() }
-        return true
+    /// The size that would fill this view now.
+    var fillingDesktopSize: DesktopSize? {
+        DesktopSize.filling(
+            viewSize: bounds.size, backingScale: window?.backingScaleFactor ?? 1, usesHiDPI: usesHiDPI
+        )
     }
 
-    override public func resignFirstResponder() -> Bool {
-        keyboardFocusLeft()
-        return true
+    override public func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        desktopSizeMayHaveChanged()
     }
 
-    override public func keyDown(with event: NSEvent) {
-        // Command belongs to the Mac. Not calling super also keeps Tab and
-        // the other keys AppKit would act on going to the remote computer.
-        guard !event.modifierFlags.contains(.command) else { return }
-        send(translator.keyDown(keyCode: event.keyCode))
+    /// The window moved to a display with another pixel density.
+    override public func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        desktopSizeMayHaveChanged()
     }
 
-    override public func keyUp(with event: NSEvent) {
-        send(translator.keyUp(keyCode: event.keyCode))
-    }
-
-    override public func flagsChanged(with event: NSEvent) {
-        if event.keyCode == MacKeyMap.capsLockKeyCode {
-            send(translator.capsLockToggled())
-        } else {
-            send(translator.modifiersChanged(flags: event.modifierFlags.rawValue))
+    /// Waits until the size has rested, then asks once. Meanwhile the
+    /// picture is scaled, so the window resizes fluidly while the remote
+    /// computer catches up.
+    private func desktopSizeMayHaveChanged() {
+        pendingResize?.cancel()
+        pendingResize = nil
+        guard resizesDesktop, window != nil else { return }
+        let delay = resizeDelay
+        pendingResize = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.requestDesktopSize()
         }
     }
 
-    override public func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        guard translatesEditingShortcuts, event.type == .keyDown, window?.firstResponder === self,
-            modifiers == .command || modifiers == [.command, .shift],
-            KeyboardTranslator.isEditingShortcut(
-                characters: event.charactersIgnoringModifiers ?? "", hasShift: modifiers.contains(.shift)
-            )
-        else { return super.performKeyEquivalent(with: event) }
-        send(translator.editingShortcut(keyCode: event.keyCode))
-        return true
+    /// Asks for the size that fills the view, unless that was the last thing
+    /// asked for. A server that answers with another size is not asked again
+    /// until the view changes.
+    func requestDesktopSize() {
+        guard resizesDesktop, let size = fillingDesktopSize, size != requestedDesktopSize else { return }
+        let current = framebuffer.size
+        // Nothing to draw on yet: the session is not connected.
+        guard current.width > 0 else { return }
+        requestedDesktopSize = size
+        if current.width == Int(size.width), current.height == Int(size.height), size.scalePercent == connectedScale {
+            return
+        }
+        send([.desktopSize(width: size.width, height: size.height, scalePercent: size.scalePercent)])
     }
 
-    private func send(_ events: [RDPInputEvent]) {
-        guard !events.isEmpty else { return }
-        inputHandler?(events)
-    }
-
-    /// The session has the keyboard again: state the lock keys, which also
-    /// makes the server forget every key it thought was held, then send the
-    /// modifiers that are down right now.
-    func keyboardFocusArrived() {
-        translator = KeyboardTranslator(keyboard: MacKeyboard.current)
-        let flags = NSEvent.modifierFlags
-        // A Mac has no Num Lock; the keypad always types digits.
-        let locks: RDPLockState = flags.contains(.capsLock) ? [.numLock, .capsLock] : .numLock
-        send([.lockState(locks)] + translator.modifiersChanged(flags: flags.rawValue))
-    }
-
-    /// The keyboard went elsewhere: release what is held, so that nothing
-    /// stays stuck on the remote computer.
-    func keyboardFocusLeft() {
-        send(translator.releaseAll())
-        send(pointer.releaseButtons())
-    }
-
-    private func observeKeyWindow() {
-        let center = NotificationCenter.default
-        center.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
-        center.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
-        guard let window else { return }
-        center.addObserver(
-            self, selector: #selector(windowDidBecomeKey), name: NSWindow.didBecomeKeyNotification, object: window
-        )
-        center.addObserver(
-            self, selector: #selector(windowDidResignKey), name: NSWindow.didResignKeyNotification, object: window
-        )
-    }
-
-    @objc private func windowDidBecomeKey(_ notification: Notification) {
-        if window?.firstResponder === self { keyboardFocusArrived() }
-    }
-
-    @objc private func windowDidResignKey(_ notification: Notification) {
-        keyboardFocusLeft()
-    }
-
-    // MARK: Pointer
+    /// The scale the session was connected with, so that a first request is
+    /// not sent for what the desktop already is.
+    public var connectedScale: UInt16 = 100
 
     /// Size of the remote desktop in its own pixels.
-    private var desktopSize: CGSize {
+    var desktopSize: CGSize {
         let size = framebuffer.size
         return CGSize(width: size.width, height: size.height)
     }
 
-    private var geometry: PointerTranslator.Geometry {
-        PointerTranslator.Geometry(viewSize: bounds.size, desktopSize: desktopSize)
-    }
-
-    override public func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let pointerTracking { removeTrackingArea(pointerTracking) }
-        // Moves are followed only in the key window, like any Mac window.
-        let area = NSTrackingArea(
-            rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self
-        )
-        addTrackingArea(area)
-        pointerTracking = area
-    }
-
-    override public func mouseMoved(with event: NSEvent) { pointerMoved(event) }
-    override public func mouseDragged(with event: NSEvent) { pointerMoved(event) }
-    override public func rightMouseDragged(with event: NSEvent) { pointerMoved(event) }
-    override public func otherMouseDragged(with event: NSEvent) { pointerMoved(event) }
-
-    override public func mouseDown(with event: NSEvent) { button(.left, isDown: true, event) }
-    override public func mouseUp(with event: NSEvent) { button(.left, isDown: false, event) }
-    override public func rightMouseDown(with event: NSEvent) { button(.right, isDown: true, event) }
-    override public func rightMouseUp(with event: NSEvent) { button(.right, isDown: false, event) }
-
-    override public func otherMouseDown(with event: NSEvent) {
-        guard let which = Self.otherButton(event.buttonNumber) else { return }
-        button(which, isDown: true, event)
-    }
-
-    override public func otherMouseUp(with event: NSEvent) {
-        guard let which = Self.otherButton(event.buttonNumber) else { return }
-        button(which, isDown: false, event)
-    }
-
-    override public func scrollWheel(with event: NSEvent) {
-        let delta = PointerTranslator.ScrollDelta(
-            x: event.scrollingDeltaX,
-            y: event.scrollingDeltaY,
-            isPrecise: event.hasPreciseScrollingDeltas,
-            startsGesture: event.phase.contains(.began)
-        )
-        send(pointer.scrolled(delta, at: location(of: event), in: geometry))
-    }
-
-    /// The third button is the middle one; the next two are back and forward.
-    static func otherButton(_ buttonNumber: Int) -> RDPPointerButton? {
-        switch buttonNumber {
-        case 2: .middle
-        case 3: .back
-        case 4: .forward
-        default: nil
-        }
-    }
-
-    private func location(of event: NSEvent) -> CGPoint {
-        convert(event.locationInWindow, from: nil)
-    }
-
-    private func pointerMoved(_ event: NSEvent) {
-        send(pointer.moved(to: location(of: event), in: geometry))
-    }
-
-    private func button(_ button: RDPPointerButton, isDown: Bool, _ event: NSEvent) {
-        send(pointer.button(button, isDown: isDown, at: location(of: event), in: geometry))
+    func send(_ events: [RDPInputEvent]) {
+        guard !events.isEmpty else { return }
+        inputHandler?(events)
     }
 
     // MARK: Cursor

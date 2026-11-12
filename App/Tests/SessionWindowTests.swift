@@ -109,6 +109,15 @@ struct SessionWindowTests {
         let view = try #require(desktop)
         #expect(view.desktopFrame.width > 0)
         #expect(view.accessibilityLabel() == "Remote desktop, Test Server")
+        // The remote desktop is resized to fill the window, pixel for pixel.
+        let filling = try #require(
+            DesktopSize.filling(
+                viewSize: view.bounds.size, backingScale: controller.window.backingScaleFactor, usesHiDPI: true
+            )
+        )
+        await waitUntil("the desktop has the size of the window") {
+            model.framebuffer?.size.width == Int(filling.width) && model.framebuffer?.size.height == Int(filling.height)
+        }
         // Typing goes to the desktop without a click first.
         #expect(controller.window.firstResponder === view)
 

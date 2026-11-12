@@ -64,9 +64,19 @@ public enum RDPInputEvent: Sendable, Hashable {
     /// supports it. Values beyond -255...255 are limited to that range.
     case wheel(RDPWheelAxis, rotation: Int16, x: UInt16, y: UInt16)
 
-    var isPointerMove: Bool {
-        if case .pointerMove = self { return true }
-        return false
+    /// Asks for another desktop size, in remote pixels, shown at
+    /// `scalePercent` (100 for standard displays, 200 for Retina). The answer
+    /// is a framebuffer of the new size. A server without dynamic resolution
+    /// ignores this, and the desktop keeps its size.
+    case desktopSize(width: UInt16, height: UInt16, scalePercent: UInt16)
+
+    /// Whether a later event of the same kind makes this one pointless, so
+    /// that only the latest needs sending.
+    func isSuperseded(by later: RDPInputEvent) -> Bool {
+        switch (self, later) {
+        case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize): true
+        default: false
+        }
     }
 
     /// A press followed by a release.

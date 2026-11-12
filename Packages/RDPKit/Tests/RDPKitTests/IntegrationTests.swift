@@ -42,7 +42,7 @@ enum TestHost {
     /// What the test server reported about received input, one entry per
     /// event, with numbers in hexadecimal: "locks 6", "key 1e down",
     /// "key 53e up" (e marks extended), "mouse 9000 64 32" (flags, x, y),
-    /// and "xmouse 8001 64 32".
+    /// "xmouse 8001 64 32", and "layout 320 258 64" (width, height, scale).
     static func receivedInput() -> [String] {
         guard let path = environment["VISTARA_TEST_SERVER_LOG"],
             let log = try? String(contentsOfFile: path, encoding: .utf8)
@@ -60,6 +60,8 @@ enum TestHost {
             switch kind {
             case "sync":
                 return "locks \(hex("flags"))"
+            case "layout":
+                return "layout \(hex("width")) \(hex("height")) \(hex("scale"))"
             case "key":
                 let flags = fields["flags"] ?? 0
                 let extended = flags & 0x0100 != 0 ? "e" : ""
@@ -303,5 +305,49 @@ struct IntegrationTests {
         #expect(bytes.count >= 8 && bytes[3] == 0)
         #expect(bytes.count >= 8 && Array(bytes[4..<8]) == [0x50, 0xC0, 0x10, 0xFF])
         #expect(Array(bytes.suffix(4)) == [0x50, 0xC0, 0x10, 0xFF])
+    }
+
+    // MARK: Desktop size
+
+    @Test(.enabled(if: TestHost.environment["VISTARA_TEST_SERVER_LOG"] != nil))
+    func theDesktopChangesSizeOnRequestWithoutReconnecting() async {
+        let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
+        let before = TestHost.receivedInput().count
+        var requests: [String] = []
+        var resized = (width: 0, height: 0)
+        var restored = (width: 0, height: 0)
+
+        /// Waits until the framebuffer has the given size.
+        func waitForSize(_ width: Int, _ height: Int) -> (width: Int, height: Int) {
+            let deadline = Date().addingTimeInterval(10)
+            while session.framebuffer.size != (width, height), Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            return session.framebuffer.size
+        }
+
+        let states = await runToEnd(session) { state, session in
+            guard case .connected = state else { return }
+            _ = waitForSize(1024, 768)
+            // Two requests at once: only the second is worth sending.
+            session.send([
+                .desktopSize(width: 640, height: 480, scalePercent: 100),
+                .desktopSize(width: 800, height: 600, scalePercent: 200)
+            ])
+            resized = waitForSize(800, 600)
+            requests = TestHost.receivedInput(after: before, count: 1)
+
+            // Back to the size the other tests expect.
+            session.send([.desktopSize(width: 1024, height: 768, scalePercent: 100)])
+            restored = waitForSize(1024, 768)
+            session.disconnect()
+        }
+
+        #expect(requests == ["layout 320 258 c8"])
+        #expect(resized.width == 800 && resized.height == 600)
+        #expect(restored.width == 1024 && restored.height == 768)
+        // One connection throughout: connected once, and ended by us.
+        #expect(states.filter { $0.kind == "connected" }.count == 1)
+        #expect(states.last == .disconnected(.userRequested))
     }
 }

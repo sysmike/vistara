@@ -152,6 +152,21 @@ lose and nothing to confirm (HIG Alerts: "Avoid displaying alerts for common,
 undoable actions"). Quitting with sessions open asks once, with a checkbox to
 stop asking. *Judgment.*
 
+### Desktop size
+
+- By default the remote desktop follows the window: a quarter of a second
+  after the window's size has rested, the remote computer is asked for a
+  desktop that fills it pixel for pixel. Until the answer arrives the picture
+  is scaled, so the window resizes fluidly (HIG Windows: "adapt fluidly to
+  different sizes").
+- On a Retina display the desktop gets every pixel and is told to draw at
+  200 percent, so text is sharp and as large as on the Mac. Moving the window
+  to a display of another density asks again.
+- A connection can instead keep a fixed size, or keep the size it connected
+  with. Both are scaled to fit the window, never stretched.
+- A remote computer that cannot change its desktop size is not asked twice;
+  its desktop is scaled to fit.
+
 ### Full screen
 
 - The system's full-screen mode only: the green button, View > Enter Full

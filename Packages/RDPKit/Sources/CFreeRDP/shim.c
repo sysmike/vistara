@@ -5,12 +5,23 @@
 
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
+#include <pthread.h>
+
+#include <freerdp/addin.h>
+#include <freerdp/channels/channels.h>
+#include <freerdp/channels/disp.h>
+#include <freerdp/channels/drdynvc.h>
+#include <freerdp/client/channels.h>
+#include <freerdp/client/cmdline.h>
+#include <freerdp/client/disp.h>
 #include <freerdp/codec/color.h>
+#include <freerdp/event.h>
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/graphics.h>
 #include <freerdp/input.h>
 #include <freerdp/settings.h>
 #include <freerdp/update.h>
+#include <winpr/cast.h>
 #include <winpr/handle.h>
 #include <winpr/synch.h>
 
@@ -27,6 +38,10 @@ struct vistara_session {
     // Union of everything painted since the last vistara_session_take_dirty().
     bool has_dirty;
     int32_t dirty_left, dirty_top, dirty_right, dirty_bottom;
+    // The display control channel, once the server has opened it and stated
+    // its limits. Owned by FreeRDP.
+    DispClientContext *display_control;
+    bool display_control_ready;
     // The cursor the server asked for last, as a copy this session owns.
     bool cursor_changed;
     vistara_cursor_kind cursor_kind;
@@ -237,6 +252,87 @@ bool vistara_session_take_cursor(vistara_session *session, vistara_cursor *curso
     return true;
 }
 
+// MARK: Channels
+
+// Vistara loads exactly the channels it uses instead of FreeRDP's general
+// loader, which adds several more depending on defaults. So far that is
+// display control, which is a dynamic channel and needs drdynvc to carry it.
+
+static pthread_once_t addin_provider_once = PTHREAD_ONCE_INIT;
+
+static void register_addin_provider(void) {
+    // Channels are compiled into libfreerdp-client; this tells FreeRDP to
+    // look for them there.
+    (void)freerdp_register_addin_provider(freerdp_channels_load_static_addin_entry, 0);
+}
+
+static BOOL load_channels(freerdp *instance) {
+    rdpContext *context = instance->context;
+    const char *const display_control[] = {DISP_CHANNEL_NAME};
+    if (!freerdp_client_add_dynamic_channel(context->settings, 1, display_control) ||
+        !freerdp_settings_set_bool(context->settings, FreeRDP_SupportDynamicChannels, TRUE)) {
+        return FALSE;
+    }
+    PVIRTUALCHANNELENTRY entry = freerdp_load_channel_addin_entry(
+        DRDYNVC_SVC_CHANNEL_NAME, NULL, NULL,
+        FREERDP_ADDIN_CHANNEL_STATIC | FREERDP_ADDIN_CHANNEL_ENTRYEX);
+    if (!entry) {
+        return FALSE;
+    }
+    return freerdp_channels_client_load_ex(context->channels, context->settings,
+                                           WINPR_FUNC_PTR_CAST(entry, PVIRTUALCHANNELENTRYEX),
+                                           context->settings) == 0;
+}
+
+static UINT display_control_caps(DispClientContext *display_control, UINT32 max_monitors,
+                                 UINT32 area_factor_a, UINT32 area_factor_b) {
+    (void)max_monitors, (void)area_factor_a, (void)area_factor_b;
+    vistara_session *session = display_control->custom;
+    if (session) {
+        session->display_control_ready = true;
+    }
+    return CHANNEL_RC_OK;
+}
+
+static void channel_connected(void *context, const ChannelConnectedEventArgs *event) {
+    vistara_session *session = session_of(context);
+    if (strcmp(event->name, DISP_DVC_CHANNEL_NAME) == 0 && event->pInterface) {
+        DispClientContext *display_control = event->pInterface;
+        display_control->custom = session;
+        display_control->DisplayControlCaps = display_control_caps;
+        session->display_control = display_control;
+    }
+}
+
+static void channel_disconnected(void *context, const ChannelDisconnectedEventArgs *event) {
+    vistara_session *session = session_of(context);
+    if (strcmp(event->name, DISP_DVC_CHANNEL_NAME) == 0) {
+        session->display_control = NULL;
+        session->display_control_ready = false;
+    }
+}
+
+bool vistara_session_request_size(vistara_session *session, uint32_t width, uint32_t height,
+                                  uint32_t scale_percent) {
+    if (!session->connected || !session->display_control || !session->display_control_ready) {
+        return false;
+    }
+    if (scale_percent < 100) scale_percent = 100;
+    if (scale_percent > 500) scale_percent = 500;
+    DISPLAY_CONTROL_MONITOR_LAYOUT layout = {0};
+    layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
+    layout.Width = width;
+    layout.Height = height;
+    // Millimetres, as if the desktop were shown at 96 points per inch.
+    layout.PhysicalWidth = (UINT32)((uint64_t)width * 2540 / ((uint64_t)96 * scale_percent));
+    layout.PhysicalHeight = (UINT32)((uint64_t)height * 2540 / ((uint64_t)96 * scale_percent));
+    layout.Orientation = ORIENTATION_LANDSCAPE;
+    layout.DesktopScaleFactor = scale_percent;
+    layout.DeviceScaleFactor = 100;
+    DispClientContext *display_control = session->display_control;
+    return display_control->SendMonitorLayout(display_control, 1, &layout) == CHANNEL_RC_OK;
+}
+
 // MARK: Connection callbacks
 
 static BOOL pre_connect(freerdp *instance) {
@@ -286,6 +382,8 @@ vistara_session *vistara_session_create(void) {
     instance->PostConnect = post_connect;
     instance->PostDisconnect = post_disconnect;
     instance->VerifyX509Certificate = verify_x509_certificate;
+    instance->LoadChannels = load_channels;
+    (void)pthread_once(&addin_provider_once, register_addin_provider);
 
     if (!freerdp_context_new(instance)) {
         freerdp_free(instance);
@@ -294,6 +392,11 @@ vistara_session *vistara_session_create(void) {
         return NULL;
     }
     ((vistara_context *)instance->context)->session = session;
+    if (PubSub_SubscribeChannelConnected(instance->context->pubSub, channel_connected) < 0 ||
+        PubSub_SubscribeChannelDisconnected(instance->context->pubSub, channel_disconnected) < 0) {
+        vistara_session_destroy(session);
+        return NULL;
+    }
     return session;
 }
 
@@ -330,6 +433,9 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            // known-hosts file is neither read nor written.
            freerdp_settings_set_bool(settings, FreeRDP_ExternalCertificateManagement, TRUE) &&
            // Offered to the server; each is used only if the server has it too.
+           // The desktop may change size while connected.
+           freerdp_settings_set_bool(settings, FreeRDP_SupportDisplayControl, TRUE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_DynamicResolutionUpdate, TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_HasHorizontalWheel, TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_HasExtendedMouseEvent, TRUE);
 }

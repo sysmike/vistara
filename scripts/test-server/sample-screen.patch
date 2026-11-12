@@ -196,3 +196,126 @@
  
  	return 1;
  }
+--- a/server/shadow/shadow_client.c
++++ b/server/shadow/shadow_client.c
+@@ -37,6 +37,77 @@
+ #include "shadow.h"
+ #include "shadow_rfx_dirty.h"
+ 
++/* Vistara test server: display control. A client's request for another
++ * desktop size is reported and then carried out, so that tests can check both
++ * the request and the resize that follows it. */
++#include <stdio.h>
++#include <freerdp/server/disp.h>
++
++#define VISTARA_TEST_COLOR 0xFF336699u
++
++static volatile LONG vistara_resize_width = 0;
++static volatile LONG vistara_resize_height = 0;
++
++static UINT vistara_disp_layout(WINPR_ATTR_UNUSED DispServerContext* context,
++                                const DISPLAY_CONTROL_MONITOR_LAYOUT_PDU* pdu)
++{
++	if (!pdu || (pdu->NumMonitors < 1) || !pdu->Monitors)
++		return CHANNEL_RC_OK;
++	const DISPLAY_CONTROL_MONITOR_LAYOUT* monitor = &pdu->Monitors[0];
++	(void)fprintf(stderr, "vistara-input layout width=0x%04x height=0x%04x scale=0x%04x\n",
++	              (unsigned)monitor->Width, (unsigned)monitor->Height,
++	              (unsigned)monitor->DesktopScaleFactor);
++	(void)fflush(stderr);
++	(void)InterlockedExchange(&vistara_resize_width, (LONG)monitor->Width);
++	(void)InterlockedExchange(&vistara_resize_height, (LONG)monitor->Height);
++	return CHANNEL_RC_OK;
++}
++
++static DispServerContext* vistara_disp_open(rdpShadowClient* client)
++{
++	DispServerContext* disp = disp_server_context_new(client->vcm);
++	if (!disp)
++		return nullptr;
++	disp->custom = client;
++	disp->MaxNumMonitors = 1;
++	disp->MaxMonitorAreaFactorA = 8192;
++	disp->MaxMonitorAreaFactorB = 8192;
++	disp->DispMonitorLayout = vistara_disp_layout;
++	if (disp->Open(disp) != CHANNEL_RC_OK)
++	{
++		disp_server_context_free(disp);
++		return nullptr;
++	}
++	return disp;
++}
++
++/* Runs on the client's own thread, which also sends its updates. */
++static void vistara_apply_resize(rdpShadowClient* client)
++{
++	const LONG width = InterlockedExchange(&vistara_resize_width, 0);
++	const LONG height = InterlockedExchange(&vistara_resize_height, 0);
++	if ((width < 200) || (height < 200) || (width > 8192) || (height > 8192))
++		return;
++
++	rdpShadowServer* server = client->server;
++	rdpShadowSubsystem* subsystem = server->subsystem;
++	MONITOR_DEF* monitor = &subsystem->monitors[subsystem->selectedMonitor];
++	monitor->right = monitor->left + width - 1;
++	monitor->bottom = monitor->top + height - 1;
++	if (!shadow_screen_resize(server->screen))
++		return;
++
++	rdpShadowSurface* surface = server->surface;
++	EnterCriticalSection(&surface->lock);
++	for (UINT32 y = 0; y < surface->height; y++)
++	{
++		UINT32* row = (UINT32*)(void*)&surface->data[1ull * y * surface->scanline];
++		for (UINT32 x = 0; x < surface->width; x++)
++			row[x] = VISTARA_TEST_COLOR;
++	}
++	LeaveCriticalSection(&surface->lock);
++}
++
+ #define TAG CLIENT_TAG("shadow")
+ 
+ #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
+@@ -2845,6 +2916,8 @@
+ 	wMessageQueue* MsgQueue = nullptr;
+ 	/* This should only be visited in client thread */
+ 	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
++	DispServerContext* vistara_disp = nullptr;
++	BOOL vistara_disp_tried = FALSE;
+ 	rdpUpdate* update = nullptr;
+ 
+ 	WINPR_ASSERT(client);
+@@ -2950,6 +3023,8 @@
+ 		if (status == WAIT_FAILED)
+ 			goto fail;
+ 
++		vistara_apply_resize(client);
++
+ 		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
+ 		{
+ 			/* The UpdateEvent means to start sending current frame. It is
+@@ -3037,6 +3112,11 @@
+ 					break;
+ 
+ 				case DRDYNVC_STATE_READY:
++					if (!vistara_disp_tried)
++					{
++						vistara_disp_tried = TRUE;
++						vistara_disp = vistara_disp_open(client);
++					}
+ #if defined(CHANNEL_AUDIN_SERVER)
+ 					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
+ 					{
+@@ -3190,6 +3270,12 @@
+ 
+ fail:
+ 
++	if (vistara_disp)
++	{
++		(void)vistara_disp->Close(vistara_disp);
++		disp_server_context_free(vistara_disp);
++	}
++
+ 	/* Free channels early because we establish channels in post connect */
+ #if defined(CHANNEL_AUDIN_SERVER)
+ 	if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))

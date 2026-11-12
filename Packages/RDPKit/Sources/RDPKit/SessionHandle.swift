@@ -151,6 +151,8 @@ final class SessionHandle {
             vistara_session_send_pointer_button(session, button.rawValue, isDown, x, y)
         case .wheel(let axis, let rotation, let x, let y):
             vistara_session_send_wheel(session, axis == .horizontal, rotation, x, y)
+        case .desktopSize(let width, let height, let scalePercent):
+            vistara_session_request_size(session, UInt32(width), UInt32(height), UInt32(scalePercent))
         }
     }
 
