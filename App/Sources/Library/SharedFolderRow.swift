@@ -19,11 +19,19 @@ struct SharedFolderRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                Text(isMissing ? "Can’t find this folder. Remove it and add it again." : Self.displayPath(folder.path))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                if isMissing {
+                    Text("Can’t find this folder. Remove it and add it again.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    // Long paths keep both ends: where it is and what it is.
+                    Text(Self.displayPath(folder.path))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
             Spacer()
             Toggle("Read only", isOn: $folder.isReadOnly)
