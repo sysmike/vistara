@@ -47,7 +47,18 @@ final class LibraryModel {
     /// The rows selected in the table.
     var selectedIDs = Set<Connection.ID>()
 
-    var selection = SidebarItem.all
+    var selection = SidebarItem.all {
+        didSet {
+            // Recents are ordered by last use until someone sorts otherwise.
+            if selection == .recents, oldValue != .recents { sortOrder = [Self.lastUsedFirst] }
+        }
+    }
+    /// The folder whose name is being edited in the sidebar.
+    var renamingFolderID: Folder.ID?
+
+    static let lastUsedFirst = KeyPathComparator(\Connection.lastUsedSortKey, order: .reverse)
+    /// How many connections Recents shows.
+    static let recentsLimit = 20
     var searchText = ""
     var sortOrder = [KeyPathComparator(\Connection.name, comparator: .localizedStandard)]
 
@@ -202,7 +213,7 @@ final class LibraryModel {
 
     /// Writes the library as it is now, after any write still in progress,
     /// so writes land in the order the changes were made.
-    private func scheduleSave() {
+    func scheduleSave() {
         let previous = pendingSave
         let snapshot = library
         let store = store
@@ -259,7 +270,14 @@ final class LibraryModel {
 
     /// The connections the sidebar selects and the search matches, sorted.
     var visibleConnections: [Connection] {
-        library.connections
+        var connections = library.connections
+        if selection == .recents {
+            connections = Array(
+                connections.filter { $0.lastConnectedAt != nil }.sorted(using: Self.lastUsedFirst)
+                    .prefix(Self.recentsLimit)
+            )
+        }
+        return connections
             .filter { Self.belongs($0, to: selection) && Self.matches($0, search: searchText) }
             .sorted(using: sortOrder)
     }

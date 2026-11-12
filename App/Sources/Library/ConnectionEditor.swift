@@ -6,6 +6,8 @@ import VistaraCore
 /// asked for when connecting (docs/DESIGN.md).
 struct ConnectionEditor: View {
     let folders: [Folder]
+    /// Tags in use elsewhere, offered as completions.
+    var knownTags: [String] = []
     let save: (Connection) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -14,10 +16,11 @@ struct ConnectionEditor: View {
     @State private var showsProblems: Bool
 
     init(
-        draft: ConnectionDraft, folders: [Folder], showsProblems: Bool? = nil,
+        draft: ConnectionDraft, folders: [Folder], knownTags: [String] = [], showsProblems: Bool? = nil,
         save: @escaping (Connection) -> Void
     ) {
         self.folders = folders
+        self.knownTags = knownTags
         self.save = save
         _draft = State(initialValue: draft)
         _showsProblems = State(initialValue: showsProblems ?? !draft.isNew)
@@ -68,6 +71,9 @@ struct ConnectionEditor: View {
             problem(draft.hostProblem ?? draft.portProblem)
             TextField("User", text: $draft.username, prompt: Text("Optional"))
             TextField("Domain", text: $draft.domain, prompt: Text("Optional"))
+            LabeledContent("Tags") {
+                TagField(tags: $draft.tags, suggestions: knownTags)
+            }
             Picker("Folder", selection: $draft.folderID) {
                 Text("None").tag(UUID?.none)
                 if !folders.isEmpty { Divider() }

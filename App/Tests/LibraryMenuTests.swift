@@ -30,6 +30,12 @@ struct LibraryMenuTests {
             #expect(found?.keyEquivalent == command[2], "\(command[1])")
             #expect(modifiers(found) == .command, "\(command[1])")
         }
+        let newFolder = item("New Folder", in: "File")
+        #expect(newFolder?.keyEquivalent == "n")
+        #expect(modifiers(newFolder) == [.shift, .command])
+        for title in ["Add to Favorites", "Move to Folder", "Rename Folder", "Delete Folder"] {
+            #expect(item(title, in: "Edit") != nil, "\(title)")
+        }
         let delete = item("Delete Connection", in: "Edit")
         #expect(delete?.keyEquivalent == "\u{8}")
         #expect(modifiers(delete) == .command)
