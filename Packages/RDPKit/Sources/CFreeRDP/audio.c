@@ -14,6 +14,9 @@
 
 #define TAG "com.vistara.audio"
 
+// CoreAudio and WinPR both define TRUE and FALSE, so this file returns the
+// BOOLs FreeRDP expects as stdbool values, which are the same numbers.
+
 /// The most sound that may wait for the output, in milliseconds. When the
 /// output falls behind or does not run, newer sound is dropped, so the sound
 /// never lags the picture by more than this.
@@ -169,7 +172,7 @@ static BOOL audio_open(rdpsndDevicePlugin *device, const AUDIO_FORMAT *format, U
     (void)latency;
     vistara_audio *audio = (vistara_audio *)device;
     if (audio->is_open) {
-        return TRUE;
+        return true;
     }
     audio->format = *format;
     audio->format.data = NULL;
@@ -184,7 +187,7 @@ static BOOL audio_open(rdpsndDevicePlugin *device, const AUDIO_FORMAT *format, U
         format->nSamplesPerSec > 0) {
         open_output(audio);
     }
-    return TRUE;
+    return true;
 }
 
 static UINT audio_play(rdpsndDevicePlugin *device, const BYTE *data, size_t size) {
@@ -246,7 +249,7 @@ static BOOL audio_set_volume(rdpsndDevicePlugin *device, UINT32 value) {
     if (audio->queue) {
         (void)AudioQueueSetParameter(audio->queue, kAudioQueueParam_Volume, audio->volume);
     }
-    return TRUE;
+    return true;
 }
 
 static void audio_close(rdpsndDevicePlugin *device) {
