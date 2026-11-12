@@ -69,12 +69,16 @@ public enum RDPInputEvent: Sendable, Hashable {
     /// is a framebuffer of the new size. A server without dynamic resolution
     /// ignores this, and the desktop keeps its size.
     case desktopSize(width: UInt16, height: UInt16, scalePercent: UInt16)
+    /// This Mac's clipboard text, offered to the remote computer, which asks
+    /// for it when someone pastes. Dropped when the clipboard is not shared.
+    /// Never logged.
+    case clipboardText(String)
 
     /// Whether a later event of the same kind makes this one pointless, so
     /// that only the latest needs sending.
     func isSuperseded(by later: RDPInputEvent) -> Bool {
         switch (self, later) {
-        case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize): true
+        case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize), (.clipboardText, .clipboardText): true
         default: false
         }
     }

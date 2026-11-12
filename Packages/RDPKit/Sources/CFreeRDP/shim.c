@@ -12,9 +12,11 @@
 
 #include <freerdp/addin.h>
 #include <freerdp/channels/channels.h>
+#include <freerdp/channels/cliprdr.h>
 #include <freerdp/channels/disp.h>
 #include <freerdp/channels/drdynvc.h>
 #include <freerdp/client/channels.h>
+#include <freerdp/client/cliprdr.h>
 #include <freerdp/client/cmdline.h>
 #include <freerdp/client/disp.h>
 #include <freerdp/codec/color.h>
@@ -27,6 +29,8 @@
 #include <freerdp/update.h>
 #include <winpr/cast.h>
 #include <winpr/handle.h>
+#include <winpr/string.h>
+#include <winpr/user.h>
 #include <winpr/synch.h>
 #include <winpr/wlog.h>
 
@@ -51,6 +55,21 @@ struct vistara_session {
     // runs the channel on, hence atomic.
     _Atomic(DispClientContext *) display_control;
     atomic_bool display_control_ready;
+    // The clipboard channel. Its handlers may run on another thread than the
+    // session's, so everything below is guarded by clipboard_lock.
+    pthread_mutex_t clipboard_lock;
+    CliprdrClientContext *clipboard;
+    bool share_clipboard;
+    bool clipboard_ready;
+    bool clipboard_ever_connected;
+    bool awaiting_remote_text;
+    // This Mac's text as UTF-16LE with a terminating zero, for when the remote
+    // computer asks for it.
+    WCHAR *local_text;
+    size_t local_text_bytes;
+    // The remote computer's latest text, UTF-8, until taken.
+    char *remote_text;
+    uint64_t clipboard_bytes_sent;
     // A size asked for that has not been sent yet: the channel comes up a few
     // round trips after connecting, and a request made before that must not
     // be lost. Session thread only.
@@ -307,6 +326,196 @@ bool vistara_session_take_cursor(vistara_session *session, vistara_cursor *curso
     return true;
 }
 
+// MARK: Clipboard
+
+// The largest text accepted from the remote computer: 16 MiB of UTF-16.
+#define VISTARA_MAX_CLIPBOARD_BYTES (16u * 1024u * 1024u)
+
+static UINT clipboard_send_format_list(vistara_session *session) {
+    // Call with clipboard_lock held.
+    CLIPRDR_FORMAT text = {.formatId = CF_UNICODETEXT, .formatName = NULL};
+    CLIPRDR_FORMAT_LIST list = {0};
+    list.common.msgType = CB_FORMAT_LIST;
+    list.numFormats = session->local_text ? 1 : 0;
+    list.formats = session->local_text ? &text : NULL;
+    return session->clipboard->ClientFormatList(session->clipboard, &list);
+}
+
+static UINT clipboard_monitor_ready(CliprdrClientContext *clipboard, const CLIPRDR_MONITOR_READY *ready) {
+    (void)ready;
+    vistara_session *session = clipboard->custom;
+    CLIPRDR_GENERAL_CAPABILITY_SET general = {0};
+    general.capabilitySetType = CB_CAPSTYPE_GENERAL;
+    general.capabilitySetLength = CB_CAPSTYPE_GENERAL_LEN;
+    general.version = CB_CAPS_VERSION_2;
+    general.generalFlags = CB_USE_LONG_FORMAT_NAMES;
+    CLIPRDR_CAPABILITIES capabilities = {0};
+    capabilities.cCapabilitiesSets = 1;
+    capabilities.capabilitySets = (CLIPRDR_CAPABILITY_SET *)&general;
+
+    pthread_mutex_lock(&session->clipboard_lock);
+    UINT result = clipboard->ClientCapabilities(clipboard, &capabilities);
+    if (result == CHANNEL_RC_OK) {
+        result = clipboard_send_format_list(session);
+    }
+    session->clipboard_ready = result == CHANNEL_RC_OK;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return result;
+}
+
+static UINT clipboard_server_capabilities(CliprdrClientContext *clipboard,
+                                          const CLIPRDR_CAPABILITIES *capabilities) {
+    (void)clipboard, (void)capabilities;
+    return CHANNEL_RC_OK;
+}
+
+/// The remote computer copied something: acknowledge, and fetch it if it is text.
+static UINT clipboard_server_format_list(CliprdrClientContext *clipboard, const CLIPRDR_FORMAT_LIST *list) {
+    vistara_session *session = clipboard->custom;
+    CLIPRDR_FORMAT_LIST_RESPONSE response = {0};
+    response.common.msgType = CB_FORMAT_LIST_RESPONSE;
+    response.common.msgFlags = CB_RESPONSE_OK;
+    UINT result = clipboard->ClientFormatListResponse(clipboard, &response);
+    if (result != CHANNEL_RC_OK) {
+        return result;
+    }
+    bool has_text = false;
+    for (UINT32 index = 0; index < list->numFormats; index++) {
+        if (list->formats[index].formatId == CF_UNICODETEXT) {
+            has_text = true;
+        }
+    }
+    if (!has_text) {
+        return CHANNEL_RC_OK;
+    }
+    pthread_mutex_lock(&session->clipboard_lock);
+    session->awaiting_remote_text = true;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    CLIPRDR_FORMAT_DATA_REQUEST request = {0};
+    request.common.msgType = CB_FORMAT_DATA_REQUEST;
+    request.requestedFormatId = CF_UNICODETEXT;
+    return clipboard->ClientFormatDataRequest(clipboard, &request);
+}
+
+static UINT clipboard_server_format_list_response(CliprdrClientContext *clipboard,
+                                                  const CLIPRDR_FORMAT_LIST_RESPONSE *response) {
+    (void)clipboard, (void)response;
+    return CHANNEL_RC_OK;
+}
+
+/// The remote computer pastes: hand over this Mac's text, or say there is none.
+static UINT clipboard_server_format_data_request(CliprdrClientContext *clipboard,
+                                                 const CLIPRDR_FORMAT_DATA_REQUEST *request) {
+    vistara_session *session = clipboard->custom;
+    CLIPRDR_FORMAT_DATA_RESPONSE response = {0};
+    response.common.msgType = CB_FORMAT_DATA_RESPONSE;
+    pthread_mutex_lock(&session->clipboard_lock);
+    if (request->requestedFormatId == CF_UNICODETEXT && session->local_text) {
+        response.common.msgFlags = CB_RESPONSE_OK;
+        response.common.dataLen = (UINT32)session->local_text_bytes;
+        response.requestedFormatData = (const BYTE *)session->local_text;
+        session->clipboard_bytes_sent += session->local_text_bytes;
+    } else {
+        response.common.msgFlags = CB_RESPONSE_FAIL;
+    }
+    const UINT result = clipboard->ClientFormatDataResponse(clipboard, &response);
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return result;
+}
+
+/// The remote computer's text arrived.
+static UINT clipboard_server_format_data_response(CliprdrClientContext *clipboard,
+                                                  const CLIPRDR_FORMAT_DATA_RESPONSE *response) {
+    vistara_session *session = clipboard->custom;
+    pthread_mutex_lock(&session->clipboard_lock);
+    const bool expected = session->awaiting_remote_text;
+    session->awaiting_remote_text = false;
+    if (expected && (response->common.msgFlags & CB_RESPONSE_OK) && response->requestedFormatData &&
+        response->common.dataLen >= sizeof(WCHAR) && response->common.dataLen <= VISTARA_MAX_CLIPBOARD_BYTES) {
+        const WCHAR *text = (const WCHAR *)response->requestedFormatData;
+        size_t length = response->common.dataLen / sizeof(WCHAR);
+        // The text ends at its first zero, if it has one.
+        for (size_t index = 0; index < length; index++) {
+            if (text[index] == 0) {
+                length = index;
+                break;
+            }
+        }
+        char *converted = ConvertWCharNToUtf8Alloc(text, length, NULL);
+        if (converted) {
+            free(session->remote_text);
+            session->remote_text = converted;
+        }
+    }
+    pthread_mutex_unlock(&session->clipboard_lock);
+    vistara_session_wake(session);
+    return CHANNEL_RC_OK;
+}
+
+static void clipboard_connected(vistara_session *session, CliprdrClientContext *clipboard) {
+    clipboard->custom = session;
+    clipboard->MonitorReady = clipboard_monitor_ready;
+    clipboard->ServerCapabilities = clipboard_server_capabilities;
+    clipboard->ServerFormatList = clipboard_server_format_list;
+    clipboard->ServerFormatListResponse = clipboard_server_format_list_response;
+    clipboard->ServerFormatDataRequest = clipboard_server_format_data_request;
+    clipboard->ServerFormatDataResponse = clipboard_server_format_data_response;
+    pthread_mutex_lock(&session->clipboard_lock);
+    session->clipboard = clipboard;
+    session->clipboard_ever_connected = true;
+    pthread_mutex_unlock(&session->clipboard_lock);
+}
+
+static void clipboard_disconnected(vistara_session *session) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    session->clipboard = NULL;
+    session->clipboard_ready = false;
+    pthread_mutex_unlock(&session->clipboard_lock);
+}
+
+char *vistara_session_take_remote_text(vistara_session *session) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    char *text = session->remote_text;
+    session->remote_text = NULL;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return text;
+}
+
+void vistara_session_offer_local_text(vistara_session *session, const char *text) {
+    size_t length = 0;
+    WCHAR *converted = ConvertUtf8ToWCharAlloc(text, &length);
+    if (!converted) {
+        return;
+    }
+    pthread_mutex_lock(&session->clipboard_lock);
+    if (!session->share_clipboard) {
+        free(converted);
+        pthread_mutex_unlock(&session->clipboard_lock);
+        return;
+    }
+    free(session->local_text);
+    session->local_text = converted;
+    session->local_text_bytes = (length + 1) * sizeof(WCHAR);
+    if (session->clipboard && session->clipboard_ready) {
+        (void)clipboard_send_format_list(session);
+    }
+    pthread_mutex_unlock(&session->clipboard_lock);
+}
+
+bool vistara_session_clipboard_connected(vistara_session *session) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    const bool connected = session->clipboard_ever_connected;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return connected;
+}
+
+uint64_t vistara_session_clipboard_bytes_sent(vistara_session *session) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    const uint64_t sent = session->clipboard_bytes_sent;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return sent;
+}
+
 // MARK: Channels
 
 // Vistara loads exactly the channels it uses instead of FreeRDP's general
@@ -321,22 +530,28 @@ static void register_addin_provider(void) {
     (void)freerdp_register_addin_provider(freerdp_channels_load_static_addin_entry, 0);
 }
 
+static BOOL load_static_channel(rdpContext *context, const char *name, void *data) {
+    PVIRTUALCHANNELENTRY entry = freerdp_load_channel_addin_entry(
+        name, NULL, NULL, FREERDP_ADDIN_CHANNEL_STATIC | FREERDP_ADDIN_CHANNEL_ENTRYEX);
+    if (!entry) {
+        return FALSE;
+    }
+    return freerdp_channels_client_load_ex(context->channels, context->settings,
+                                           WINPR_FUNC_PTR_CAST(entry, PVIRTUALCHANNELENTRYEX), data) == 0;
+}
+
 static BOOL load_channels(freerdp *instance) {
     rdpContext *context = instance->context;
+    // The clipboard only when shared: unloaded, no clipboard data can pass.
+    if (session_of(context)->share_clipboard && !load_static_channel(context, CLIPRDR_SVC_CHANNEL_NAME, NULL)) {
+        return FALSE;
+    }
     const char *const display_control[] = {DISP_CHANNEL_NAME};
     if (!freerdp_client_add_dynamic_channel(context->settings, 1, display_control) ||
         !freerdp_settings_set_bool(context->settings, FreeRDP_SupportDynamicChannels, TRUE)) {
         return FALSE;
     }
-    PVIRTUALCHANNELENTRY entry = freerdp_load_channel_addin_entry(
-        DRDYNVC_SVC_CHANNEL_NAME, NULL, NULL,
-        FREERDP_ADDIN_CHANNEL_STATIC | FREERDP_ADDIN_CHANNEL_ENTRYEX);
-    if (!entry) {
-        return FALSE;
-    }
-    return freerdp_channels_client_load_ex(context->channels, context->settings,
-                                           WINPR_FUNC_PTR_CAST(entry, PVIRTUALCHANNELENTRYEX),
-                                           context->settings) == 0;
+    return load_static_channel(context, DRDYNVC_SVC_CHANNEL_NAME, context->settings);
 }
 
 static UINT display_control_caps(DispClientContext *display_control, UINT32 max_monitors,
@@ -353,6 +568,10 @@ static UINT display_control_caps(DispClientContext *display_control, UINT32 max_
 
 static void channel_connected(void *context, const ChannelConnectedEventArgs *event) {
     vistara_session *session = session_of(context);
+    if (strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0 && event->pInterface) {
+        clipboard_connected(session, event->pInterface);
+        return;
+    }
     if (strcmp(event->name, DISP_DVC_CHANNEL_NAME) == 0 && event->pInterface) {
         DispClientContext *display_control = event->pInterface;
         display_control->custom = session;
@@ -363,6 +582,10 @@ static void channel_connected(void *context, const ChannelConnectedEventArgs *ev
 
 static void channel_disconnected(void *context, const ChannelDisconnectedEventArgs *event) {
     vistara_session *session = session_of(context);
+    if (strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
+        clipboard_disconnected(session);
+        return;
+    }
     if (strcmp(event->name, DISP_DVC_CHANNEL_NAME) == 0) {
         atomic_store(&session->display_control_ready, false);
         atomic_store(&session->display_control, NULL);
@@ -501,14 +724,17 @@ vistara_session *vistara_session_create(void) {
         return NULL;
     }
 
+    pthread_mutex_init(&session->clipboard_lock, NULL);
     session->wake_event = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!session->wake_event) {
+        pthread_mutex_destroy(&session->clipboard_lock);
         free(session);
         return NULL;
     }
     session->instance = freerdp_new();
     if (!session->instance) {
         (void)CloseHandle(session->wake_event);
+        pthread_mutex_destroy(&session->clipboard_lock);
         free(session);
         return NULL;
     }
@@ -525,6 +751,7 @@ vistara_session *vistara_session_create(void) {
     if (!freerdp_context_new(instance)) {
         freerdp_free(instance);
         (void)CloseHandle(session->wake_event);
+        pthread_mutex_destroy(&session->clipboard_lock);
         free(session);
         return NULL;
     }
@@ -547,6 +774,9 @@ void vistara_session_destroy(vistara_session *session) {
     freerdp_free(session->instance);
     (void)CloseHandle(session->wake_event);
     free(session->cursor_pixels);
+    free(session->local_text);
+    free(session->remote_text);
+    pthread_mutex_destroy(&session->clipboard_lock);
     free(session);
 }
 
@@ -586,6 +816,10 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            freerdp_settings_set_uint16(settings, FreeRDP_TLSMinVersion, VISTARA_TLS1_2_VERSION) &&
            freerdp_settings_set_uint32(settings, FreeRDP_TlsSecLevel, FREERDP_TLS_SECLEVEL_112BIT) &&
            freerdp_settings_set_bool(settings, FreeRDP_RemoteConsoleAudio, options->play_audio_on_remote) &&
+           freerdp_settings_set_bool(settings, FreeRDP_RedirectClipboard, options->share_clipboard) &&
+           // Text only, both ways: never files.
+           freerdp_settings_set_uint32(settings, FreeRDP_ClipboardFeatureMask,
+                                       CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL) &&
            // Certificates are judged by the application alone: the system's
            // trust evaluation and Vistara's own trust store. FreeRDP's
            // known-hosts file is neither read nor written.
@@ -606,6 +840,9 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     session->connect_attempted = true;
     session->tcp_os_error = 0;
 
+    pthread_mutex_lock(&session->clipboard_lock);
+    session->share_clipboard = options->share_clipboard;
+    pthread_mutex_unlock(&session->clipboard_lock);
     session->decide_certificate = options->decide_certificate;
     session->decide_certificate_context = options->decide_certificate_context;
     if (!apply_options(session->instance->context->settings, options)) {

@@ -17,6 +17,7 @@ final class SessionHandle {
         var scalePercent: UInt32 = 100
         var requiresNLA = true
         var playsAudioOnRemote = false
+        var sharesClipboard = false
     }
 
     enum ConnectResult: Equatable {
@@ -110,6 +111,7 @@ final class SessionHandle {
             scale_percent: target.scalePercent,
             require_nla: target.requiresNLA,
             play_audio_on_remote: target.playsAudioOnRemote,
+            share_clipboard: target.sharesClipboard,
             decide_certificate: nil,
             decide_certificate_context: nil
         )
@@ -200,8 +202,27 @@ final class SessionHandle {
             vistara_session_send_wheel(session, axis == .horizontal, rotation, x, y)
         case .desktopSize(let width, let height, let scalePercent):
             vistara_session_request_size(session, UInt32(width), UInt32(height), UInt32(scalePercent))
+        case .clipboardText(let text):
+            offerClipboardText(text)
         }
     }
+
+    private func offerClipboardText(_ text: String) -> Bool {
+        vistara_session_offer_local_text(session, RDPClipboardText.toRemote(text))
+        return true
+    }
+
+    /// The remote computer's clipboard text, if it changed, with Mac line endings.
+    func takeRemoteClipboardText() -> String? {
+        guard let text = vistara_session_take_remote_text(session) else { return nil }
+        defer { free(text) }
+        return RDPClipboardText.fromRemote(String(cString: text))
+    }
+
+    /// Whether the clipboard channel came up. For tests.
+    var clipboardConnected: Bool { vistara_session_clipboard_connected(session) }
+    /// Bytes of clipboard data sent to the remote computer. For tests.
+    var clipboardBytesSent: UInt64 { vistara_session_clipboard_bytes_sent(session) }
 
     /// The cursor the server asked for, if it changed since the last call.
     func takeCursor() -> RDPCursor? {

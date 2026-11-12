@@ -27,6 +27,12 @@ public final class RDPSession: Sendable {
     /// connected; read it from any thread.
     public let framebuffer = RDPFramebuffer()
 
+    /// Text the remote computer copied, with Mac line endings, as it arrives.
+    /// Only the latest is kept. Ends with the session. Empty unless the
+    /// configuration shares the clipboard.
+    public let remoteClipboard: AsyncStream<String>
+    private let remoteClipboardContinuation: AsyncStream<String>.Continuation
+
     private let delegate: RDPSessionDelegate
     private let continuation: AsyncStream<RDPSessionState>.Continuation
     private let control = OSAllocatedUnfairLock(initialState: Control())
@@ -37,6 +43,11 @@ public final class RDPSession: Sendable {
         let (stream, continuation) = AsyncStream.makeStream(of: RDPSessionState.self)
         self.states = stream
         self.continuation = continuation
+        let (clipboard, clipboardContinuation) = AsyncStream.makeStream(
+            of: String.self, bufferingPolicy: .bufferingNewest(1)
+        )
+        remoteClipboard = clipboard
+        remoteClipboardContinuation = clipboardContinuation
     }
 
     /// Starts connecting. Calling it again does nothing.
@@ -104,6 +115,7 @@ public final class RDPSession: Sendable {
         Self.log.notice("Session ended: \(final.logDescription, privacy: .public)")
         continuation.yield(.disconnected(final))
         continuation.finish()
+        remoteClipboardContinuation.finish()
         framebuffer.finish()
     }
 
@@ -149,7 +161,8 @@ public final class RDPSession: Sendable {
             height: configuration.desktopHeight,
             scalePercent: configuration.scalePercent,
             requiresNLA: configuration.requiresNLA,
-            playsAudioOnRemote: configuration.audio == .remote
+            playsAudioOnRemote: configuration.audio == .remote,
+            sharesClipboard: configuration.sharesClipboard
         )
         let delegate = delegate
 
@@ -187,6 +200,7 @@ public final class RDPSession: Sendable {
             sendPendingInput(to: handle)
             publishChanges(from: handle)
             if let cursor = handle.takeCursor() { framebuffer.setCursor(cursor) }
+            if let text = handle.takeRemoteClipboardText() { remoteClipboardContinuation.yield(text) }
         }
         handle.disconnect()
         return .userRequested

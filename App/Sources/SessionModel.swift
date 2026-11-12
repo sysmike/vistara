@@ -118,6 +118,10 @@ final class SessionModel {
 
     /// The scale the current session was connected with, in percent.
     private(set) var connectedScale: UInt16 = 100
+    /// Whether the session window is the key window. Set by the window.
+    @ObservationIgnored var isInFront: () -> Bool = { false }
+    @ObservationIgnored private var clipboard: ClipboardBridge?
+
     /// The desktop size that fills the session window now. Set by the window.
     @ObservationIgnored var windowDesktopSize: (() -> DesktopSize?)?
 
@@ -162,6 +166,17 @@ final class SessionModel {
     /// Sends keyboard input to the remote computer. Dropped unless connected.
     func send(_ events: [RDPInputEvent]) {
         session?.send(events)
+    }
+
+    /// Shares the clipboard with a connected session, if the connection allows it.
+    private func startClipboard(for session: RDPSession) {
+        guard target.sharesClipboard, clipboard == nil else { return }
+        let bridge = ClipboardBridge(
+            send: { [weak session] events in session?.send(events) },
+            isInFront: { [weak self] in self?.isInFront() ?? false }
+        )
+        bridge.start(remote: session.remoteClipboard)
+        clipboard = bridge
     }
 
     /// Takes new settings for the next connection.
@@ -264,10 +279,13 @@ final class SessionModel {
         case .connecting, .awaitingCredentials, .awaitingCertificateDecision:
             phase = .connecting
         case .connected:
+            startClipboard(for: source)
             keepOrForgetEnteredCredentials()
             wasRefused = false
             phase = .connected
         case .disconnected(let reason):
+            clipboard?.stop()
+            clipboard = nil
             session = nil
             enteredCredentials = nil
             answerCertificate(trust: false)

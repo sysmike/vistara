@@ -77,6 +77,9 @@ typedef struct {
     bool require_nla;
     /// Ask the server to play sound on the remote computer instead of sending it.
     bool play_audio_on_remote;
+    /// Load the clipboard channel and share text both ways. When false the
+    /// channel is not loaded, so no clipboard data can pass in either direction.
+    bool share_clipboard;
     /// Asked about every server certificate. With NULL, every certificate is
     /// rejected: nothing is ever accepted silently.
     vistara_certificate_decider _Nullable decide_certificate;
@@ -105,6 +108,20 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
 /// is in use: it only signals an event. The caller must make sure the session
 /// is not destroyed concurrently.
 void vistara_session_abort(vistara_session *session);
+
+/// Text the remote computer copied since the last call, as UTF-8 with the
+/// remote's line endings, or NULL. The caller frees it with free().
+char *_Nullable vistara_session_take_remote_text(vistara_session *session);
+
+/// Offers text (UTF-8) to the remote computer as this Mac's clipboard. The
+/// remote computer asks for it when someone pastes there. Does nothing
+/// without the clipboard channel.
+void vistara_session_offer_local_text(vistara_session *session, const char *text);
+
+/// Whether the clipboard channel came up, and how many bytes of clipboard
+/// data were sent to the remote computer. For tests.
+bool vistara_session_clipboard_connected(vistara_session *session);
+uint64_t vistara_session_clipboard_bytes_sent(vistara_session *session);
 
 /// The settings a connection attempt handed to FreeRDP, read back from it.
 /// For tests: the mapping from Vistara's options is checked against
