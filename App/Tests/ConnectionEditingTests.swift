@@ -110,10 +110,6 @@ struct ConnectionManagementTests {
         model.library.connections.map(\.name)
     }
 
-    /// Waits for work an undo or redo started in a task.
-    private func settle() async {
-        try? await Task.sleep(for: .milliseconds(100))
-    }
 
     @Test
     func savingReplacesTheConnectionWithTheSameIdentifier() async throws {
@@ -149,22 +145,25 @@ struct ConnectionManagementTests {
             .map(\.id))
 
         undo.beginUndoGrouping()
-        await model.delete(ids, undoManager: undo)
+        model.delete(ids, undoManager: undo)
         undo.endUndoGrouping()
         #expect(names(model) == ["Finance VM", "Lab Desktop"])
         #expect(undo.undoActionName == "Delete Connections")
 
         undo.undo()
-        await settle()
         #expect(names(model) == ["Build Server", "Finance VM", "Jump Host", "Lab Desktop"])
         #expect(model.selectedIDs == ids)
+        #expect(undo.canRedo)
+        #expect(undo.redoActionName == "Delete Connections")
+        await model.flushSaves()
         let reopened = LibraryModel(store: ConnectionStore(directory: directory))
         await reopened.load()
         #expect(reopened.library.connections.count == 4)
 
         undo.redo()
-        await settle()
         #expect(names(model) == ["Finance VM", "Lab Desktop"])
+        #expect(undo.canUndo)
+        await model.flushSaves()
     }
 
     @Test

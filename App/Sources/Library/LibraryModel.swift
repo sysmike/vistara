@@ -52,6 +52,7 @@ final class LibraryModel {
     var sortOrder = [KeyPathComparator(\Connection.name, comparator: .localizedStandard)]
 
     @ObservationIgnored private let store: ConnectionStore
+    @ObservationIgnored private var pendingSave: Task<Void, Never>?
     private static let log = RDPLogging.logger("Library")
 
     init(store: ConnectionStore) {
@@ -143,16 +144,19 @@ final class LibraryModel {
     /// Deletes without asking; Undo restores. The connections' Keychain items
     /// stay until the deletion can no longer be undone: see
     /// `removeOrphanedCredentials(from:)`.
-    func delete(_ ids: Set<Connection.ID>, undoManager: UndoManager?) async {
+    ///
+    /// Synchronous, so that when Redo calls it from an undo handler the undo
+    /// manager records its registration as the matching Undo.
+    func delete(_ ids: Set<Connection.ID>, undoManager: UndoManager?) {
         guard canChange else { return }
         let removed = library.connections.enumerated().filter { ids.contains($0.element.id) }
             .map { RemovedConnection(index: $0.offset, connection: $0.element) }
         guard !removed.isEmpty else { return }
         library.connections.removeAll { ids.contains($0.id) }
         selectedIDs.subtract(ids)
-        await save()
+        scheduleSave()
         undoManager?.registerUndo(withTarget: self) { model in
-            Task { @MainActor in await model.restore(removed, undoManager: undoManager) }
+            MainActor.assumeIsolated { model.restore(removed, undoManager: undoManager) }
         }
         undoManager?.setActionName(removed.count == 1 ? "Delete Connection" : "Delete Connections")
     }
@@ -162,16 +166,17 @@ final class LibraryModel {
         var connection: Connection
     }
 
-    private func restore(_ removed: [RemovedConnection], undoManager: UndoManager?) async {
+    /// Puts deleted connections back where they were. Called by Undo.
+    private func restore(_ removed: [RemovedConnection], undoManager: UndoManager?) {
         guard canChange else { return }
         for item in removed.sorted(by: { $0.index < $1.index }) {
             library.connections.insert(item.connection, at: min(item.index, library.connections.count))
         }
-        selectedIDs = Set(removed.map(\.connection.id))
-        await save()
-        let ids = selectedIDs
+        let ids = Set(removed.map(\.connection.id))
+        selectedIDs = ids
+        scheduleSave()
         undoManager?.registerUndo(withTarget: self) { model in
-            Task { @MainActor in await model.delete(ids, undoManager: undoManager) }
+            MainActor.assumeIsolated { model.delete(ids, undoManager: undoManager) }
         }
         undoManager?.setActionName(removed.count == 1 ? "Delete Connection" : "Delete Connections")
     }
@@ -195,14 +200,32 @@ final class LibraryModel {
         await save()
     }
 
-    private func save() async {
-        do {
-            try await store.save(library)
-            saveFailed = false
-        } catch {
-            Self.log.error("Saving the library failed: \(String(describing: error), privacy: .public)")
-            saveFailed = true
+    /// Writes the library as it is now, after any write still in progress,
+    /// so writes land in the order the changes were made.
+    private func scheduleSave() {
+        let previous = pendingSave
+        let snapshot = library
+        let store = store
+        pendingSave = Task { [weak self] in
+            await previous?.value
+            do {
+                try await store.save(snapshot)
+                self?.saveFailed = false
+            } catch {
+                Self.log.error("Saving the library failed: \(String(describing: error), privacy: .public)")
+                self?.saveFailed = true
+            }
         }
+    }
+
+    private func save() async {
+        scheduleSave()
+        await flushSaves()
+    }
+
+    /// Waits until every change so far is written.
+    func flushSaves() async {
+        await pendingSave?.value
     }
 
     // MARK: Sidebar

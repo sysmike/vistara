@@ -57,9 +57,7 @@ struct ConnectionsView: View {
             duplicate: { ids in
                 Task { model.selectedIDs = Set(await model.duplicate(ids)) }
             },
-            delete: { ids in
-                Task { await model.delete(ids, undoManager: undoManager) }
-            },
+            delete: { ids in model.delete(ids, undoManager: undoManager) },
             new: { model.editorRequest = .new },
             canChange: model.canChange
         )
