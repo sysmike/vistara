@@ -23,7 +23,8 @@ final class LibraryModel {
         case unreadable(String)
     }
 
-    private(set) var library = Library()
+    // Set by this type and its extensions only; see LibraryModel+Organizing.
+    var library = Library()
     private(set) var loadState = LoadState.loading
     /// Where an unreadable file was moved before starting a new library.
     private(set) var corruptFileBackup: URL?

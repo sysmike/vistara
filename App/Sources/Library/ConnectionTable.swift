@@ -139,7 +139,7 @@ struct ConnectionTable: View {
         .width(min: 80, ideal: 100, max: 120)
     }
 
-    static func address(of connection: Connection) -> String {
+    nonisolated static func address(of connection: Connection) -> String {
         connection.port == Connection.defaultPort ? connection.host : "\(connection.host):\(connection.port)"
     }
 
