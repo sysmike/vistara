@@ -38,16 +38,18 @@ enum AccessibilityAudit {
         return found
     }
 
-    private static func collect(_ element: NSObject, into found: inout [Control], depth: Int) {
+    private static func collect(_ element: any NSAccessibilityProtocol, into found: inout [Control], depth: Int) {
         guard depth < 60 else { return }
-        if let role = element.accessibilityRole(), controlRoles.contains(role), element.isAccessibilityElement() {
-            let label = [element.accessibilityLabel(), element.accessibilityTitle()]
+        // Most of the protocol is optional, hence the ?() calls.
+        if let role = element.accessibilityRole?() ?? nil, controlRoles.contains(role),
+            element.isAccessibilityElement?() ?? true {
+            let label = [element.accessibilityLabel?() ?? nil, element.accessibilityTitle?() ?? nil]
                 .compactMap { $0 }
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
             found.append(Control(role: role.rawValue, label: label, size: element.accessibilityFrame().size))
         }
-        for child in element.accessibilityChildren() ?? [] {
-            if let child = child as? NSObject { collect(child, into: &found, depth: depth + 1) }
+        for child in (element.accessibilityChildren?() ?? nil) ?? [] {
+            if let child = child as? any NSAccessibilityProtocol { collect(child, into: &found, depth: depth + 1) }
         }
     }
 }
