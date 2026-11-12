@@ -314,7 +314,6 @@ struct ConnectionTable: View {
                 .disabled(!commands.canChange)
         }
     }
-    }
 }
 
 /// "Today", "Yesterday", or a date, as the design asks for lists.
