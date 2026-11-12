@@ -1,6 +1,11 @@
 --- a/server/shadow/Sample/sample_shadow.c
 +++ b/server/shadow/Sample/sample_shadow.c
-@@ -20,6 +20,7 @@
+@@ -17,9 +17,12 @@
+  * limitations under the License.
+  */
+ 
++#include <stdio.h>
++
  #include <winpr/crt.h>
  #include <winpr/synch.h>
  #include <winpr/sysinfo.h>
@@ -8,7 +13,7 @@
  
  #include <freerdp/log.h>
  #include <freerdp/codec/color.h>
-@@ -30,6 +31,35 @@
+@@ -30,22 +33,54 @@
  
  #define TAG SERVER_TAG("shadow.sample")
  
@@ -44,7 +49,31 @@
  WINPR_ATTR_NODISCARD
  static BOOL sample_shadow_input_synchronize_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
                                                    WINPR_ATTR_UNUSED rdpShadowClient* client,
-@@ -91,7 +121,13 @@
+-                                                  WINPR_ATTR_UNUSED UINT32 flags)
++                                                  UINT32 flags)
+ {
+-	WLog_WARN(TAG, "TODO: Implement!");
++	/* Vistara test server: report input so tests can check what arrived. */
++	(void)fprintf(stderr, "vistara-input sync flags=0x%08x\n", (unsigned)flags);
++	(void)fflush(stderr);
+ 	return TRUE;
+ }
+ 
+ WINPR_ATTR_NODISCARD
+ static BOOL sample_shadow_input_keyboard_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
+                                                WINPR_ATTR_UNUSED rdpShadowClient* client,
+-                                               WINPR_ATTR_UNUSED UINT16 flags,
+-                                               WINPR_ATTR_UNUSED UINT8 code)
++                                               UINT16 flags, UINT8 code)
+ {
+-	WLog_WARN(TAG, "TODO: Implement!");
++	(void)fprintf(stderr, "vistara-input key flags=0x%04x code=0x%02x\n", (unsigned)flags,
++	              (unsigned)code);
++	(void)fflush(stderr);
+ 	return TRUE;
+ }
+ 
+@@ -91,7 +126,13 @@
  	sampleShadowSubsystem* subsystem = (sampleShadowSubsystem*)arg;
  	WINPR_ASSERT(subsystem);
  
@@ -59,7 +88,7 @@
  
  	WLog_WARN(TAG, "TODO: Implement!");
  
-@@ -124,7 +160,14 @@
+@@ -124,7 +165,14 @@
  	if (!subsystem)
  		return -1;
  
@@ -75,7 +104,7 @@
  
  	return 1;
  }
-@@ -137,7 +180,15 @@
+@@ -137,7 +185,15 @@
  	if (!subsystem)
  		return -1;
  

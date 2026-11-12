@@ -39,6 +39,11 @@ final class SessionHandle {
         func abort() {
             vistara_session_abort(session)
         }
+
+        /// Ends a running `poll` early. Safe from any thread, like `abort`.
+        func wake() {
+            vistara_session_wake(session)
+        }
     }
 
     /// Carries the Swift closure through the C callback's context pointer.
@@ -125,6 +130,19 @@ final class SessionHandle {
     /// Waits for network activity and processes it. False once disconnected.
     func poll(timeoutMilliseconds: UInt32) -> Bool {
         vistara_session_poll(session, timeoutMilliseconds)
+    }
+
+    /// Sends one input event. False when not connected or sending failed.
+    @discardableResult
+    func send(_ event: RDPInputEvent) -> Bool {
+        switch event {
+        case .key(let scancode, let isDown):
+            vistara_session_send_key(session, scancode.code, scancode.isExtended, isDown)
+        case .lockState(let locks):
+            vistara_session_send_lock_state(
+                session, locks.contains(.capsLock), locks.contains(.numLock), locks.contains(.scrollLock)
+            )
+        }
     }
 
     var framebufferWidth: Int { Int(vistara_session_width(session)) }

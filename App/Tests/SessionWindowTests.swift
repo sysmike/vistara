@@ -96,6 +96,8 @@ struct SessionWindowTests {
         let view = try #require(desktop)
         #expect(view.desktopFrame.width > 0)
         #expect(view.accessibilityLabel() == "Remote desktop, Test Server")
+        // Typing goes to the desktop without a click first.
+        #expect(controller.window.firstResponder === view)
 
         // Session > Disconnect closes the window, and that ends the session.
         #expect(controller.window.isVisible)

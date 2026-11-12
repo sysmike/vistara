@@ -45,6 +45,15 @@ final class SessionModel {
         return true
     }
 
+    var isConnected: Bool {
+        phase == .connected
+    }
+
+    /// Sends keyboard input to the remote computer. Dropped unless connected.
+    func send(_ events: [RDPInputEvent]) {
+        session?.send(events)
+    }
+
     /// Starts a session unless one is running.
     func connect() {
         guard session == nil else { return }
