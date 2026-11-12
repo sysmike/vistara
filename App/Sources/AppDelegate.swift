@@ -10,6 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])
     }
 
+    /// Quitting ends every chance to undo a deletion, so the Keychain items
+    /// of deleted connections go now.
+    func applicationWillTerminate(_ notification: Notification) {
+        LibraryModel.shared.removeOrphanedCredentials(from: SessionCoordinator.shared.credentialStore)
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let coordinator = SessionCoordinator.shared
         let count = coordinator.liveSessionCount

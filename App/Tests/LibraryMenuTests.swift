@@ -22,6 +22,20 @@ struct LibraryMenuTests {
     }
 
     @Test
+    func everyConnectionCommandHasItsStandardShortcut() {
+        // Menu, title, and key.
+        let expected = [["File", "Connect", "o"], ["Edit", "Edit Connection…", "i"], ["Edit", "Duplicate", "d"]]
+        for command in expected {
+            let found = item(command[1], in: command[0])
+            #expect(found?.keyEquivalent == command[2], "\(command[1])")
+            #expect(modifiers(found) == .command, "\(command[1])")
+        }
+        let delete = item("Delete Connection", in: "Edit")
+        #expect(delete?.keyEquivalent == "\u{8}")
+        #expect(modifiers(delete) == .command)
+    }
+
+    @Test
     func editHasFindWithCommandF() {
         let find = item("Find", in: "Edit")
         #expect(find?.keyEquivalent == "f")

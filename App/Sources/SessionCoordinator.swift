@@ -11,7 +11,9 @@ final class SessionCoordinator {
     /// The session in the main window, if that is a session window.
     private(set) var activeModel: SessionModel?
     @ObservationIgnored private var controllers: [SessionWindowController] = []
-    @ObservationIgnored private let credentialStore: any CredentialStore
+    @ObservationIgnored let credentialStore: any CredentialStore
+    /// Opens the editor for a saved connection. Set by the Connections window.
+    @ObservationIgnored var editConnection: ((UUID) -> Void)?
     @ObservationIgnored let trustStore: CertificateTrustStore
 
     /// Passwords go to the Keychain and trusted certificates to Application
@@ -44,6 +46,9 @@ final class SessionCoordinator {
         }
 
         let model = SessionModel(target: target, credentialStore: credentialStore, trustStore: trustStore)
+        if let id = target.connectionID {
+            model.onEditConnection = { [weak self] in self?.editConnection?(id) }
+        }
         let controller = SessionWindowController(model: model)
         controller.onMainChange = { [weak self, weak model] isMain in
             guard let self, let model else { return }
@@ -69,6 +74,16 @@ final class SessionCoordinator {
     /// Session > Disconnect does.
     func disconnect(_ model: SessionModel) {
         controllers.first { $0.model === model }?.window.close()
+    }
+
+    /// A saved connection changed: its window, if one is open, uses the new
+    /// settings from the next connection on. A live session carries on as it is.
+    func connectionChanged(_ target: SessionTarget) {
+        guard let id = target.connectionID,
+            let controller = controllers.first(where: { $0.model.target.connectionID == id })
+        else { return }
+        controller.model.retarget(target)
+        controller.updateTitle()
     }
 
     /// Enters or leaves full screen for the session's window. This is what

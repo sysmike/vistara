@@ -107,4 +107,20 @@ struct DisconnectMessageTests {
         #expect(message(.certificateRejected).detail == nil)
         #expect(message(.connectionLost(RDPFailure(kind: .networkLost))).detail == nil)
     }
+
+    @Test
+    func aWrongAddressOffersEditConnectionForASavedConnection() {
+        for kind in [RDPFailure.Kind.hostNotFound, .refused, .cannotConnect] {
+            let failure = RDPDisconnectReason.connectionFailed(RDPFailure(kind: kind))
+            let saved = DisconnectMessage(reason: failure, name: Self.name, host: Self.host, canEditConnection: true)
+            #expect(saved.secondaryAction == .editConnection, "\(kind)")
+            #expect(saved.action == .connect("Try Again"), "\(kind)")
+            #expect(message(failure).secondaryAction == nil, "\(kind)")
+        }
+        let lost = DisconnectMessage(
+            reason: .connectionLost(RDPFailure(kind: .networkLost)), name: Self.name, host: Self.host,
+            canEditConnection: true
+        )
+        #expect(lost.secondaryAction == nil)
+    }
 }

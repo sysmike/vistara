@@ -71,7 +71,9 @@ final class SessionModel {
         case disconnected(RDPDisconnectReason)
     }
 
-    let target: SessionTarget
+    private(set) var target: SessionTarget
+    /// Opens the editor for this session's saved connection, if it has one.
+    @ObservationIgnored var onEditConnection: (() -> Void)?
     private(set) var phase: Phase
     /// A certificate waiting for the user's decision.
     private(set) var pendingCertificate: RDPCertificate?
@@ -127,6 +129,11 @@ final class SessionModel {
     /// Sends keyboard input to the remote computer. Dropped unless connected.
     func send(_ events: [RDPInputEvent]) {
         session?.send(events)
+    }
+
+    /// Takes new settings for the next connection.
+    func retarget(_ target: SessionTarget) {
+        self.target = target
     }
 
     /// Starts a session unless one is running.

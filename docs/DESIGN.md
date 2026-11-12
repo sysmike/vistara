@@ -114,6 +114,14 @@ A sheet on the Connections window, grouped like a System Settings form.
   kept in the Keychain if the user agrees.
 - A choice that weakens security shows one line of explanation beneath it.
 - Return saves, Escape cancels, Tab order follows the visual order.
+- Problems show once a field has been edited, so a new, empty connection
+  does not open with a list of complaints. *Judgment.*
+- Tags arrive with folders and favorites (issue #23), shared folders with
+  folder redirection (issue #27).
+- Edit > Delete Connection (Command-Delete) is named for what it deletes,
+  because Edit > Delete already deletes text. In a text field Command-Delete
+  keeps its usual meaning. A deleted connection's Keychain item is removed at
+  the next launch or quit, when Undo can no longer bring the connection back.
 
 ### Session window
 

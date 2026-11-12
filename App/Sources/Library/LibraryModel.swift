@@ -30,16 +30,37 @@ final class LibraryModel {
     /// Set when the last change could not be saved.
     private(set) var saveFailed = false
 
+    /// What the editor sheet shows, if it is open.
+    enum EditorRequest: Identifiable, Equatable {
+        case new
+        case edit(Connection.ID)
+
+        var id: String {
+            switch self {
+            case .new: "new"
+            case .edit(let id): id.uuidString
+            }
+        }
+    }
+
+    var editorRequest: EditorRequest?
+    /// The rows selected in the table.
+    var selectedIDs = Set<Connection.ID>()
+
     var selection = SidebarItem.all
     var searchText = ""
     var sortOrder = [KeyPathComparator(\Connection.name, comparator: .localizedStandard)]
 
     @ObservationIgnored private let store: ConnectionStore
+    @ObservationIgnored private var pendingSave: Task<Void, Never>?
     private static let log = RDPLogging.logger("Library")
 
     init(store: ConnectionStore) {
         self.store = store
     }
+
+    /// The app's library. Tests make their own.
+    static let shared = standard()
 
     /// Vistara's library in Application Support.
     static func standard() -> LibraryModel {
@@ -68,10 +89,108 @@ final class LibraryModel {
 
     // MARK: Changes
 
+    func connection(_ id: Connection.ID) -> Connection? {
+        library.connections.first { $0.id == id }
+    }
+
     func add(_ connection: Connection) async {
+        await save(connection)
+    }
+
+    /// Adds the connection, or replaces the one with the same identifier.
+    func save(_ connection: Connection) async {
         guard canChange else { return }
-        library.connections.append(connection)
+        if let index = library.connections.firstIndex(where: { $0.id == connection.id }) {
+            library.connections[index] = connection
+        } else {
+            library.connections.append(connection)
+        }
         await save()
+    }
+
+    /// Copies the connections, each after its original, and returns the
+    /// copies' identifiers. A copy is never used yet and has its own Keychain
+    /// item, so it asks for a password the first time.
+    @discardableResult
+    func duplicate(_ ids: Set<Connection.ID>) async -> [Connection.ID] {
+        guard canChange else { return [] }
+        var copies: [Connection.ID] = []
+        for original in library.connections where ids.contains(original.id) {
+            var copy = original
+            copy.id = UUID()
+            copy.name = copyName(for: original.name.isEmpty ? original.host : original.name)
+            copy.lastConnectedAt = nil
+            copy.isFavorite = false
+            guard let index = library.connections.firstIndex(where: { $0.id == original.id }) else { continue }
+            library.connections.insert(copy, at: index + 1)
+            copies.append(copy.id)
+        }
+        await save()
+        return copies
+    }
+
+    /// "Build Server Copy", then "Build Server Copy 2", as Finder does.
+    private func copyName(for name: String) -> String {
+        let names = Set(library.connections.map(\.name))
+        var candidate = "\(name) Copy"
+        var number = 2
+        while names.contains(candidate) {
+            candidate = "\(name) Copy \(number)"
+            number += 1
+        }
+        return candidate
+    }
+
+    /// Deletes without asking; Undo restores. The connections' Keychain items
+    /// stay until the deletion can no longer be undone: see
+    /// `removeOrphanedCredentials(from:)`.
+    ///
+    /// Synchronous, so that when Redo calls it from an undo handler the undo
+    /// manager records its registration as the matching Undo.
+    func delete(_ ids: Set<Connection.ID>, undoManager: UndoManager?) {
+        guard canChange else { return }
+        let removed = library.connections.enumerated().filter { ids.contains($0.element.id) }
+            .map { RemovedConnection(index: $0.offset, connection: $0.element) }
+        guard !removed.isEmpty else { return }
+        library.connections.removeAll { ids.contains($0.id) }
+        selectedIDs.subtract(ids)
+        scheduleSave()
+        undoManager?.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { model.restore(removed, undoManager: undoManager) }
+        }
+        undoManager?.setActionName(removed.count == 1 ? "Delete Connection" : "Delete Connections")
+    }
+
+    struct RemovedConnection: Sendable {
+        var index: Int
+        var connection: Connection
+    }
+
+    /// Puts deleted connections back where they were. Called by Undo.
+    private func restore(_ removed: [RemovedConnection], undoManager: UndoManager?) {
+        guard canChange else { return }
+        for item in removed.sorted(by: { $0.index < $1.index }) {
+            library.connections.insert(item.connection, at: min(item.index, library.connections.count))
+        }
+        let ids = Set(removed.map(\.connection.id))
+        selectedIDs = ids
+        scheduleSave()
+        undoManager?.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { model.delete(ids, undoManager: undoManager) }
+        }
+        undoManager?.setActionName(removed.count == 1 ? "Delete Connection" : "Delete Connections")
+    }
+
+    /// Removes the Keychain items of connections that are no longer in the
+    /// library. Called at launch and at quit, when no Undo can bring a
+    /// deleted connection back. Never runs while the library is unreadable
+    /// or unsaved, so a missing connection always really is gone.
+    func removeOrphanedCredentials(from store: any CredentialStore) {
+        guard loadState == .loaded, !saveFailed, let keys = try? store.keys() else { return }
+        let kept = Set(library.connections.map(\.id.uuidString))
+        for key in keys where !kept.contains(key) {
+            try? store.remove(for: key)
+        }
     }
 
     /// Notes that a connection was just used.
@@ -81,14 +200,32 @@ final class LibraryModel {
         await save()
     }
 
-    private func save() async {
-        do {
-            try await store.save(library)
-            saveFailed = false
-        } catch {
-            Self.log.error("Saving the library failed: \(String(describing: error), privacy: .public)")
-            saveFailed = true
+    /// Writes the library as it is now, after any write still in progress,
+    /// so writes land in the order the changes were made.
+    private func scheduleSave() {
+        let previous = pendingSave
+        let snapshot = library
+        let store = store
+        pendingSave = Task { [weak self] in
+            await previous?.value
+            do {
+                try await store.save(snapshot)
+                self?.saveFailed = false
+            } catch {
+                Self.log.error("Saving the library failed: \(String(describing: error), privacy: .public)")
+                self?.saveFailed = true
+            }
         }
+    }
+
+    private func save() async {
+        scheduleSave()
+        await flushSaves()
+    }
+
+    /// Waits until every change so far is written.
+    func flushSaves() async {
+        await pendingSave?.value
     }
 
     // MARK: Sidebar

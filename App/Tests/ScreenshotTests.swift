@@ -65,10 +65,34 @@ struct ScreenshotTests {
         #expect(first > 0 && second > 0)
     }
 
+    @Test(arguments: [false, true])
+    func editor(dark: Bool) async throws {
+        var draft = ConnectionDraft(SampleLibrary.library.connections[0])
+        draft.resolutionMode = .fixed
+        draft.requiresNLA = false
+        let view = ConnectionEditor(draft: draft, folders: [SampleLibrary.lab, SampleLibrary.office]) { _ in }
+        let name = dark ? "editor-dark" : "editor"
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 480, height: 760), name: name, dark: dark)
+        #expect(bytes > 0)
+    }
+
     @Test
-    func newConnection() async throws {
-        let view = NewConnectionSheet { _ in }
-        let bytes = try await Screenshots.write(view, size: NSSize(width: 400, height: 170), name: "new-connection")
+    func editorForANewConnectionWithAProblem() async throws {
+        var draft = ConnectionDraft()
+        draft.host = "build01:3390"
+        let view = ConnectionEditor(draft: draft, folders: [], showsProblems: true) { _ in }
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 480, height: 640), name: "editor-new")
+        #expect(bytes > 0)
+    }
+
+    @Test
+    func failureWithEditConnection() async throws {
+        let message = DisconnectMessage(
+            reason: .connectionFailed(RDPFailure(kind: .hostNotFound)), name: "Build Server",
+            host: "build01.example.com", canEditConnection: true
+        )
+        let view = DisconnectedView(message: message) { _ in }
+        let bytes = try await Screenshots.write(view, size: Self.windowSize, name: "not-found-edit")
         #expect(bytes > 0)
     }
 

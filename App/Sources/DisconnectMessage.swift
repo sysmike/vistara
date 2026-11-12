@@ -8,11 +8,14 @@ struct DisconnectMessage: Equatable {
         case connect(String)
         /// Connect again and ask for credentials, even when some are saved.
         case useAnotherAccount
+        /// Open the saved connection in the editor.
+        case editConnection
 
         var title: String {
             switch self {
             case .connect(let title): title
             case .useAnotherAccount: "Use Another Account"
+            case .editConnection: "Edit Connection"
             }
         }
     }
@@ -20,12 +23,16 @@ struct DisconnectMessage: Equatable {
     var title: String
     var explanation: String?
     var action: Action?
+    /// A second, less likely button beside `action`.
+    var secondaryAction: Action?
     /// Technical detail for a bug report, behind a disclosure. Never names an
     /// account and never holds a password.
     var detail: String?
 
     /// `name` is the connection's name, `host` the address connected to.
-    init(reason: RDPDisconnectReason, name: String, host: String) {
+    /// `canEditConnection` offers Edit Connection where a wrong address or
+    /// port is a likely cause.
+    init(reason: RDPDisconnectReason, name: String, host: String, canEditConnection: Bool = false) {
         switch reason {
         // Disconnecting a running session closes its window, so a window only
         // shows this after Cancel while connecting.
@@ -40,6 +47,9 @@ struct DisconnectMessage: Equatable {
             self.init("The user name or password is incorrect", nil, .useAnotherAccount)
         case .connectionFailed(let failure), .connectionLost(let failure):
             self.init(failure.kind, name: name, host: host)
+            if canEditConnection, [.hostNotFound, .refused, .cannotConnect].contains(failure.kind) {
+                secondaryAction = .editConnection
+            }
             let detail = failure.technicalDetail
             self.detail = detail.isEmpty ? nil : detail
         }
