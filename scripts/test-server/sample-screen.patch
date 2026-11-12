@@ -255,7 +255,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,241 @@
+@@ -37,6 +37,481 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -467,6 +467,246 @@
 +	state->cliprdr = nullptr;
 +}
 +
++/* Vistara test server: shared folders. For every drive a client announces,
++ * the server lists its top folder, reads hello.txt, tries to leave the folder
++ * through ".." (and reads what it got, if the client said yes), and writes
++ * from-server.txt, reporting each result. Tests
++ * check that only the shared folders arrive and what each operation did. */
++#include <freerdp/server/rdpdr.h>
++
++#define VISTARA_FILE_READ_DATA 0x00000001u
++#define VISTARA_FILE_WRITE_DATA 0x00000002u
++#define VISTARA_FILE_OPEN 0x00000001u
++#define VISTARA_FILE_OVERWRITE_IF 0x00000005u
++
++static const char vistara_drive_text[] = "written by the test server";
++
++typedef enum
++{
++	VISTARA_DRIVE_LIST,
++	VISTARA_DRIVE_READ_OPEN,
++	VISTARA_DRIVE_READ,
++	VISTARA_DRIVE_READ_CLOSE,
++	VISTARA_DRIVE_ESCAPE_OPEN,
++	VISTARA_DRIVE_ESCAPE_READ,
++	VISTARA_DRIVE_ESCAPE_CLOSE,
++	VISTARA_DRIVE_WRITE_OPEN,
++	VISTARA_DRIVE_WRITE,
++	VISTARA_DRIVE_WRITE_CLOSE
++} vistaraDriveStep;
++
++/* One drive's way through the steps above. */
++typedef struct
++{
++	UINT32 deviceId;
++	UINT32 fileId;
++	char name[9];
++	vistaraDriveStep step;
++} vistaraDriveRun;
++
++typedef struct
++{
++	RdpdrServerContext* rdpdr;
++	BOOL tried;
++} vistaraDrives;
++
++static void vistara_drive_report(const vistaraDriveRun* run, const char* event, UINT32 status)
++{
++	(void)fprintf(stderr, "vistara-drive %s name=%s status=0x%08x\n", event, run->name,
++	              (unsigned)status);
++	(void)fflush(stderr);
++}
++
++static void vistara_drive_done(vistaraDriveRun* run)
++{
++	(void)fprintf(stderr, "vistara-drive done name=%s\n", run->name);
++	(void)fflush(stderr);
++	free(run);
++}
++
++static void vistara_drive_write_open(RdpdrServerContext* context, vistaraDriveRun* run)
++{
++	run->step = VISTARA_DRIVE_WRITE_OPEN;
++	if (context->DriveOpenFile(context, run, run->deviceId, "\\from-server.txt",
++	                           VISTARA_FILE_WRITE_DATA, VISTARA_FILE_OVERWRITE_IF) != CHANNEL_RC_OK)
++		vistara_drive_done(run);
++}
++
++static void vistara_drive_escape_open(RdpdrServerContext* context, vistaraDriveRun* run)
++{
++	run->step = VISTARA_DRIVE_ESCAPE_OPEN;
++	if (context->DriveOpenFile(context, run, run->deviceId, "\\..\\outside.txt",
++	                           VISTARA_FILE_READ_DATA, VISTARA_FILE_OPEN) != CHANNEL_RC_OK)
++		vistara_drive_done(run);
++}
++
++static void vistara_drive_close(RdpdrServerContext* context, vistaraDriveRun* run,
++                                vistaraDriveStep step)
++{
++	run->step = step;
++	if (context->DriveCloseFile(context, run, run->deviceId, run->fileId) != CHANNEL_RC_OK)
++		vistara_drive_done(run);
++}
++
++static UINT vistara_drive_created(RdpdrServerContext* context, const RdpdrDevice* device)
++{
++	vistaraDriveRun* run = calloc(1, sizeof(vistaraDriveRun));
++	if (!run)
++		return CHANNEL_RC_NO_MEMORY;
++	run->deviceId = device->DeviceId;
++	memcpy(run->name, device->PreferredDosName, sizeof(device->PreferredDosName));
++	(void)fprintf(stderr, "vistara-drive announced name=%s\n", run->name);
++	(void)fflush(stderr);
++	run->step = VISTARA_DRIVE_LIST;
++	if (context->DriveQueryDirectory(context, run, run->deviceId, "") != CHANNEL_RC_OK)
++		vistara_drive_done(run);
++	return CHANNEL_RC_OK;
++}
++
++static void vistara_drive_listed(RdpdrServerContext* context, void* data, UINT32 status,
++                                 FILE_DIRECTORY_INFORMATION* fdi)
++{
++	vistaraDriveRun* run = data;
++	if (status == STATUS_SUCCESS)
++	{
++		if (fdi)
++		{
++			(void)fprintf(stderr, "vistara-drive list name=%s file=%s\n", run->name, fdi->FileName);
++			(void)fflush(stderr);
++		}
++		return;
++	}
++	/* The end of the listing, or its failure. */
++	vistara_drive_report(run, "list-end", status);
++	run->step = VISTARA_DRIVE_READ_OPEN;
++	if (context->DriveOpenFile(context, run, run->deviceId, "\\hello.txt", VISTARA_FILE_READ_DATA,
++	                           VISTARA_FILE_OPEN) != CHANNEL_RC_OK)
++		vistara_drive_done(run);
++}
++
++static void vistara_drive_opened(RdpdrServerContext* context, void* data, UINT32 status,
++                                 WINPR_ATTR_UNUSED UINT32 deviceId, UINT32 fileId)
++{
++	vistaraDriveRun* run = data;
++	run->fileId = fileId;
++	switch (run->step)
++	{
++		case VISTARA_DRIVE_READ_OPEN:
++			if (status != STATUS_SUCCESS)
++			{
++				vistara_drive_report(run, "read", status);
++				vistara_drive_escape_open(context, run);
++				return;
++			}
++			run->step = VISTARA_DRIVE_READ;
++			if (context->DriveReadFile(context, run, run->deviceId, fileId, 4096, 0) !=
++			    CHANNEL_RC_OK)
++				vistara_drive_done(run);
++			return;
++		case VISTARA_DRIVE_ESCAPE_OPEN:
++			vistara_drive_report(run, "escape", status);
++			if (status != STATUS_SUCCESS)
++			{
++				vistara_drive_write_open(context, run);
++				return;
++			}
++			run->step = VISTARA_DRIVE_ESCAPE_READ;
++			if (context->DriveReadFile(context, run, run->deviceId, fileId, 4096, 0) !=
++			    CHANNEL_RC_OK)
++				vistara_drive_done(run);
++			return;
++		case VISTARA_DRIVE_WRITE_OPEN:
++			if (status != STATUS_SUCCESS)
++			{
++				vistara_drive_report(run, "write", status);
++				vistara_drive_done(run);
++				return;
++			}
++			run->step = VISTARA_DRIVE_WRITE;
++			if (context->DriveWriteFile(context, run, run->deviceId, fileId, vistara_drive_text,
++			                            sizeof(vistara_drive_text) - 1, 0) != CHANNEL_RC_OK)
++				vistara_drive_done(run);
++			return;
++		default:
++			vistara_drive_done(run);
++			return;
++	}
++}
++
++static void vistara_drive_read(RdpdrServerContext* context, void* data, UINT32 status,
++                               const char* buffer, UINT32 length)
++{
++	vistaraDriveRun* run = data;
++	const BOOL escaped = run->step == VISTARA_DRIVE_ESCAPE_READ;
++	(void)fprintf(stderr, "vistara-drive %s name=%s status=0x%08x data=",
++	              escaped ? "escape-read" : "read", run->name, (unsigned)status);
++	for (UINT32 i = 0; buffer && (i < length); i++)
++		(void)fprintf(stderr, "%02x", (unsigned)(BYTE)buffer[i]);
++	(void)fprintf(stderr, "\n");
++	(void)fflush(stderr);
++	vistara_drive_close(context, run, escaped ? VISTARA_DRIVE_ESCAPE_CLOSE : VISTARA_DRIVE_READ_CLOSE);
++}
++
++static void vistara_drive_written(RdpdrServerContext* context, void* data, UINT32 status,
++                                  WINPR_ATTR_UNUSED UINT32 bytesWritten)
++{
++	vistaraDriveRun* run = data;
++	vistara_drive_report(run, "write", status);
++	vistara_drive_close(context, run, VISTARA_DRIVE_WRITE_CLOSE);
++}
++
++static void vistara_drive_closed(RdpdrServerContext* context, void* data,
++                                 WINPR_ATTR_UNUSED UINT32 status)
++{
++	vistaraDriveRun* run = data;
++	switch (run->step)
++	{
++		case VISTARA_DRIVE_READ_CLOSE:
++			vistara_drive_escape_open(context, run);
++			return;
++		case VISTARA_DRIVE_ESCAPE_CLOSE:
++			vistara_drive_write_open(context, run);
++			return;
++		default:
++			vistara_drive_done(run);
++			return;
++	}
++}
++
++static void vistara_drives_open(rdpShadowClient* client, vistaraDrives* state)
++{
++	if (state->tried || !client->activated ||
++	    !WTSVirtualChannelManagerIsChannelJoined(client->vcm, RDPDR_SVC_CHANNEL_NAME))
++		return;
++	state->tried = TRUE;
++	RdpdrServerContext* rdpdr = rdpdr_server_context_new(client->vcm);
++	if (!rdpdr)
++		return;
++	rdpdr->rdpcontext = &client->context;
++	rdpdr->supported = RDPDR_DTYP_FILESYSTEM;
++	rdpdr->OnDriveCreate = vistara_drive_created;
++	rdpdr->OnDriveQueryDirectoryComplete = vistara_drive_listed;
++	rdpdr->OnDriveOpenFileComplete = vistara_drive_opened;
++	rdpdr->OnDriveReadFileComplete = vistara_drive_read;
++	rdpdr->OnDriveWriteFileComplete = vistara_drive_written;
++	rdpdr->OnDriveCloseFileComplete = vistara_drive_closed;
++	if (rdpdr->Start(rdpdr) != CHANNEL_RC_OK)
++	{
++		rdpdr_server_context_free(rdpdr);
++		return;
++	}
++	state->rdpdr = rdpdr;
++}
++
++static void vistara_drives_close(vistaraDrives* state)
++{
++	if (!state->rdpdr)
++		return;
++	(void)state->rdpdr->Stop(state->rdpdr);
++	rdpdr_server_context_free(state->rdpdr);
++	state->rdpdr = nullptr;
++}
++
 +/* Runs on the client's own thread, which also sends its updates. */
 +static void vistara_apply_resize(rdpShadowClient* client)
 +{
@@ -497,27 +737,29 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -2845,6 +3080,8 @@
+@@ -2845,6 +3320,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
 +	vistaraDisp vistara_disp = WINPR_C_ARRAY_INIT;
 +	vistaraClipboard vistara_clipboard = WINPR_C_ARRAY_INIT;
++	vistaraDrives vistara_drives = WINPR_C_ARRAY_INIT;
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3187,10 @@
+@@ -2950,6 +3428,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
 +		vistara_disp_send_caps(&vistara_disp);
 +		vistara_clipboard_open(client, &vistara_clipboard);
++		vistara_drives_open(client, &vistara_drives);
 +		vistara_apply_resize(client);
 +
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3278,8 @@
+@@ -3037,6 +3520,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -526,11 +768,12 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3433,14 @@
+@@ -3190,6 +3675,15 @@
  
  fail:
  
 +	vistara_clipboard_close(&vistara_clipboard);
++	vistara_drives_close(&vistara_drives);
 +	if (vistara_disp.disp)
 +	{
 +		WTSVirtualChannelManagerSetDVCCreationCallback(client->vcm, nullptr, nullptr);

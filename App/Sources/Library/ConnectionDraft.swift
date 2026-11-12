@@ -19,6 +19,8 @@ struct ConnectionDraft: Equatable {
 
     var sharesClipboard = true
     var audioMode = Connection.AudioMode.playOnThisMac
+    /// The only folders the remote computer sees.
+    var sharedFolders: [Connection.SharedFolder] = []
 
     var reconnectsAutomatically = true
     var requiresNLA = true
@@ -45,12 +47,26 @@ struct ConnectionDraft: Equatable {
         usesHiDPI = connection.usesHiDPI
         sharesClipboard = connection.sharesClipboard
         audioMode = connection.audioMode
+        sharedFolders = connection.sharedFolders
         reconnectsAutomatically = connection.reconnectsAutomatically
         requiresNLA = connection.requiresNLA
         certificatePolicy = connection.certificatePolicy
     }
 
     var isNew: Bool { original == nil }
+
+    // MARK: Shared folders
+
+    /// Adds folders, skipping any already shared.
+    mutating func share(_ folders: [Connection.SharedFolder]) {
+        for folder in folders where !sharedFolders.contains(where: { $0.path == folder.path }) {
+            sharedFolders.append(folder)
+        }
+    }
+
+    mutating func stopSharing(_ path: String) {
+        sharedFolders.removeAll { $0.path == path }
+    }
 
     // MARK: Validation
 
@@ -138,6 +154,7 @@ struct ConnectionDraft: Equatable {
         connection.usesHiDPI = usesHiDPI
         connection.sharesClipboard = sharesClipboard
         connection.audioMode = audioMode
+        connection.sharedFolders = sharedFolders
         connection.reconnectsAutomatically = reconnectsAutomatically
         connection.requiresNLA = requiresNLA
         connection.certificatePolicy = certificatePolicy

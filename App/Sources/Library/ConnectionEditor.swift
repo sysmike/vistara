@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import VistaraCore
 
 /// Creates or edits one connection. A sheet on the Connections window,
@@ -14,6 +15,7 @@ struct ConnectionEditor: View {
     @State private var draft: ConnectionDraft
     /// Problems show once a field has been edited, or after trying to save.
     @State private var showsProblems: Bool
+    @State private var isChoosingFolders = false
 
     init(
         draft: ConnectionDraft, folders: [Folder], knownTags: [String] = [], showsProblems: Bool? = nil,
@@ -32,6 +34,7 @@ struct ConnectionEditor: View {
                 general
                 display
                 devices
+                sharedFolders
                 security
             }
             .formStyle(.grouped)
@@ -120,6 +123,33 @@ struct ConnectionEditor: View {
                 Text("Play on Remote Computer").tag(Connection.AudioMode.playOnRemote)
                 Text("Off").tag(Connection.AudioMode.off)
             }
+        }
+    }
+
+    private var sharedFolders: some View {
+        Section {
+            if draft.sharedFolders.isEmpty {
+                Text("No folders are shared.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach($draft.sharedFolders, id: \.path) { $folder in
+                SharedFolderRow(folder: $folder) { draft.stopSharing(folder.path) }
+            }
+            Button("Add Folder…") { isChoosingFolders = true }
+                .fileImporter(
+                    isPresented: $isChoosingFolders, allowedContentTypes: [.folder], allowsMultipleSelection: true
+                ) { result in
+                    guard case .success(let urls) = result else { return }
+                    draft.share(urls.compactMap { try? SharedFolderAccess.sharedFolder(for: $0) })
+                }
+        } header: {
+            Text("Shared Folders")
+        } footer: {
+            Text("The remote computer sees only these folders, each as a drive named after the folder.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

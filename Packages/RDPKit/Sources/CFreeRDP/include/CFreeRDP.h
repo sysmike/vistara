@@ -62,6 +62,16 @@ typedef struct {
 typedef bool (*vistara_certificate_decider)(void *_Nullable context,
                                             const vistara_certificate *certificate);
 
+/// A Mac folder shared with the remote computer as a drive.
+typedef struct {
+    /// The drive's name on the remote computer.
+    const char *name;
+    /// The folder's absolute path.
+    const char *path;
+    /// Refuse every request that would change something in the folder.
+    bool read_only;
+} vistara_shared_folder;
+
 typedef struct {
     const char *host;
     uint16_t port;
@@ -84,6 +94,12 @@ typedef struct {
     /// Load the clipboard channel and share text both ways. When false the
     /// channel is not loaded, so no clipboard data can pass in either direction.
     bool share_clipboard;
+    /// The folders to share, each as one drive. With none, the device
+    /// redirection channel is not loaded, so nothing on this Mac is shared.
+    /// Nothing else is ever shared: not the home folder, not other drives,
+    /// and not drives plugged in later.
+    const vistara_shared_folder *_Nullable shared_folders;
+    size_t shared_folder_count;
     /// Asked about every server certificate. With NULL, every certificate is
     /// rejected: nothing is ever accepted silently.
     vistara_certificate_decider _Nullable decide_certificate;
@@ -149,6 +165,10 @@ typedef struct {
 
 /// Reads what the sound channel did.
 void vistara_session_read_audio(vistara_session *session, vistara_audio_status *status);
+
+/// Requests the remote computer made to change a read-only shared folder,
+/// which were refused, in all sessions. For tests.
+uint64_t vistara_drive_refused_count(void);
 
 /// Makes every session's sound output act as if the user had picked another
 /// default output, within half a second. For tests: CI machines have no

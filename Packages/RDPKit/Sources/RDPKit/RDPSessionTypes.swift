@@ -10,6 +10,23 @@ public enum RDPAudioMode: Sendable, Hashable {
     case off
 }
 
+/// A Mac folder shared with the remote computer, which sees it as a drive.
+public struct RDPSharedFolder: Sendable, Equatable {
+    /// The drive's name on the remote computer.
+    public var name: String
+    /// The folder's absolute path. The process must be able to open it: inside
+    /// the App Sandbox, through a security-scoped bookmark.
+    public var path: String
+    /// The remote computer may read but not change anything in the folder.
+    public var isReadOnly: Bool
+
+    public init(name: String, path: String, isReadOnly: Bool) {
+        self.name = name
+        self.path = path
+        self.isReadOnly = isReadOnly
+    }
+}
+
 /// What a session connects to and how. Holds no password: the session asks
 /// for credentials when it needs them.
 public struct RDPSessionConfiguration: Sendable, Equatable {
@@ -28,6 +45,9 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     /// Loads the clipboard channel and shares text both ways. When false the
     /// channel is not loaded at all.
     public var sharesClipboard: Bool
+    /// The only folders the remote computer sees. Empty: none, and the device
+    /// redirection channel is not loaded.
+    public var sharedFolders: [RDPSharedFolder]
     /// Applied by reconnection (issue #28).
     public var reconnectsAutomatically: Bool
 
@@ -42,6 +62,7 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         requiresNLA: Bool = true,
         audio: RDPAudioMode = .thisMac,
         sharesClipboard: Bool = true,
+        sharedFolders: [RDPSharedFolder] = [],
         reconnectsAutomatically: Bool = true
     ) {
         self.host = host
@@ -54,6 +75,7 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         self.requiresNLA = requiresNLA
         self.audio = audio
         self.sharesClipboard = sharesClipboard
+        self.sharedFolders = sharedFolders
         self.reconnectsAutomatically = reconnectsAutomatically
     }
 }

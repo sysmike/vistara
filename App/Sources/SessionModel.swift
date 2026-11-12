@@ -27,6 +27,8 @@ struct SessionTarget: Equatable, Sendable {
     var audioMode = Connection.AudioMode.playOnThisMac
     var sharesClipboard = true
     var reconnectsAutomatically = true
+    /// Opened for each session by SharedFolderAccess.
+    var sharedFolders: [Connection.SharedFolder] = []
 
     /// What RDPKit is told about this target, for a desktop of the given size.
     func configuration(desktop: DesktopSize) -> RDPSessionConfiguration {
@@ -121,6 +123,8 @@ final class SessionModel {
     /// Whether the session window is the key window. Set by the window.
     @ObservationIgnored var isInFront: () -> Bool = { false }
     @ObservationIgnored private var clipboard: ClipboardBridge?
+    /// The shared folders, open while a session runs.
+    @ObservationIgnored private var folderAccess: SharedFolderAccess?
 
     /// The desktop size that fills the session window now. Set by the window.
     @ObservationIgnored var windowDesktopSize: (() -> DesktopSize?)?
@@ -198,7 +202,10 @@ final class SessionModel {
         let desktop = startingDesktopSize()
         connectedScale = desktop.scalePercent
         refusedCertificateByPolicy = false
-        let configuration = target.configuration(desktop: desktop)
+        var configuration = target.configuration(desktop: desktop)
+        let access = SharedFolderAccess(target.sharedFolders)
+        folderAccess = access
+        configuration.sharedFolders = access.folders
         let session = RDPSession(configuration: configuration, delegate: delegate)
         self.session = session
         framebuffer = session.framebuffer
@@ -286,6 +293,8 @@ final class SessionModel {
         case .disconnected(let reason):
             clipboard?.stop()
             clipboard = nil
+            folderAccess?.stop()
+            folderAccess = nil
             session = nil
             enteredCredentials = nil
             answerCertificate(trust: false)

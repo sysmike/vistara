@@ -20,6 +20,7 @@ final class SessionHandle {
         /// sound channel.
         var audio: RDPAudioMode = .off
         var sharesClipboard = false
+        var sharedFolders: [RDPSharedFolder] = []
     }
 
     enum ConnectResult: Equatable {
@@ -102,6 +103,7 @@ final class SessionHandle {
         }
 
         let decider = decideCertificate.map(CertificateDecider.init)
+        let folders = SharedFolderList(target.sharedFolders)
         var options = vistara_connect_options(
             host: host,
             port: target.port,
@@ -115,6 +117,8 @@ final class SessionHandle {
             play_audio_on_remote: target.audio == .remote,
             play_audio_here: target.audio == .thisMac,
             share_clipboard: target.sharesClipboard,
+            shared_folders: nil,
+            shared_folder_count: 0,
             decide_certificate: nil,
             decide_certificate_context: nil
         )
@@ -123,7 +127,11 @@ final class SessionHandle {
             options.decide_certificate_context = Unmanaged.passUnretained(decider).toOpaque()
         }
 
-        return withExtendedLifetime(decider) {
+        // Valid while `folders` lives, which the call below ensures.
+        options.shared_folders = folders.pointer.map { UnsafePointer($0) }
+        options.shared_folder_count = folders.count
+
+        return withExtendedLifetime((decider, folders)) {
             switch vistara_session_connect(session, &options) {
             case VISTARA_CONNECT_OK: .connected
             case VISTARA_CONNECT_CERTIFICATE_UNTRUSTED: .certificateRejected
@@ -228,34 +236,6 @@ final class SessionHandle {
     /// Bytes of clipboard data sent to the remote computer. For tests.
     var clipboardBytesSent: UInt64 { vistara_session_clipboard_bytes_sent(session) }
 
-    /// What the sound channel did. For tests.
-    struct AudioStatus: Equatable {
-        var channelLoaded: Bool
-        var framesReceived: UInt64
-        var framesDropped: UInt64
-        var sampleRate: UInt32
-        var channels: UInt32
-        var outputsOpened: UInt32
-        var outputChanges: UInt32
-        var outputRunning: Bool
-    }
-
-    var audioStatus: AudioStatus {
-        var status = vistara_audio_status()
-        vistara_session_read_audio(session, &status)
-        return AudioStatus(
-            channelLoaded: status.channel_loaded, framesReceived: status.frames_received,
-            framesDropped: status.frames_dropped, sampleRate: status.sample_rate, channels: status.channels,
-            outputsOpened: status.outputs_opened, outputChanges: status.output_changes,
-            outputRunning: status.output_running
-        )
-    }
-
-    /// Makes every sound output act as if another default output was picked. For tests.
-    static func pretendAudioOutputChanged() {
-        vistara_audio_pretend_output_changed()
-    }
-
     /// The cursor the server asked for, if it changed since the last call.
     func takeCursor() -> RDPCursor? {
         var cursor = vistara_cursor()
@@ -332,5 +312,69 @@ extension RDPFailure {
     /// The shim's diagnostic connection, for tests.
     static func probe(host: String, port: UInt16, timeoutMilliseconds: Int32) -> Int32 {
         vistara_probe_connection(host, port, timeoutMilliseconds)
+    }
+}
+
+/// What the shim counted, for tests.
+extension SessionHandle {
+    /// Requests to change a read-only shared folder that were refused, in all
+    /// sessions. For tests.
+    static var refusedDriveRequests: UInt64 { vistara_drive_refused_count() }
+
+    /// What the sound channel did. For tests.
+    struct AudioStatus: Equatable {
+        var channelLoaded: Bool
+        var framesReceived: UInt64
+        var framesDropped: UInt64
+        var sampleRate: UInt32
+        var channels: UInt32
+        var outputsOpened: UInt32
+        var outputChanges: UInt32
+        var outputRunning: Bool
+    }
+
+    var audioStatus: AudioStatus {
+        var status = vistara_audio_status()
+        vistara_session_read_audio(session, &status)
+        return AudioStatus(
+            channelLoaded: status.channel_loaded, framesReceived: status.frames_received,
+            framesDropped: status.frames_dropped, sampleRate: status.sample_rate, channels: status.channels,
+            outputsOpened: status.outputs_opened, outputChanges: status.output_changes,
+            outputRunning: status.output_running
+        )
+    }
+
+    /// Makes every sound output act as if another default output was picked. For tests.
+    static func pretendAudioOutputChanged() {
+        vistara_audio_pretend_output_changed()
+    }
+}
+
+/// Shared folders as the C interface takes them, valid while this lives.
+private final class SharedFolderList {
+    private var strings: [UnsafeMutablePointer<CChar>] = []
+    private var folders: [vistara_shared_folder] = []
+    private(set) var pointer: UnsafeMutablePointer<vistara_shared_folder>?
+
+    init(_ shared: [RDPSharedFolder]) {
+        for folder in shared {
+            guard let name = strdup(folder.name) else { continue }
+            guard let path = strdup(folder.path) else {
+                free(name)
+                continue
+            }
+            strings += [name, path]
+            folders.append(vistara_shared_folder(name: name, path: path, read_only: folder.isReadOnly))
+        }
+        guard !folders.isEmpty else { return }
+        pointer = .allocate(capacity: folders.count)
+        pointer?.initialize(from: folders, count: folders.count)
+    }
+
+    var count: Int { folders.count }
+
+    deinit {
+        pointer?.deallocate()
+        strings.forEach { free($0) }
     }
 }
