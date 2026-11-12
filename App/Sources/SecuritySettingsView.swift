@@ -11,6 +11,11 @@ struct SecuritySettingsView: View {
     @State private var selection: TrustedCertificate.ID?
     @State private var removalFailed = false
 
+    init(trustStore: CertificateTrustStore, selection: TrustedCertificate.ID? = nil) {
+        self.trustStore = trustStore
+        _selection = State(initialValue: selection)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Trusted Certificates")
@@ -44,6 +49,19 @@ struct SecuritySettingsView: View {
                 }
             }
 
+            // The list shortens fingerprints; comparing needs all of one.
+            Group {
+                if let selected = certificates.first(where: { $0.id == selection }) {
+                    Text(CertificateSheet.lines(ofFingerprint: selected.fingerprint))
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                } else {
+                    Text("Select a certificate to see its whole fingerprint.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
+
             HStack {
                 if removalFailed {
                     Label("The certificate couldn’t be removed.", systemImage: "exclamationmark.triangle")
@@ -54,7 +72,7 @@ struct SecuritySettingsView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 560, minHeight: 320)
+        .frame(minWidth: 560, minHeight: 360)
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             reload()
