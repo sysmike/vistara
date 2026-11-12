@@ -46,6 +46,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // Restores size and position from the last window for this computer.
         window.setFrameAutosaveName("Session \(target.host):\(target.port)")
         window.delegate = self
+        model.isInFront = { [weak window] in window?.isKeyWindow ?? false }
         model.windowDesktopSize = { [weak window, weak model] in
             guard let window, let model else { return nil }
             return DesktopSize.filling(

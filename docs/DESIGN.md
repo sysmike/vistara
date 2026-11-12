@@ -300,6 +300,18 @@ means Ctrl+Alt+Backspace cannot be typed directly, which we accept.
 
 The Dock menu lists favorites and open sessions.
 
+### Clipboard
+
+- Text is shared both ways when the connection's Share clipboard is on; when
+  it is off the clipboard channel is not loaded at all.
+- What the remote computer copies is on the Mac's clipboard at once. What is
+  copied on the Mac is offered to the remote computer only while that
+  session's window is in front, so it does not leave the Mac until you go
+  there. *Judgment.*
+- Items marked concealed or transient by password managers (the
+  `org.nspasteboard` convention) are never offered.
+- Line endings are converted. Files and images come later.
+
 ## Presentation rules
 
 | Situation | Presentation | Why |

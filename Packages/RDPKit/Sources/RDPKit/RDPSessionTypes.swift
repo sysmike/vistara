@@ -24,7 +24,8 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     /// over TLS. Legacy RDP security is never used.
     public var requiresNLA: Bool
     public var audio: RDPAudioMode
-    /// Applied by the clipboard channel (issue #25).
+    /// Loads the clipboard channel and shares text both ways. When false the
+    /// channel is not loaded at all.
     public var sharesClipboard: Bool
     /// Applied by reconnection (issue #28).
     public var reconnectsAutomatically: Bool

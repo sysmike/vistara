@@ -198,7 +198,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,118 @@
+@@ -37,6 +37,241 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -287,6 +287,129 @@
 +	(void)fflush(stderr);
 +}
 +
++/* Vistara test server: a clipboard. It offers a known text as soon as the
++ * client's clipboard is up, and reports the text a client offers it, in hex,
++ * so tests can check both directions. */
++#include <freerdp/server/cliprdr.h>
++#include <winpr/string.h>
++#include <winpr/user.h>
++
++static const char vistara_clipboard_text[] = "Gr\xc3\xbc\xc3\x9f" "e aus dem Testserver \xe2\x9c\x93\r\nZweite Zeile";
++
++typedef struct
++{
++	CliprdrServerContext* cliprdr;
++	BOOL tried;
++} vistaraClipboard;
++
++static UINT vistara_clip_client_caps(CliprdrServerContext* context,
++                                     WINPR_ATTR_UNUSED const CLIPRDR_CAPABILITIES* capabilities)
++{
++	(void)fprintf(stderr, "vistara-clipboard joined\n");
++	(void)fflush(stderr);
++	CLIPRDR_FORMAT format = { .formatId = CF_UNICODETEXT, .formatName = nullptr };
++	CLIPRDR_FORMAT_LIST list = WINPR_C_ARRAY_INIT;
++	list.common.msgType = CB_FORMAT_LIST;
++	list.numFormats = 1;
++	list.formats = &format;
++	return context->ServerFormatList(context, &list);
++}
++
++static UINT vistara_clip_client_format_list(CliprdrServerContext* context,
++                                            const CLIPRDR_FORMAT_LIST* list)
++{
++	CLIPRDR_FORMAT_LIST_RESPONSE response = WINPR_C_ARRAY_INIT;
++	response.common.msgType = CB_FORMAT_LIST_RESPONSE;
++	response.common.msgFlags = CB_RESPONSE_OK;
++	const UINT rc = context->ServerFormatListResponse(context, &response);
++	if (rc != CHANNEL_RC_OK)
++		return rc;
++	for (UINT32 i = 0; i < list->numFormats; i++)
++	{
++		if (list->formats[i].formatId == CF_UNICODETEXT)
++		{
++			CLIPRDR_FORMAT_DATA_REQUEST request = WINPR_C_ARRAY_INIT;
++			request.common.msgType = CB_FORMAT_DATA_REQUEST;
++			request.requestedFormatId = CF_UNICODETEXT;
++			return context->ServerFormatDataRequest(context, &request);
++		}
++	}
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_clip_client_format_list_response(
++    WINPR_ATTR_UNUSED CliprdrServerContext* context,
++    WINPR_ATTR_UNUSED const CLIPRDR_FORMAT_LIST_RESPONSE* response)
++{
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_clip_client_data_request(CliprdrServerContext* context,
++                                             const CLIPRDR_FORMAT_DATA_REQUEST* request)
++{
++	CLIPRDR_FORMAT_DATA_RESPONSE response = WINPR_C_ARRAY_INIT;
++	response.common.msgType = CB_FORMAT_DATA_RESPONSE;
++	size_t length = 0;
++	WCHAR* text = ConvertUtf8ToWCharAlloc(vistara_clipboard_text, &length);
++	if ((request->requestedFormatId == CF_UNICODETEXT) && text)
++	{
++		response.common.msgFlags = CB_RESPONSE_OK;
++		response.common.dataLen = (UINT32)((length + 1) * sizeof(WCHAR));
++		response.requestedFormatData = (const BYTE*)text;
++	}
++	else
++		response.common.msgFlags = CB_RESPONSE_FAIL;
++	const UINT rc = context->ServerFormatDataResponse(context, &response);
++	free(text);
++	return rc;
++}
++
++static UINT vistara_clip_client_data_response(WINPR_ATTR_UNUSED CliprdrServerContext* context,
++                                              const CLIPRDR_FORMAT_DATA_RESPONSE* response)
++{
++	if (!(response->common.msgFlags & CB_RESPONSE_OK) || !response->requestedFormatData)
++		return CHANNEL_RC_OK;
++	(void)fprintf(stderr, "vistara-clipboard from-client ");
++	for (UINT32 i = 0; i < response->common.dataLen; i++)
++		(void)fprintf(stderr, "%02x", (unsigned)response->requestedFormatData[i]);
++	(void)fprintf(stderr, "\n");
++	(void)fflush(stderr);
++	return CHANNEL_RC_OK;
++}
++
++static void vistara_clipboard_open(rdpShadowClient* client, vistaraClipboard* state)
++{
++	if (state->tried || !client->activated ||
++	    !WTSVirtualChannelManagerIsChannelJoined(client->vcm, CLIPRDR_SVC_CHANNEL_NAME))
++		return;
++	state->tried = TRUE;
++	CliprdrServerContext* cliprdr = cliprdr_server_context_new(client->vcm);
++	if (!cliprdr)
++		return;
++	cliprdr->rdpcontext = &client->context;
++	cliprdr->useLongFormatNames = TRUE;
++	cliprdr->ClientCapabilities = vistara_clip_client_caps;
++	cliprdr->ClientFormatList = vistara_clip_client_format_list;
++	cliprdr->ClientFormatListResponse = vistara_clip_client_format_list_response;
++	cliprdr->ClientFormatDataRequest = vistara_clip_client_data_request;
++	cliprdr->ClientFormatDataResponse = vistara_clip_client_data_response;
++	if (cliprdr->Start(cliprdr) != CHANNEL_RC_OK)
++	{
++		cliprdr_server_context_free(cliprdr);
++		return;
++	}
++	state->cliprdr = cliprdr;
++}
++
++static void vistara_clipboard_close(vistaraClipboard* state)
++{
++	if (!state->cliprdr)
++		return;
++	(void)state->cliprdr->Stop(state->cliprdr);
++	cliprdr_server_context_free(state->cliprdr);
++	state->cliprdr = nullptr;
++}
++
 +/* Runs on the client's own thread, which also sends its updates. */
 +static void vistara_apply_resize(rdpShadowClient* client)
 +{
@@ -317,25 +440,27 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -2845,6 +2957,7 @@
+@@ -2845,6 +3080,8 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
 +	vistaraDisp vistara_disp = WINPR_C_ARRAY_INIT;
++	vistaraClipboard vistara_clipboard = WINPR_C_ARRAY_INIT;
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3063,9 @@
+@@ -2950,6 +3187,10 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
 +		vistara_disp_send_caps(&vistara_disp);
++		vistara_clipboard_open(client, &vistara_clipboard);
 +		vistara_apply_resize(client);
 +
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3153,8 @@
+@@ -3037,6 +3278,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -344,10 +469,11 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3308,13 @@
+@@ -3190,6 +3433,14 @@
  
  fail:
  
++	vistara_clipboard_close(&vistara_clipboard);
 +	if (vistara_disp.disp)
 +	{
 +		WTSVirtualChannelManagerSetDVCCreationCallback(client->vcm, nullptr, nullptr);
