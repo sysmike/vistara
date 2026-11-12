@@ -6,6 +6,7 @@
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 #include <freerdp/addin.h>
 #include <freerdp/channels/channels.h>
@@ -39,9 +40,15 @@ struct vistara_session {
     bool has_dirty;
     int32_t dirty_left, dirty_top, dirty_right, dirty_bottom;
     // The display control channel, once the server has opened it and stated
-    // its limits. Owned by FreeRDP.
-    DispClientContext *display_control;
-    bool display_control_ready;
+    // its limits. Owned by FreeRDP, and announced on whichever thread FreeRDP
+    // runs the channel on, hence atomic.
+    _Atomic(DispClientContext *) display_control;
+    atomic_bool display_control_ready;
+    // A size asked for that has not been sent yet: the channel comes up a few
+    // round trips after connecting, and a request made before that must not
+    // be lost. Session thread only.
+    bool has_pending_size;
+    uint32_t pending_width, pending_height, pending_scale_percent;
     // The cursor the server asked for last, as a copy this session owns.
     bool cursor_changed;
     vistara_cursor_kind cursor_kind;
@@ -289,7 +296,9 @@ static UINT display_control_caps(DispClientContext *display_control, UINT32 max_
     (void)max_monitors, (void)area_factor_a, (void)area_factor_b;
     vistara_session *session = display_control->custom;
     if (session) {
-        session->display_control_ready = true;
+        atomic_store(&session->display_control_ready, true);
+        // The session thread sends what is waiting.
+        vistara_session_wake(session);
     }
     return CHANNEL_RC_OK;
 }
@@ -300,37 +309,54 @@ static void channel_connected(void *context, const ChannelConnectedEventArgs *ev
         DispClientContext *display_control = event->pInterface;
         display_control->custom = session;
         display_control->DisplayControlCaps = display_control_caps;
-        session->display_control = display_control;
+        atomic_store(&session->display_control, display_control);
     }
 }
 
 static void channel_disconnected(void *context, const ChannelDisconnectedEventArgs *event) {
     vistara_session *session = session_of(context);
     if (strcmp(event->name, DISP_DVC_CHANNEL_NAME) == 0) {
-        session->display_control = NULL;
-        session->display_control_ready = false;
+        atomic_store(&session->display_control_ready, false);
+        atomic_store(&session->display_control, NULL);
     }
+}
+
+/// Sends the size that is waiting, if the channel is ready for it.
+static void send_pending_size(vistara_session *session) {
+    DispClientContext *display_control = atomic_load(&session->display_control);
+    if (!session->has_pending_size || !session->connected || !display_control ||
+        !atomic_load(&session->display_control_ready)) {
+        return;
+    }
+    session->has_pending_size = false;
+
+    const uint32_t scale_percent = session->pending_scale_percent;
+    DISPLAY_CONTROL_MONITOR_LAYOUT layout = {0};
+    layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
+    layout.Width = session->pending_width;
+    layout.Height = session->pending_height;
+    // Millimetres, as if the desktop were shown at 96 points per inch.
+    layout.PhysicalWidth = (UINT32)((uint64_t)layout.Width * 2540 / ((uint64_t)96 * scale_percent));
+    layout.PhysicalHeight = (UINT32)((uint64_t)layout.Height * 2540 / ((uint64_t)96 * scale_percent));
+    layout.Orientation = ORIENTATION_LANDSCAPE;
+    layout.DesktopScaleFactor = scale_percent;
+    layout.DeviceScaleFactor = 100;
+    (void)display_control->SendMonitorLayout(display_control, 1, &layout);
 }
 
 bool vistara_session_request_size(vistara_session *session, uint32_t width, uint32_t height,
                                   uint32_t scale_percent) {
-    if (!session->connected || !session->display_control || !session->display_control_ready) {
+    if (!session->connected) {
         return false;
     }
     if (scale_percent < 100) scale_percent = 100;
     if (scale_percent > 500) scale_percent = 500;
-    DISPLAY_CONTROL_MONITOR_LAYOUT layout = {0};
-    layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
-    layout.Width = width;
-    layout.Height = height;
-    // Millimetres, as if the desktop were shown at 96 points per inch.
-    layout.PhysicalWidth = (UINT32)((uint64_t)width * 2540 / ((uint64_t)96 * scale_percent));
-    layout.PhysicalHeight = (UINT32)((uint64_t)height * 2540 / ((uint64_t)96 * scale_percent));
-    layout.Orientation = ORIENTATION_LANDSCAPE;
-    layout.DesktopScaleFactor = scale_percent;
-    layout.DeviceScaleFactor = 100;
-    DispClientContext *display_control = session->display_control;
-    return display_control->SendMonitorLayout(display_control, 1, &layout) == CHANNEL_RC_OK;
+    session->has_pending_size = true;
+    session->pending_width = width;
+    session->pending_height = height;
+    session->pending_scale_percent = scale_percent;
+    send_pending_size(session);
+    return true;
 }
 
 // MARK: Connection callbacks
@@ -500,6 +526,7 @@ bool vistara_session_poll(vistara_session *session, uint32_t timeout_ms) {
     if (!freerdp_check_event_handles(context)) {
         return false;
     }
+    send_pending_size(session);
     return !freerdp_shall_disconnect_context(context);
 }
 
