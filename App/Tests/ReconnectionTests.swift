@@ -86,6 +86,17 @@ struct ReconnectionFlowTests {
         return model
     }
 
+    /// Presses the drop key until the connection drops. A key sent the moment
+    /// the session connects is sometimes not acted on yet.
+    private func drop(_ model: SessionModel) async {
+        var polls = 0
+        await waitUntil("the connection has dropped") {
+            if model.phase == .connected, polls % 25 == 0 { model.send([Self.dropKey]) }
+            polls += 1
+            return model.phase != .connected
+        }
+    }
+
     private func end(_ model: SessionModel) async {
         model.disconnect()
         if model.phase.isReconnecting { model.cancelReconnecting() }
@@ -95,7 +106,7 @@ struct ReconnectionFlowTests {
     @Test
     func aDroppedSessionComesBackByItself() async throws {
         let model = try await connectedModel()
-        model.send([Self.dropKey])
+        await drop(model)
         await waitUntil("reconnecting has started") { model.phase.isReconnecting }
         #expect(model.lastFrame != nil)
         // Trusted always: no question on the way back.
@@ -110,7 +121,7 @@ struct ReconnectionFlowTests {
     @Test
     func theCertificateIsCheckedAgainOnEveryReconnect() async throws {
         let model = try await connectedModel(trust: .trustOnce)
-        model.send([Self.dropKey])
+        await drop(model)
         await waitUntil("the certificate question is open again") { model.pendingCertificate != nil }
         #expect(model.phase.isReconnecting)
         model.answerCertificate(.trustOnce)
@@ -121,7 +132,7 @@ struct ReconnectionFlowTests {
     @Test
     func withReconnectingTurnedOffTheWindowSaysTheConnectionWasLost() async throws {
         let model = try await connectedModel { $0.reconnectsAutomatically = false }
-        model.send([Self.dropKey])
+        await drop(model)
         await waitUntil("the session has ended") { !model.isLive }
         guard case .disconnected(.connectionLost(let failure)) = model.phase else {
             Issue.record("Expected a lost connection, got \(model.phase)")
@@ -135,7 +146,7 @@ struct ReconnectionFlowTests {
     func cancelStopsReconnecting() async throws {
         let model = try await connectedModel()
         model.reconnectionPolicy = ReconnectionPolicy(delays: [.seconds(60)])
-        model.send([Self.dropKey])
+        await drop(model)
         await waitUntil("reconnecting has started") { model.phase.isReconnecting }
         model.cancelReconnecting()
         guard case .disconnected(.connectionLost) = model.phase else {
@@ -149,7 +160,7 @@ struct ReconnectionFlowTests {
     @Test
     func reconnectingGivesUpWhenTheComputerStaysAway() async throws {
         let model = try await connectedModel()
-        model.send([Self.dropKey])
+        await drop(model)
         await waitUntil("reconnecting has started") { model.phase.isReconnecting }
         // From now on nothing answers.
         var away = model.target

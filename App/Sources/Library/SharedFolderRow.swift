@@ -22,7 +22,6 @@ struct SharedFolderRow: View {
                 if isMissing {
                     Text("Can’t find this folder. Remove it and add it again.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     // Long paths keep both ends: where it is and what it is.
@@ -38,7 +37,10 @@ struct SharedFolderRow: View {
                 .toggleStyle(.checkbox)
                 .accessibilityLabel("\(name) read only")
             Button(action: stopSharing) {
+                // At least 20 by 20 points to aim at (HIG Accessibility).
                 Image(systemName: "minus.circle")
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .help("Stop Sharing")
