@@ -67,6 +67,20 @@ struct ScreenshotTests {
         }
     }
 
+    @Test
+    func detailsOpen() async throws {
+        let failure = RDPFailure(
+            kind: .refused, code: 0x0002_0006, name: "ERRCONNECT_CONNECT_FAILED",
+            description: "A configuration error prevented a connection to be established.", osError: ECONNREFUSED
+        )
+        let message = DisconnectMessage(
+            reason: .connectionFailed(failure), name: "Build Server", host: "build01.example.com"
+        )
+        let view = DisconnectedView(message: message, showsDetails: true) { _ in }
+        let bytes = try await Screenshots.write(view, size: Self.windowSize, name: "refused-details")
+        #expect(bytes > 0)
+    }
+
     @Test(arguments: [false, true])
     func credentialsSheet(dark: Bool) async throws {
         let request = CredentialsRequest(username: "", domain: "", remember: false)

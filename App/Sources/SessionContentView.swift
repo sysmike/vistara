@@ -97,7 +97,15 @@ struct DisconnectedView: View {
     let message: DisconnectMessage
     let perform: (DisconnectMessage.Action) -> Void
 
-    @State private var showsDetails = false
+    @State private var showsDetails: Bool
+
+    init(
+        message: DisconnectMessage, showsDetails: Bool = false, perform: @escaping (DisconnectMessage.Action) -> Void
+    ) {
+        self.message = message
+        self.perform = perform
+        _showsDetails = State(initialValue: showsDetails)
+    }
 
     var body: some View {
         VStack(spacing: 8) {
