@@ -6,12 +6,16 @@
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
+#include <freerdp/input.h>
 #include <freerdp/settings.h>
 #include <freerdp/update.h>
+#include <winpr/handle.h>
 #include <winpr/synch.h>
 
 struct vistara_session {
     freerdp *instance;
+    // Signalled by vistara_session_wake() to end a poll early.
+    HANDLE wake_event;
     bool connect_attempted;
     bool connected;
     bool certificate_rejected;
@@ -167,8 +171,14 @@ vistara_session *vistara_session_create(void) {
         return NULL;
     }
 
+    session->wake_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (!session->wake_event) {
+        free(session);
+        return NULL;
+    }
     session->instance = freerdp_new();
     if (!session->instance) {
+        (void)CloseHandle(session->wake_event);
         free(session);
         return NULL;
     }
@@ -183,6 +193,7 @@ vistara_session *vistara_session_create(void) {
 
     if (!freerdp_context_new(instance)) {
         freerdp_free(instance);
+        (void)CloseHandle(session->wake_event);
         free(session);
         return NULL;
     }
@@ -197,6 +208,7 @@ void vistara_session_destroy(vistara_session *session) {
     vistara_session_disconnect(session);
     freerdp_context_free(session->instance);
     freerdp_free(session->instance);
+    (void)CloseHandle(session->wake_event);
     free(session);
 }
 
@@ -264,19 +276,53 @@ bool vistara_session_poll(vistara_session *session, uint32_t timeout_ms) {
     }
     rdpContext *context = session->instance->context;
 
+    // One slot is kept for the wake event.
     HANDLE handles[MAXIMUM_WAIT_OBJECTS] = {0};
-    DWORD count = freerdp_get_event_handles(context, handles, MAXIMUM_WAIT_OBJECTS);
+    DWORD count = freerdp_get_event_handles(context, handles, MAXIMUM_WAIT_OBJECTS - 1);
     if (count == 0) {
         return false;
     }
+    handles[count++] = session->wake_event;
     if (WaitForMultipleObjects(count, handles, FALSE, timeout_ms) == WAIT_FAILED) {
         return false;
     }
+    (void)ResetEvent(session->wake_event);
     if (!freerdp_check_event_handles(context)) {
         return false;
     }
     return !freerdp_shall_disconnect_context(context);
 }
+
+void vistara_session_wake(vistara_session *session) {
+    (void)SetEvent(session->wake_event);
+}
+
+// MARK: Input
+
+bool vistara_session_send_key(vistara_session *session, uint8_t code, bool extended, bool down) {
+    if (!session->connected) {
+        return false;
+    }
+    UINT16 flags = down ? 0 : KBD_FLAGS_RELEASE;
+    if (extended) {
+        flags |= KBD_FLAGS_EXTENDED;
+    }
+    return freerdp_input_send_keyboard_event(session->instance->context->input, flags, code);
+}
+
+bool vistara_session_send_lock_state(vistara_session *session, bool caps_lock, bool num_lock,
+                                     bool scroll_lock) {
+    if (!session->connected) {
+        return false;
+    }
+    UINT32 flags = 0;
+    if (caps_lock) flags |= KBD_SYNC_CAPS_LOCK;
+    if (num_lock) flags |= KBD_SYNC_NUM_LOCK;
+    if (scroll_lock) flags |= KBD_SYNC_SCROLL_LOCK;
+    return freerdp_input_send_synchronize_event(session->instance->context->input, flags);
+}
+
+// MARK: Framebuffer
 
 static const rdpGdi *gdi_of(const vistara_session *session) {
     return session->connected ? session->instance->context->gdi : NULL;

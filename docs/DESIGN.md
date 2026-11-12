@@ -189,6 +189,21 @@ key".
 With Full Keyboard Access on, Tab inside a session goes to the remote host;
 rule 2 is how focus leaves the session.
 
+Keys are sent by position, not by character: the remote computer's keyboard
+layout decides what a key types, so the Mac input source does not matter.
+A few keys have no exact counterpart. *Judgment:*
+
+- Delete is Backspace, Forward Delete is Delete, and Help is Insert.
+- F13 and F14 are Print Screen and Scroll Lock, the keys in those places on a
+  PC keyboard.
+- A Mac has no Num Lock. The keypad always types digits, and Clear is not
+  sent, because it would switch Num Lock off on the remote computer.
+- Caps Lock follows the Mac. Its state is stated again whenever the session
+  gets the keyboard back.
+
+When the keyboard focus leaves a session, every key the remote computer
+believes is held is released, so Command-Tab never leaves a modifier stuck.
+
 ### Menu bar
 
 Every command is in the menu bar, including each toolbar and context menu item

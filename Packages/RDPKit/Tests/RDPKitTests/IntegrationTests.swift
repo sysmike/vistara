@@ -39,6 +39,26 @@ enum TestHost {
         )
     }
 
+    /// What the test server reported about received input, one entry per
+    /// event: "locks 6", "key 1e down", "key 53e up" (e marks extended).
+    static func receivedInput() -> [String] {
+        guard let path = environment["VISTARA_TEST_SERVER_LOG"],
+            let log = try? String(contentsOfFile: path, encoding: .utf8)
+        else { return [] }
+        return log.split(separator: "\n").compactMap { line in
+            guard let marker = line.range(of: "vistara-input ") else { return nil }
+            var fields: [String: UInt32] = [:]
+            for field in line[marker.upperBound...].split(separator: " ") {
+                let parts = field.split(separator: "=")
+                if parts.count == 2 { fields[String(parts[0])] = UInt32(parts[1].dropFirst(2), radix: 16) }
+            }
+            guard let flags = fields["flags"] else { return nil }
+            guard let code = fields["code"] else { return "locks \(String(flags, radix: 16))" }
+            let extended = flags & 0x0100 != 0 ? "e" : ""
+            return "key \(String(code, radix: 16))\(extended) \(flags & 0x8000 != 0 ? "up" : "down")"
+        }
+    }
+
     /// Answers with the test account and accepts or rejects any certificate.
     static func delegate(password: String? = nil, acceptCertificate: Bool = true) -> RDPSessionDelegate {
         RDPSessionDelegate(
@@ -168,5 +188,33 @@ struct IntegrationTests {
             #expect(states.last == .disconnected(.userRequested), "round \(round): \(states.map(\.kind))")
             #expect(states.map(\.kind).contains("connected"), "round \(round)")
         }
+    }
+
+    // MARK: Input
+
+    @Test(.enabled(if: TestHost.environment["VISTARA_TEST_SERVER_LOG"] != nil))
+    func keysArriveAtTheServerInOrderAsScancodes() async {
+        let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
+        let keyA = RDPScancode(0x1E)
+        // Not connected yet: dropped, not queued for later.
+        session.send(RDPInputEvent.tap(keyA))
+
+        let expected = [
+            "locks 6", "key 1e down", "key 1e up",
+            "key 1d down", "key 38 down", "key 53e down", "key 53e up", "key 38 up", "key 1d up"
+        ]
+        var received: [String] = []
+        _ = await runToEnd(session) { state, session in
+            guard case .connected = state else { return }
+            session.send([.lockState([.capsLock, .numLock])] + RDPInputEvent.tap(keyA))
+            session.send(RDPInputEvent.controlAltDelete)
+            let deadline = Date().addingTimeInterval(10)
+            while received.count < expected.count, Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+                received = TestHost.receivedInput()
+            }
+            session.disconnect()
+        }
+        #expect(received == expected)
     }
 }

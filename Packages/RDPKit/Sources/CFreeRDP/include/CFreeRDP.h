@@ -8,7 +8,7 @@
 // the implementation is checked against the headers of the pinned version.
 //
 // A session is not thread-safe. Call all functions for one session from the
-// same thread, except vistara_session_abort().
+// same thread, except vistara_session_abort() and vistara_session_wake().
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -100,6 +100,22 @@ const char *vistara_session_last_error_name(const vistara_session *session);
 /// Waits up to timeout_ms for network activity and processes it. Returns
 /// false once the session is disconnected.
 bool vistara_session_poll(vistara_session *session, uint32_t timeout_ms);
+
+/// Makes a running vistara_session_poll() return early, for example because
+/// input is waiting to be sent. Like vistara_session_abort(), this only
+/// signals an event and may be called from another thread, as long as the
+/// session is not destroyed concurrently.
+void vistara_session_wake(vistara_session *session);
+
+/// Sends a key press or release as an RDP scancode. `extended` selects the
+/// extended (E0) variant of the code, as for the arrow keys. Returns false
+/// when not connected or when sending failed.
+bool vistara_session_send_key(vistara_session *session, uint8_t code, bool extended, bool down);
+
+/// Tells the server the state of the lock keys. The server also treats all
+/// keys as released, so this is sent when the keyboard focus returns.
+bool vistara_session_send_lock_state(vistara_session *session, bool caps_lock, bool num_lock,
+                                     bool scroll_lock);
 
 /// Framebuffer geometry and pixels (32-bit BGRA, rows of `stride` bytes).
 /// Valid while connected; the buffer may move when the desktop is resized.

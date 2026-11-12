@@ -101,4 +101,23 @@ struct RDPSessionTests {
 
         #expect(states.map(\.kind) == ["connecting", "awaitingCredentials", "disconnected"])
     }
+
+    @Test func inputForASessionThatIsNotConnectedIsDropped() async {
+        let delegate = RDPSessionDelegate(credentials: { _ in nil }, certificateDecision: { _ in true })
+        let session = RDPSession(configuration: nobodyHome, delegate: delegate)
+        session.send(RDPInputEvent.controlAltDelete)
+        _ = await runToEnd(session)
+        session.send(RDPInputEvent.controlAltDelete)
+    }
+
+    @Test func controlAltDeleteReleasesInReverseOrder() {
+        let events = RDPInputEvent.controlAltDelete
+        #expect(events.count == 6)
+        #expect(events.prefix(3) == [
+            .key(.leftControl, isDown: true), .key(.leftAlt, isDown: true), .key(.delete, isDown: true)
+        ])
+        #expect(Array(events.suffix(3)) == [
+            .key(.delete, isDown: false), .key(.leftAlt, isDown: false), .key(.leftControl, isDown: false)
+        ])
+    }
 }

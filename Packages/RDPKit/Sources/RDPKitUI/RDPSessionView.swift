@@ -13,6 +13,17 @@ public final class RDPSessionView: MTKView {
         didSet { setAccessibilityLabel(Self.accessibilityLabel(for: connectionName)) }
     }
 
+    /// Receives what the user types, as input for the session. Key events
+    /// are passed on and never logged.
+    public var inputHandler: (([RDPInputEvent]) -> Void)?
+
+    /// Sends Command-C, V, X, A, Z, F, S and Shift-Command-Z as their Control
+    /// equivalents. When off, those shortcuts stay with the Mac like every
+    /// other Command shortcut.
+    public var translatesEditingShortcuts = true
+
+    private var translator = KeyboardTranslator()
+
     /// Number of frames drawn so far. For tests and diagnostics.
     public private(set) var drawCount = 0
 
@@ -60,7 +71,10 @@ public final class RDPSessionView: MTKView {
         super.viewDidMoveToWindow()
         observation?.cancel()
         observation = nil
-        guard window != nil else { return }
+        observeKeyWindow()
+        guard let window else { return }
+        // The desktop is the window's content, so typing goes to it.
+        window.makeFirstResponder(self)
 
         consumeUpdate()
         let changes = framebuffer.changes
@@ -86,5 +100,93 @@ public final class RDPSessionView: MTKView {
         commandBuffer.present(drawable)
         commandBuffer.commit()
         drawCount += 1
+    }
+
+    // MARK: Keyboard
+
+    override public var acceptsFirstResponder: Bool { true }
+
+    override public func becomeFirstResponder() -> Bool {
+        if window?.isKeyWindow == true { keyboardFocusArrived() }
+        return true
+    }
+
+    override public func resignFirstResponder() -> Bool {
+        keyboardFocusLeft()
+        return true
+    }
+
+    override public func keyDown(with event: NSEvent) {
+        // Command belongs to the Mac. Not calling super also keeps Tab and
+        // the other keys AppKit would act on going to the remote computer.
+        guard !event.modifierFlags.contains(.command) else { return }
+        send(translator.keyDown(keyCode: event.keyCode))
+    }
+
+    override public func keyUp(with event: NSEvent) {
+        send(translator.keyUp(keyCode: event.keyCode))
+    }
+
+    override public func flagsChanged(with event: NSEvent) {
+        if event.keyCode == MacKeyMap.capsLockKeyCode {
+            send(translator.capsLockToggled())
+        } else {
+            send(translator.modifiersChanged(flags: event.modifierFlags.rawValue))
+        }
+    }
+
+    override public func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard translatesEditingShortcuts, event.type == .keyDown, window?.firstResponder === self,
+            modifiers == .command || modifiers == [.command, .shift],
+            KeyboardTranslator.isEditingShortcut(
+                characters: event.charactersIgnoringModifiers ?? "", hasShift: modifiers.contains(.shift)
+            )
+        else { return super.performKeyEquivalent(with: event) }
+        send(translator.editingShortcut(keyCode: event.keyCode))
+        return true
+    }
+
+    private func send(_ events: [RDPInputEvent]) {
+        guard !events.isEmpty else { return }
+        inputHandler?(events)
+    }
+
+    /// The session has the keyboard again: state the lock keys, which also
+    /// makes the server forget every key it thought was held, then send the
+    /// modifiers that are down right now.
+    func keyboardFocusArrived() {
+        translator = KeyboardTranslator(keyboard: MacKeyboard.current)
+        let flags = NSEvent.modifierFlags
+        // A Mac has no Num Lock; the keypad always types digits.
+        let locks: RDPLockState = flags.contains(.capsLock) ? [.numLock, .capsLock] : .numLock
+        send([.lockState(locks)] + translator.modifiersChanged(flags: flags.rawValue))
+    }
+
+    /// The keyboard went elsewhere: release what is held, so that nothing
+    /// stays stuck on the remote computer.
+    func keyboardFocusLeft() {
+        send(translator.releaseAll())
+    }
+
+    private func observeKeyWindow() {
+        let center = NotificationCenter.default
+        center.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        center.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        guard let window else { return }
+        center.addObserver(
+            self, selector: #selector(windowDidBecomeKey), name: NSWindow.didBecomeKeyNotification, object: window
+        )
+        center.addObserver(
+            self, selector: #selector(windowDidResignKey), name: NSWindow.didResignKeyNotification, object: window
+        )
+    }
+
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        if window?.firstResponder === self { keyboardFocusArrived() }
+    }
+
+    @objc private func windowDidResignKey(_ notification: Notification) {
+        keyboardFocusLeft()
     }
 }

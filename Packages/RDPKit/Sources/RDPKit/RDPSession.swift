@@ -18,6 +18,9 @@ public final class RDPSession: Sendable {
         var stopRequested = false
         var openQuestion: Task<Void, Never>?
         var abortToken: SessionHandle.AbortToken?
+        /// Input accepted while connected, waiting for the session thread.
+        var acceptsInput = false
+        var pendingInput: [RDPInputEvent] = []
     }
 
     /// The remote desktop's pixels. Updated from the session thread while
@@ -58,6 +61,18 @@ public final class RDPSession: Sendable {
             control.stopRequested = true
             control.openQuestion?.cancel()
             control.abortToken?.abort()
+        }
+    }
+
+    /// Sends input to the remote computer, in order. Returns at once; the
+    /// session thread does the sending. Input is dropped while the session is
+    /// not connected.
+    public func send(_ events: [RDPInputEvent]) {
+        guard !events.isEmpty else { return }
+        control.withLock { control in
+            guard control.acceptsInput else { return }
+            control.pendingInput.append(contentsOf: events)
+            control.abortToken?.wake()
         }
     }
 
@@ -128,16 +143,36 @@ public final class RDPSession: Sendable {
         }
 
         continuation.yield(.connected(width: handle.framebufferWidth, height: handle.framebufferHeight))
+        control.withLock { $0.acceptsInput = true }
+        defer {
+            control.withLock { control in
+                control.acceptsInput = false
+                control.pendingInput.removeAll()
+            }
+        }
         while !isStopRequested {
             if !handle.poll(timeoutMilliseconds: 100) {
                 let code = handle.lastErrorName
                 handle.disconnect()
                 return .connectionLost(code: code)
             }
+            sendPendingInput(to: handle)
             publishChanges(from: handle)
         }
         handle.disconnect()
         return .userRequested
+    }
+
+    /// Sends what `send(_:)` queued. Runs on the session thread.
+    private func sendPendingInput(to handle: SessionHandle) {
+        let events = control.withLock { control in
+            let events = control.pendingInput
+            control.pendingInput.removeAll(keepingCapacity: true)
+            return events
+        }
+        for event in events {
+            handle.send(event)
+        }
     }
 
     /// Copies what FreeRDP painted during the last poll into `framebuffer`.

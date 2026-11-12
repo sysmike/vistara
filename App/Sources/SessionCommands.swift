@@ -1,3 +1,4 @@
+import RDPKit
 import SwiftUI
 
 /// The Session menu. It acts on the session in the main window.
@@ -28,9 +29,12 @@ private struct SessionMenuItems: View {
 
         Divider()
 
-        // Sent to the remote computer once keyboard input exists (issue #11).
-        Button("Send Ctrl+Alt+Del") {}
+        // Control-Option-Delete: the same keys by their Mac names.
+        Button("Send Ctrl+Alt+Del") { model?.send(RDPInputEvent.controlAltDelete) }
             .keyboardShortcut(.delete, modifiers: [.control, .option])
-            .disabled(true)
+            .disabled(model?.isConnected != true)
+        // The Windows key has no free counterpart on a Mac keyboard.
+        Button("Send Windows Key") { model?.send(RDPInputEvent.tap(.leftWindows)) }
+            .disabled(model?.isConnected != true)
     }
 }
