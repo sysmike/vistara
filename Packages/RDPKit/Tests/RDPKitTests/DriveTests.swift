@@ -132,7 +132,7 @@ struct DriveIntegrationTests {
         #expect(report.isDone)
         #expect(report.listed.filter { $0 != "." && $0 != ".." } == ["hello.txt"])
         #expect(report.readStatus == DriveReport.success)
-        #expect(String(decoding: report.readData, as: UTF8.self) == Self.helloText)
+        #expect(String(bytes: report.readData, encoding: .utf8) == Self.helloText)
         #expect(report.writeStatus == DriveReport.success)
         #expect(fixture.writtenByServer == "written by the test server")
     }
@@ -157,7 +157,7 @@ struct DriveIntegrationTests {
         let report = DriveReport(name: fixture.name)
         #expect(report.isDone)
         #expect(report.readStatus == DriveReport.success)
-        #expect(String(decoding: report.readData, as: UTF8.self) == Self.helloText)
+        #expect(String(bytes: report.readData, encoding: .utf8) == Self.helloText)
         #expect(report.writeStatus == DriveReport.accessDenied)
         #expect(fixture.writtenByServer == nil)
         #expect(SessionHandle.refusedDriveRequests > refusedBefore)
