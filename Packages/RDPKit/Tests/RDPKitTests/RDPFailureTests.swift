@@ -10,44 +10,56 @@ struct RDPFailureTests {
 
     /// Every code the table names, with FreeRDP's own name for it. The names
     /// come from the linked library, so a wrong number fails here.
-    private static let table: [(code: UInt32, name: String, kind: RDPFailure.Kind)] = [
-        (connect(0x04), "ERRCONNECT_DNS_ERROR", .hostNotFound),
-        (connect(0x05), "ERRCONNECT_DNS_NAME_NOT_FOUND", .hostNotFound),
-        (connect(0x07), "ERRCONNECT_MCS_CONNECT_INITIAL_ERROR", .protocolError),
-        (connect(0x09), "ERRCONNECT_AUTHENTICATION_FAILED", .wrongCredentials),
-        (connect(0x0A), "ERRCONNECT_INSUFFICIENT_PRIVILEGES", .accountRestricted),
-        (connect(0x0C), "ERRCONNECT_SECURITY_NEGO_CONNECT_FAILED", .securityMismatch),
-        (connect(0x0E), "ERRCONNECT_PASSWORD_EXPIRED", .passwordExpired),
-        (connect(0x0F), "ERRCONNECT_PASSWORD_CERTAINLY_EXPIRED", .passwordExpired),
-        (connect(0x10), "ERRCONNECT_CLIENT_REVOKED", .accountRestricted),
-        (connect(0x12), "ERRCONNECT_ACCOUNT_DISABLED", .accountRestricted),
-        (connect(0x13), "ERRCONNECT_PASSWORD_MUST_CHANGE", .passwordExpired),
-        (connect(0x14), "ERRCONNECT_LOGON_FAILURE", .wrongCredentials),
-        (connect(0x15), "ERRCONNECT_WRONG_PASSWORD", .wrongCredentials),
-        (connect(0x16), "ERRCONNECT_ACCESS_DENIED", .accountRestricted),
-        (connect(0x17), "ERRCONNECT_ACCOUNT_RESTRICTION", .accountRestricted),
-        (connect(0x18), "ERRCONNECT_ACCOUNT_LOCKED_OUT", .accountRestricted),
-        (connect(0x19), "ERRCONNECT_ACCOUNT_EXPIRED", .accountRestricted),
-        (connect(0x1A), "ERRCONNECT_LOGON_TYPE_NOT_GRANTED", .accountRestricted),
-        (connect(0x1B), "ERRCONNECT_NO_OR_MISSING_CREDENTIALS", .wrongCredentials),
-        (connect(0x1C), "ERRCONNECT_ACTIVATION_TIMEOUT", .notResponding),
-        (connect(0x1D), "ERRCONNECT_TARGET_BOOTING", .starting),
-        (connect(0x1E), "ERRCONNECT_HYBRID_REQUIRED_BY_SERVER", .securityMismatch),
-        (connect(0x1F), "ERRCONNECT_NTLM_BLOCKED", .securityMismatch),
-        (server(0x01), "ERRINFO_RPC_INITIATED_DISCONNECT", .endedByServer),
-        (server(0x02), "ERRINFO_RPC_INITIATED_LOGOFF", .signedOut),
-        (server(0x03), "ERRINFO_IDLE_TIMEOUT", .idleTimeout),
-        (server(0x04), "ERRINFO_LOGON_TIMEOUT", .idleTimeout),
-        (server(0x05), "ERRINFO_DISCONNECTED_BY_OTHER_CONNECTION", .replacedByAnotherConnection),
-        (server(0x07), "ERRINFO_SERVER_DENIED_CONNECTION", .accountRestricted),
-        (server(0x09), "ERRINFO_SERVER_INSUFFICIENT_PRIVILEGES", .accountRestricted),
-        (server(0x0A), "ERRINFO_SERVER_FRESH_CREDENTIALS_REQUIRED", .wrongCredentials),
-        (server(0x0B), "ERRINFO_RPC_INITIATED_DISCONNECT_BY_USER", .endedByServer),
-        (server(0x0C), "ERRINFO_LOGOFF_BY_USER", .signedOut),
-        (server(0x100), "ERRINFO_LICENSE_INTERNAL", .licensing),
-        (server(0x10A), "ERRINFO_LICENSE_NO_REMOTE_CONNECTIONS", .licensing),
-        (server(0x400), "ERRINFO_CB_DESTINATION_NOT_FOUND", .starting),
-        (server(0x10C9), "ERRINFO_UNKNOWN_DATA_PDU_TYPE", .protocolError)
+    private struct Entry {
+        var code: UInt32
+        var name: String
+        var kind: RDPFailure.Kind
+
+        init(_ code: UInt32, _ name: String, _ kind: RDPFailure.Kind) {
+            self.code = code
+            self.name = name
+            self.kind = kind
+        }
+    }
+
+    private static let table: [Entry] = [
+        Entry(connect(0x04), "ERRCONNECT_DNS_ERROR", .hostNotFound),
+        Entry(connect(0x05), "ERRCONNECT_DNS_NAME_NOT_FOUND", .hostNotFound),
+        Entry(connect(0x07), "ERRCONNECT_MCS_CONNECT_INITIAL_ERROR", .protocolError),
+        Entry(connect(0x09), "ERRCONNECT_AUTHENTICATION_FAILED", .wrongCredentials),
+        Entry(connect(0x0A), "ERRCONNECT_INSUFFICIENT_PRIVILEGES", .accountRestricted),
+        Entry(connect(0x0C), "ERRCONNECT_SECURITY_NEGO_CONNECT_FAILED", .securityMismatch),
+        Entry(connect(0x0E), "ERRCONNECT_PASSWORD_EXPIRED", .passwordExpired),
+        Entry(connect(0x0F), "ERRCONNECT_PASSWORD_CERTAINLY_EXPIRED", .passwordExpired),
+        Entry(connect(0x10), "ERRCONNECT_CLIENT_REVOKED", .accountRestricted),
+        Entry(connect(0x12), "ERRCONNECT_ACCOUNT_DISABLED", .accountRestricted),
+        Entry(connect(0x13), "ERRCONNECT_PASSWORD_MUST_CHANGE", .passwordExpired),
+        Entry(connect(0x14), "ERRCONNECT_LOGON_FAILURE", .wrongCredentials),
+        Entry(connect(0x15), "ERRCONNECT_WRONG_PASSWORD", .wrongCredentials),
+        Entry(connect(0x16), "ERRCONNECT_ACCESS_DENIED", .accountRestricted),
+        Entry(connect(0x17), "ERRCONNECT_ACCOUNT_RESTRICTION", .accountRestricted),
+        Entry(connect(0x18), "ERRCONNECT_ACCOUNT_LOCKED_OUT", .accountRestricted),
+        Entry(connect(0x19), "ERRCONNECT_ACCOUNT_EXPIRED", .accountRestricted),
+        Entry(connect(0x1A), "ERRCONNECT_LOGON_TYPE_NOT_GRANTED", .accountRestricted),
+        Entry(connect(0x1B), "ERRCONNECT_NO_OR_MISSING_CREDENTIALS", .wrongCredentials),
+        Entry(connect(0x1C), "ERRCONNECT_ACTIVATION_TIMEOUT", .notResponding),
+        Entry(connect(0x1D), "ERRCONNECT_TARGET_BOOTING", .starting),
+        Entry(connect(0x1E), "ERRCONNECT_HYBRID_REQUIRED_BY_SERVER", .securityMismatch),
+        Entry(connect(0x1F), "ERRCONNECT_NTLM_BLOCKED", .securityMismatch),
+        Entry(server(0x01), "ERRINFO_RPC_INITIATED_DISCONNECT", .endedByServer),
+        Entry(server(0x02), "ERRINFO_RPC_INITIATED_LOGOFF", .signedOut),
+        Entry(server(0x03), "ERRINFO_IDLE_TIMEOUT", .idleTimeout),
+        Entry(server(0x04), "ERRINFO_LOGON_TIMEOUT", .idleTimeout),
+        Entry(server(0x05), "ERRINFO_DISCONNECTED_BY_OTHER_CONNECTION", .replacedByAnotherConnection),
+        Entry(server(0x07), "ERRINFO_SERVER_DENIED_CONNECTION", .accountRestricted),
+        Entry(server(0x09), "ERRINFO_SERVER_INSUFFICIENT_PRIVILEGES", .accountRestricted),
+        Entry(server(0x0A), "ERRINFO_SERVER_FRESH_CREDENTIALS_REQUIRED", .wrongCredentials),
+        Entry(server(0x0B), "ERRINFO_RPC_INITIATED_DISCONNECT_BY_USER", .endedByServer),
+        Entry(server(0x0C), "ERRINFO_LOGOFF_BY_USER", .signedOut),
+        Entry(server(0x100), "ERRINFO_LICENSE_INTERNAL", .licensing),
+        Entry(server(0x10A), "ERRINFO_LICENSE_NO_REMOTE_CONNECTIONS", .licensing),
+        Entry(server(0x400), "ERRINFO_CB_DESTINATION_NOT_FOUND", .starting),
+        Entry(server(0x10C9), "ERRINFO_UNKNOWN_DATA_PDU_TYPE", .protocolError)
     ]
 
     @Test func everyCodeInTheTableIsTheErrorFreeRDPNamesIt() {
