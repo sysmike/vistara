@@ -55,6 +55,13 @@ final class SessionHandle {
         }
     }
 
+    /// The C callback: finds the Swift closure behind the context pointer and
+    /// asks it. A certificate that cannot be read is rejected.
+    private static let askDecider: vistara_certificate_decider = { context, certificate in
+        guard let context, let certificate = RDPCertificate(certificate.pointee) else { return false }
+        return Unmanaged<CertificateDecider>.fromOpaque(context).takeUnretainedValue().decide(certificate)
+    }
+
     private let session: OpaquePointer
 
     init?() {
@@ -103,12 +110,7 @@ final class SessionHandle {
             decide_certificate_context: nil
         )
         if let decider {
-            options.decide_certificate = { context, certificate in
-                guard let context else { return false }
-                let decider = Unmanaged<CertificateDecider>.fromOpaque(context).takeUnretainedValue()
-                guard let certificate = RDPCertificate(certificate.pointee) else { return false }
-                return decider.decide(certificate)
-            }
+            options.decide_certificate = Self.askDecider
             options.decide_certificate_context = Unmanaged.passUnretained(decider).toOpaque()
         }
 
@@ -214,10 +216,7 @@ extension RDPCertificate {
     /// Nil when the server's certificate cannot be read; it is then rejected.
     fileprivate init?(_ certificate: vistara_certificate) {
         let bytes = UnsafeRawBufferPointer(start: UnsafeRawPointer(certificate.pem), count: certificate.pem_length)
-        self.init(
-            host: String(cString: certificate.host),
-            port: certificate.port,
-            pemChain: String(decoding: bytes, as: UTF8.self)
-        )
+        guard let pem = String(bytes: bytes, encoding: .utf8) else { return nil }
+        self.init(host: String(cString: certificate.host), port: certificate.port, pemChain: pem)
     }
 }
