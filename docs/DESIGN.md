@@ -312,6 +312,20 @@ The Dock menu lists favorites and open sessions.
   `org.nspasteboard` convention) are never offered.
 - Line endings are converted. Files and images come later.
 
+### Sound
+
+- The connection's Sound choice decides where the remote computer's sound
+  goes: Play on This Mac, Play on Remote Computer, or Off. Only Play on This
+  Mac loads the sound channel; with the others no sound is sent to the Mac.
+- Sound plays through the Mac's default output and moves with it: pick
+  headphones in Control Center and the session's sound follows within half a
+  second. There is no output picker in Vistara. *Judgment.*
+- At most a quarter of a second of sound waits for the output. Anything later
+  is dropped, so sound never falls further behind the picture.
+- A Mac whose output cannot play costs only the sound; the session goes on.
+- Vistara never uses the microphone and never asks for it. Microphone
+  redirection is not offered.
+
 ## Presentation rules
 
 | Situation | Presentation | Why |

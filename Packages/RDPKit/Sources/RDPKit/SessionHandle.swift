@@ -16,7 +16,9 @@ final class SessionHandle {
         var height: UInt32 = 768
         var scalePercent: UInt32 = 100
         var requiresNLA = true
-        var playsAudioOnRemote = false
+        /// Off unless asked for, so tests that are not about sound load no
+        /// sound channel.
+        var audio: RDPAudioMode = .off
         var sharesClipboard = false
     }
 
@@ -110,7 +112,8 @@ final class SessionHandle {
             height: target.height,
             scale_percent: target.scalePercent,
             require_nla: target.requiresNLA,
-            play_audio_on_remote: target.playsAudioOnRemote,
+            play_audio_on_remote: target.audio == .remote,
+            play_audio_here: target.audio == .thisMac,
             share_clipboard: target.sharesClipboard,
             decide_certificate: nil,
             decide_certificate_context: nil
@@ -140,6 +143,7 @@ final class SessionHandle {
         var tlsMinimumVersion: UInt16
         var tlsSecurityLevel: UInt32
         var remoteConsoleAudio: Bool
+        var audioPlayback: Bool
         var desktopScaleFactor: UInt32
     }
 
@@ -150,7 +154,7 @@ final class SessionHandle {
         return GivenSettings(
             nla: given.nla, tls: given.tls, rdp: given.rdp, tlsMinimumVersion: given.tls_min_version,
             tlsSecurityLevel: given.tls_security_level, remoteConsoleAudio: given.remote_console_audio,
-            desktopScaleFactor: given.desktop_scale_factor
+            audioPlayback: given.audio_playback, desktopScaleFactor: given.desktop_scale_factor
         )
     }
 
@@ -223,6 +227,34 @@ final class SessionHandle {
     var clipboardConnected: Bool { vistara_session_clipboard_connected(session) }
     /// Bytes of clipboard data sent to the remote computer. For tests.
     var clipboardBytesSent: UInt64 { vistara_session_clipboard_bytes_sent(session) }
+
+    /// What the sound channel did. For tests.
+    struct AudioStatus: Equatable {
+        var channelLoaded: Bool
+        var framesReceived: UInt64
+        var framesDropped: UInt64
+        var sampleRate: UInt32
+        var channels: UInt32
+        var outputsOpened: UInt32
+        var outputChanges: UInt32
+        var outputRunning: Bool
+    }
+
+    var audioStatus: AudioStatus {
+        var status = vistara_audio_status()
+        vistara_session_read_audio(session, &status)
+        return AudioStatus(
+            channelLoaded: status.channel_loaded, framesReceived: status.frames_received,
+            framesDropped: status.frames_dropped, sampleRate: status.sample_rate, channels: status.channels,
+            outputsOpened: status.outputs_opened, outputChanges: status.output_changes,
+            outputRunning: status.output_running
+        )
+    }
+
+    /// Makes every sound output act as if another default output was picked. For tests.
+    static func pretendAudioOutputChanged() {
+        vistara_audio_pretend_output_changed()
+    }
 
     /// The cursor the server asked for, if it changed since the last call.
     func takeCursor() -> RDPCursor? {

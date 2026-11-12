@@ -1,4 +1,5 @@
 #include "CFreeRDP.h"
+#include "audio.h"
 #include "probe.h"
 
 #include <errno.h>
@@ -14,6 +15,7 @@
 #include <freerdp/channels/channels.h>
 #include <freerdp/channels/cliprdr.h>
 #include <freerdp/channels/disp.h>
+#include <freerdp/channels/rdpsnd.h>
 #include <freerdp/channels/drdynvc.h>
 #include <freerdp/client/channels.h>
 #include <freerdp/client/cliprdr.h>
@@ -70,6 +72,11 @@ struct vistara_session {
     // The remote computer's latest text, UTF-8, until taken.
     char *remote_text;
     uint64_t clipboard_bytes_sent;
+    // Load the sound channel and play its sound on this Mac.
+    bool play_audio_here;
+    // The sound channel's arguments, which it reads when it connects.
+    ADDIN_ARGV *audio_args;
+    vistara_audio_stats audio;
     // A size asked for that has not been sent yet: the channel comes up a few
     // round trips after connecting, and a request made before that must not
     // be lost. Session thread only.
@@ -519,16 +526,11 @@ uint64_t vistara_session_clipboard_bytes_sent(vistara_session *session) {
 // MARK: Channels
 
 // Vistara loads exactly the channels it uses instead of FreeRDP's general
-// loader, which adds several more depending on defaults. So far that is
-// display control, which is a dynamic channel and needs drdynvc to carry it.
+// loader, which adds several more depending on defaults: display control,
+// which is a dynamic channel and needs drdynvc to carry it, and sound and the
+// clipboard when the connection uses them.
 
 static pthread_once_t addin_provider_once = PTHREAD_ONCE_INIT;
-
-static void register_addin_provider(void) {
-    // Channels are compiled into libfreerdp-client; this tells FreeRDP to
-    // look for them there.
-    (void)freerdp_register_addin_provider(freerdp_channels_load_static_addin_entry, 0);
-}
 
 static BOOL load_static_channel(rdpContext *context, const char *name, void *data) {
     PVIRTUALCHANNELENTRY entry = freerdp_load_channel_addin_entry(
@@ -540,8 +542,50 @@ static BOOL load_static_channel(rdpContext *context, const char *name, void *dat
                                            WINPR_FUNC_PTR_CAST(entry, PVIRTUALCHANNELENTRYEX), data) == 0;
 }
 
+/// Finds channels and their parts: the shim's own sound output, and
+/// everything else among the channels compiled into libfreerdp-client.
+static PVIRTUALCHANNELENTRY load_addin_entry(LPCSTR name, LPCSTR subsystem, LPCSTR type, DWORD flags) {
+    if (name && subsystem && strcmp(name, RDPSND_CHANNEL_NAME) == 0 &&
+        strcmp(subsystem, VISTARA_AUDIO_SUBSYSTEM) == 0) {
+        return WINPR_FUNC_PTR_CAST(&vistara_rdpsnd_device_entry, PVIRTUALCHANNELENTRY);
+    }
+    return freerdp_channels_load_static_addin_entry(name, subsystem, type, flags);
+}
+
+static void register_addin_provider(void) {
+    (void)freerdp_register_addin_provider(load_addin_entry, 0);
+}
+
+vistara_audio_stats *vistara_audio_stats_for(rdpContext *context) {
+    return context ? &session_of(context)->audio : NULL;
+}
+
+void vistara_session_read_audio(vistara_session *session, vistara_audio_status *status) {
+    const vistara_audio_stats *audio = &session->audio;
+    status->frames_received = atomic_load(&audio->frames_received);
+    status->frames_dropped = atomic_load(&audio->frames_dropped);
+    status->sample_rate = (uint32_t)atomic_load(&audio->sample_rate);
+    status->channels = (uint32_t)atomic_load(&audio->channels);
+    status->outputs_opened = (uint32_t)atomic_load(&audio->outputs_opened);
+    status->output_changes = (uint32_t)atomic_load(&audio->output_changes);
+    status->output_running = atomic_load(&audio->output_running);
+    status->channel_loaded = session->audio_args != NULL;
+}
+
+/// Loads the sound channel with the shim's output, which plays on this Mac.
+static BOOL load_audio_channel(rdpContext *context) {
+    vistara_session *session = session_of(context);
+    const char *const arguments[] = {RDPSND_CHANNEL_NAME, "sys:" VISTARA_AUDIO_SUBSYSTEM};
+    session->audio_args = freerdp_addin_argv_new(ARRAYSIZE(arguments), arguments);
+    return session->audio_args && load_static_channel(context, RDPSND_CHANNEL_NAME, session->audio_args);
+}
+
 static BOOL load_channels(freerdp *instance) {
     rdpContext *context = instance->context;
+    // Sound only when it plays here: otherwise none is sent to this Mac.
+    if (session_of(context)->play_audio_here && !load_audio_channel(context)) {
+        return FALSE;
+    }
     // The clipboard only when shared: unloaded, no clipboard data can pass.
     if (session_of(context)->share_clipboard && !load_static_channel(context, CLIPRDR_SVC_CHANNEL_NAME, NULL)) {
         return FALSE;
@@ -776,6 +820,7 @@ void vistara_session_destroy(vistara_session *session) {
     free(session->cursor_pixels);
     free(session->local_text);
     free(session->remote_text);
+    freerdp_addin_argv_free(session->audio_args);
     pthread_mutex_destroy(&session->clipboard_lock);
     free(session);
 }
@@ -791,6 +836,7 @@ void vistara_session_read_settings(const vistara_session *session, vistara_secur
     out->tls_min_version = freerdp_settings_get_uint16(settings, FreeRDP_TLSMinVersion);
     out->tls_security_level = freerdp_settings_get_uint32(settings, FreeRDP_TlsSecLevel);
     out->remote_console_audio = freerdp_settings_get_bool(settings, FreeRDP_RemoteConsoleAudio);
+    out->audio_playback = freerdp_settings_get_bool(settings, FreeRDP_AudioPlayback);
     out->desktop_scale_factor = freerdp_settings_get_uint32(settings, FreeRDP_DesktopScaleFactor);
 }
 
@@ -816,6 +862,8 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            freerdp_settings_set_uint16(settings, FreeRDP_TLSMinVersion, VISTARA_TLS1_2_VERSION) &&
            freerdp_settings_set_uint32(settings, FreeRDP_TlsSecLevel, FREERDP_TLS_SECLEVEL_112BIT) &&
            freerdp_settings_set_bool(settings, FreeRDP_RemoteConsoleAudio, options->play_audio_on_remote) &&
+           // Without it the server is told not to send sound at all.
+           freerdp_settings_set_bool(settings, FreeRDP_AudioPlayback, options->play_audio_here) &&
            freerdp_settings_set_bool(settings, FreeRDP_RedirectClipboard, options->share_clipboard) &&
            // Text only, both ways: never files.
            freerdp_settings_set_uint32(settings, FreeRDP_ClipboardFeatureMask,
@@ -843,6 +891,7 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     pthread_mutex_lock(&session->clipboard_lock);
     session->share_clipboard = options->share_clipboard;
     pthread_mutex_unlock(&session->clipboard_lock);
+    session->play_audio_here = options->play_audio_here && !options->play_audio_on_remote;
     session->decide_certificate = options->decide_certificate;
     session->decide_certificate_context = options->decide_certificate_context;
     if (!apply_options(session->instance->context->settings, options)) {

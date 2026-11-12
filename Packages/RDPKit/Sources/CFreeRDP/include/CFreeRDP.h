@@ -77,6 +77,10 @@ typedef struct {
     bool require_nla;
     /// Ask the server to play sound on the remote computer instead of sending it.
     bool play_audio_on_remote;
+    /// Load the sound channel and play the remote computer's sound through
+    /// this Mac's default output. Ignored with play_audio_on_remote. With
+    /// neither, the server is told not to play sound at all.
+    bool play_audio_here;
     /// Load the clipboard channel and share text both ways. When false the
     /// channel is not loaded, so no clipboard data can pass in either direction.
     bool share_clipboard;
@@ -123,6 +127,34 @@ void vistara_session_offer_local_text(vistara_session *session, const char *text
 bool vistara_session_clipboard_connected(vistara_session *session);
 uint64_t vistara_session_clipboard_bytes_sent(vistara_session *session);
 
+/// What the sound channel did, for tests and diagnostics.
+typedef struct {
+    /// Whether the sound channel was loaded, which it is only for play_audio_here.
+    bool channel_loaded;
+    /// Audio frames the server sent, and how many of them were not played
+    /// because the output was missing or behind.
+    uint64_t frames_received;
+    uint64_t frames_dropped;
+    /// The format the server and this Mac agreed on, once sound has started.
+    uint32_t sample_rate;
+    uint32_t channels;
+    /// How often an output was made: once, and again for each change of the
+    /// default output. Zero on a Mac where none can be made.
+    uint32_t outputs_opened;
+    /// How often the default output changed while sound was playing.
+    uint32_t output_changes;
+    /// Whether the output is playing. A Mac without any output never does.
+    bool output_running;
+} vistara_audio_status;
+
+/// Reads what the sound channel did.
+void vistara_session_read_audio(vistara_session *session, vistara_audio_status *status);
+
+/// Makes every session's sound output act as if the user had picked another
+/// default output, within half a second. For tests: CI machines have no
+/// outputs to switch between.
+void vistara_audio_pretend_output_changed(void);
+
 /// The settings a connection attempt handed to FreeRDP, read back from it.
 /// For tests: the mapping from Vistara's options is checked against
 /// FreeRDP's own values.
@@ -133,6 +165,7 @@ typedef struct {
     uint16_t tls_min_version;
     uint32_t tls_security_level;
     bool remote_console_audio;
+    bool audio_playback;
     uint32_t desktop_scale_factor;
 } vistara_security_settings;
 

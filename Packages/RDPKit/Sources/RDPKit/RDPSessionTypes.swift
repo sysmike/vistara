@@ -1,8 +1,9 @@
 import Foundation
 
 /// Where the remote computer's sound goes.
-public enum RDPAudioMode: Sendable, Equatable {
-    /// Sent to this Mac (issue #26 adds the channel that carries it).
+public enum RDPAudioMode: Sendable, Hashable {
+    /// Sent to this Mac and played through its default output, which may
+    /// change while connected.
     case thisMac
     /// Played on the remote computer.
     case remote

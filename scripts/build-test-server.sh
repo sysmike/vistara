@@ -6,6 +6,8 @@
 # The server's "sample" screen source has no monitor and never sends anything.
 # A patch gives it one fixed 1024x768 monitor filled with a known colour and a
 # timer that pushes pending updates, so clients receive a predictable picture.
+# The same timer sends a steady tone, and the patch adds a clipboard and logs
+# the input and clipboard text it receives.
 #
 # Requires scripts/build-freerdp.sh to have run (for OpenSSL).
 #

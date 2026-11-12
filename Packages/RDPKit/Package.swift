@@ -28,7 +28,10 @@ let package = Package(
                 .unsafeFlags(["-L\(freeRDPPrefix)/lib"]),
                 .linkedLibrary("freerdp-client3"),
                 .linkedLibrary("freerdp3"),
-                .linkedLibrary("winpr3")
+                .linkedLibrary("winpr3"),
+                // The sound output (audio.c).
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("CoreAudio")
             ]
         ),
         .target(name: "RDPKit", dependencies: ["CFreeRDP"]),
