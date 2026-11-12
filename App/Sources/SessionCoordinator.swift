@@ -12,10 +12,22 @@ final class SessionCoordinator {
     private(set) var activeModel: SessionModel?
     @ObservationIgnored private var controllers: [SessionWindowController] = []
     @ObservationIgnored private let credentialStore: any CredentialStore
+    @ObservationIgnored let trustStore: CertificateTrustStore
 
-    /// Passwords go to the Keychain unless a test says otherwise.
-    init(credentialStore: any CredentialStore = KeychainCredentialStore()) {
+    /// Passwords go to the Keychain and trusted certificates to Application
+    /// Support, unless a test says otherwise.
+    init(
+        credentialStore: any CredentialStore = KeychainCredentialStore(),
+        trustStore: CertificateTrustStore = SessionCoordinator.defaultTrustStore()
+    ) {
         self.credentialStore = credentialStore
+        self.trustStore = trustStore
+    }
+
+    static func defaultTrustStore() -> CertificateTrustStore {
+        let directory = (try? ConnectionStore.defaultDirectory())
+            ?? FileManager.default.temporaryDirectory.appendingPathComponent(VistaraCore.applicationSupportFolderName)
+        return CertificateTrustStore(directory: directory)
     }
 
     var liveSessionCount: Int {
@@ -31,7 +43,7 @@ final class SessionCoordinator {
             return existing
         }
 
-        let model = SessionModel(target: target, credentialStore: credentialStore)
+        let model = SessionModel(target: target, credentialStore: credentialStore, trustStore: trustStore)
         let controller = SessionWindowController(model: model)
         controller.onMainChange = { [weak self, weak model] isMain in
             guard let self, let model else { return }
@@ -47,6 +59,7 @@ final class SessionCoordinator {
             controllers.removeAll { $0 === controller }
         }
         controllers.append(controller)
+        controller.observeCertificates()
         model.connect()
         controller.show()
         return controller

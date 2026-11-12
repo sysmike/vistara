@@ -21,7 +21,9 @@ struct ScreenshotTests {
         commonName: "build01.example.com",
         subject: "CN = build01.example.com",
         issuer: "CN = build01.example.com",
-        fingerprint: "3f:9a:11:c4:5e:7b:02:d8:66:1a:90:ef:4c:33:b7:25:8d:e1:0f:72:a4:5b:c9:16:e8:30:7d:94:2b:6f:ac:51"
+        fingerprint: "3f:9a:11:c4:5e:7b:02:d8:66:1a:90:ef:4c:33:b7:25:8d:e1:0f:72:a4:5b:c9:16:e8:30:7d:94:2b:6f:ac:51",
+        validFrom: Date(timeIntervalSince1970: 1_790_000_000),
+        validUntil: Date(timeIntervalSince1970: 1_990_000_000)
     )
 
     @Test
@@ -81,13 +83,26 @@ struct ScreenshotTests {
     }
 
     @Test
-    func changedCertificateSheet() async throws {
+    func changedCertificateAlert() throws {
         var changed = Self.certificate
         changed.previousFingerprint =
             "a1:07:5c:de:42:90:3b:f8:19:c6:7e:05:d3:68:2a:b4:91:0c:e7:36:5f:a8:14:7b:c0:29:e5:83:4d:f1:6a:9e"
-        let view = CertificateSheet(certificate: changed) { _ in }
-        let size = NSSize(width: 520, height: 310)
-        let bytes = try await Screenshots.write(view, size: size, name: "certificate-changed")
+        let alert = ChangedCertificateAlert.make(certificate: changed, name: "Build Server")
+        alert.layout()
+        let content = try #require(alert.window.contentView)
+        let bytes = try Screenshots.write(content, name: "certificate-changed")
+        #expect(bytes > 0)
+    }
+
+    @Test
+    func securitySettings() async throws {
+        let store = temporaryTrustStore()
+        try store.add(host: "build01.example.com", port: 3389, fingerprint: Self.certificate.fingerprint)
+        let other = Self.certificate.fingerprint.replacing("3f", with: "77")
+        try store.add(host: "10.0.0.5", port: 3390, fingerprint: other)
+        let view = SecuritySettingsView(trustStore: store)
+        let size = NSSize(width: 620, height: 340)
+        let bytes = try await Screenshots.write(view, size: size, name: "settings-security")
         #expect(bytes > 0)
     }
 
@@ -102,7 +117,7 @@ struct ScreenshotTests {
     func certificateSheet(dark: Bool) async throws {
         let name = dark ? "certificate-dark" : "certificate"
         let view = CertificateSheet(certificate: Self.certificate) { _ in }
-        let bytes = try await Screenshots.write(view, size: NSSize(width: 520, height: 250), name: name, dark: dark)
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 520, height: 280), name: name, dark: dark)
         #expect(bytes > 0)
     }
 }

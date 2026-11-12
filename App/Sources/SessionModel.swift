@@ -41,6 +41,15 @@ struct CredentialsAnswer {
     }
 }
 
+/// What the user decided about a certificate.
+enum CertificateDecision {
+    case cancel
+    /// Continue this time and ask again next time.
+    case trustOnce
+    /// Continue, and remember the certificate for this computer.
+    case alwaysTrust
+}
+
 /// Everything one session window shows, and the session behind it.
 @MainActor
 @Observable
@@ -62,6 +71,7 @@ final class SessionModel {
     private(set) var pendingCredentials: CredentialsRequest?
 
     @ObservationIgnored private let credentialStore: any CredentialStore
+    @ObservationIgnored private let trustStore: CertificateTrustStore
     @ObservationIgnored private var session: RDPSession?
     @ObservationIgnored private var certificateAnswer: CheckedContinuation<Bool, Never>?
     @ObservationIgnored private var credentialsAnswer: CheckedContinuation<RDPCredentials?, Never>?
@@ -71,9 +81,15 @@ final class SessionModel {
     /// The last attempt was refused: ask again instead of using what is saved.
     @ObservationIgnored private var wasRefused = false
 
-    init(target: SessionTarget, credentialStore: any CredentialStore, phase: Phase = .connecting) {
+    init(
+        target: SessionTarget,
+        credentialStore: any CredentialStore,
+        trustStore: CertificateTrustStore,
+        phase: Phase = .connecting
+    ) {
         self.target = target
         self.credentialStore = credentialStore
+        self.trustStore = trustStore
         self.phase = phase
     }
 
@@ -130,11 +146,22 @@ final class SessionModel {
     }
 
     /// Answers the certificate question, if one is open.
-    func answerCertificate(trust: Bool) {
+    func answerCertificate(_ decision: CertificateDecision) {
         let answer = certificateAnswer
+        let certificate = pendingCertificate
         certificateAnswer = nil
         pendingCertificate = nil
-        answer?.resume(returning: trust)
+        guard let answer else { return }
+        if decision == .alwaysTrust, let certificate {
+            // If this cannot be saved, the certificate is trusted this once
+            // and the next connection asks again.
+            try? trustStore.add(host: certificate.host, port: certificate.port, fingerprint: certificate.fingerprint)
+        }
+        answer.resume(returning: decision != .cancel)
+    }
+
+    func answerCertificate(trust: Bool) {
+        answerCertificate(trust ? .trustOnce : .cancel)
     }
 
     /// Answers the credentials question, if one is open. Nil cancels the
@@ -223,10 +250,23 @@ final class SessionModel {
         }
     }
 
-    /// Shows the certificate and waits for the decision. Returns false at
-    /// once when the session is disconnected meanwhile.
-    private func decide(_ certificate: RDPCertificate) async -> Bool {
-        await withTaskCancellationHandler {
+    /// Decides about a certificate macOS does not trust on its own. One the
+    /// user chose to always trust for this computer passes; anything else is
+    /// shown, a changed certificate as a warning. Returns false at once when
+    /// the session is disconnected meanwhile.
+    private func decide(_ presented: RDPCertificate) async -> Bool {
+        var shown = presented
+        let known = trustStore.trust(forHost: shown.host, port: shown.port, fingerprint: shown.fingerprint)
+        switch known {
+        case .trusted:
+            return true
+        case .unknown:
+            shown.previousFingerprint = nil
+        case .changed(let previousFingerprint):
+            shown.previousFingerprint = previousFingerprint
+        }
+        let certificate = shown
+        return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 guard !Task.isCancelled else {
                     continuation.resume(returning: false)

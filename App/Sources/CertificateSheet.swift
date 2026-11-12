@@ -1,52 +1,56 @@
 import RDPKit
 import SwiftUI
 
-/// Asks whether to continue with a certificate that could not be verified.
-/// Trusting takes a deliberate click: Return and Escape both cancel.
-/// Remembering a certificate arrives with the trust store (issue #14).
+/// Asks whether to continue with a certificate macOS does not trust on its
+/// own, for a computer with no trusted certificate on record. Trusting takes
+/// a deliberate click: Return and Escape both cancel.
 struct CertificateSheet: View {
     let certificate: RDPCertificate
-    let answer: (Bool) -> Void
+    let answer: (CertificateDecision) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Vistara can’t verify the identity of “\(certificate.host)”.")
                 .font(.headline)
-            Text(explanation)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Its certificate isn’t signed by an authority your Mac trusts. Compare the fingerprint with the "
+                    + "one shown on that computer before you continue."
+            )
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
                 row("Issued to:", certificate.commonName.isEmpty ? certificate.subject : certificate.commonName)
                 row("Issued by:", certificate.issuer)
+                if let validity = Self.validity(of: certificate) {
+                    row("Valid:", validity)
+                }
             }
             .padding(.top, 4)
 
             fingerprint("SHA-256 fingerprint", certificate.fingerprint)
-            if let previous = certificate.previousFingerprint {
-                fingerprint("Fingerprint seen before", previous)
-            }
 
             HStack {
                 Spacer()
-                Button("Trust Once") { answer(true) }
-                Button("Cancel") { answer(false) }
+                Button("Always Trust") { answer(.alwaysTrust) }
+                Button("Trust Once") { answer(.trustOnce) }
+                Button("Cancel") { answer(.cancel) }
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
         .frame(width: 520)
-        .onExitCommand { answer(false) }
+        .onExitCommand { answer(.cancel) }
     }
 
-    private var explanation: String {
-        if certificate.previousFingerprint == nil {
-            "Its certificate isn’t signed by an authority your Mac trusts. Compare the fingerprint with the "
-                + "one shown on that computer before you continue."
-        } else {
-            "This computer presented a different certificate before. It may have been reinstalled, or "
-                + "someone may be intercepting the connection."
-        }
+    /// "12 Nov 2026 to 14 Dec 2027", with a note when today is outside.
+    static func validity(of certificate: RDPCertificate, now: Date = Date()) -> String? {
+        guard let from = certificate.validFrom, let until = certificate.validUntil else { return nil }
+        let range = "\(from.formatted(date: .abbreviated, time: .omitted)) to "
+            + until.formatted(date: .abbreviated, time: .omitted)
+        if now > until { return range + " (expired)" }
+        if now < from { return range + " (not valid yet)" }
+        return range
     }
 
     private func row(_ label: String, _ value: String) -> some View {

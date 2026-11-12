@@ -69,8 +69,8 @@ final class SessionHandle {
     var abortToken: AbortToken { AbortToken(session: session) }
 
     /// Connects and blocks until connected or failed. `decideCertificate` is
-    /// called, on this thread, for a certificate OpenSSL cannot verify.
-    /// Without it such a certificate is rejected.
+    /// called, on this thread, for the server's certificate. Without it
+    /// every certificate is rejected.
     func connect(to target: Target, decideCertificate: ((RDPCertificate) -> Bool)? = nil) -> ConnectResult {
         // strdup copies so every pointer stays valid for the whole call.
         let hostCopy = strdup(target.host)
@@ -106,7 +106,8 @@ final class SessionHandle {
             options.decide_certificate = { context, certificate in
                 guard let context else { return false }
                 let decider = Unmanaged<CertificateDecider>.fromOpaque(context).takeUnretainedValue()
-                return decider.decide(RDPCertificate(certificate.pointee))
+                guard let certificate = RDPCertificate(certificate.pointee) else { return false }
+                return decider.decide(certificate)
             }
             options.decide_certificate_context = Unmanaged.passUnretained(decider).toOpaque()
         }
@@ -210,15 +211,13 @@ final class SessionHandle {
 }
 
 extension RDPCertificate {
-    fileprivate init(_ certificate: vistara_certificate) {
+    /// Nil when the server's certificate cannot be read; it is then rejected.
+    fileprivate init?(_ certificate: vistara_certificate) {
+        let bytes = UnsafeRawBufferPointer(start: UnsafeRawPointer(certificate.pem), count: certificate.pem_length)
         self.init(
             host: String(cString: certificate.host),
             port: certificate.port,
-            commonName: String(cString: certificate.common_name),
-            subject: String(cString: certificate.subject),
-            issuer: String(cString: certificate.issuer),
-            fingerprint: String(cString: certificate.fingerprint),
-            previousFingerprint: certificate.previous_fingerprint.map { String(cString: $0) }
+            pemChain: String(decoding: bytes, as: UTF8.self)
         )
     }
 }

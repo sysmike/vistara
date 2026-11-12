@@ -40,8 +40,8 @@ struct SessionContentView: View {
         }
         .sheet(isPresented: certificateIsPresented) {
             if let certificate = model.pendingCertificate {
-                CertificateSheet(certificate: certificate) { trust in
-                    model.answerCertificate(trust: trust)
+                CertificateSheet(certificate: certificate) { decision in
+                    model.answerCertificate(decision)
                 }
             }
         }
@@ -58,9 +58,12 @@ struct SessionContentView: View {
 
     private var certificateIsPresented: Binding<Bool> {
         Binding(
-            get: { model.pendingCertificate != nil },
+            // A changed certificate is an alert on the window, not this sheet.
+            get: { model.pendingCertificate.map { $0.previousFingerprint == nil } ?? false },
             set: { isPresented in
-                if !isPresented { model.answerCertificate(trust: false) }
+                if !isPresented, model.pendingCertificate?.previousFingerprint == nil {
+                    model.answerCertificate(.cancel)
+                }
             }
         )
     }

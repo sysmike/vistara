@@ -51,53 +51,25 @@ const char *vistara_freerdp_version(void) {
 
 // MARK: Certificates
 
-/// Asks the decider. Acceptance is for this session only, so nothing is
-/// written to FreeRDP's own certificate store.
-static DWORD decide_certificate(vistara_session *session, const vistara_certificate *certificate) {
-    if (session->decide_certificate && certificate->fingerprint &&
-        session->decide_certificate(session->decide_certificate_context, certificate)) {
+/// FreeRDP hands every server certificate here, because certificate
+/// management is declared external in apply_options(). The result is for
+/// this connection only; FreeRDP stores nothing.
+static int verify_x509_certificate(freerdp *instance, const BYTE *data, size_t length,
+                                   const char *hostname, UINT16 port, DWORD flags) {
+    (void)flags;
+    vistara_session *session = session_of(instance->context);
+    const vistara_certificate certificate = {
+        .host = hostname ? hostname : "",
+        .port = port,
+        .pem = (const char *)data,
+        .pem_length = length,
+    };
+    if (data && length > 0 && session->decide_certificate &&
+        session->decide_certificate(session->decide_certificate_context, &certificate)) {
         return 2; // accept for this session only
     }
     session->certificate_rejected = true;
     return 0;
-}
-
-static const char *or_empty(const char *text) {
-    return text ? text : "";
-}
-
-static DWORD verify_certificate(freerdp *instance, const char *host, UINT16 port,
-                                const char *common_name, const char *subject, const char *issuer,
-                                const char *fingerprint, DWORD flags) {
-    (void)flags;
-    const vistara_certificate certificate = {
-        .host = or_empty(host),
-        .port = port,
-        .common_name = or_empty(common_name),
-        .subject = or_empty(subject),
-        .issuer = or_empty(issuer),
-        .fingerprint = fingerprint,
-        .previous_fingerprint = NULL,
-    };
-    return decide_certificate(session_of(instance->context), &certificate);
-}
-
-static DWORD verify_changed_certificate(freerdp *instance, const char *host, UINT16 port,
-                                        const char *common_name, const char *subject,
-                                        const char *issuer, const char *new_fingerprint,
-                                        const char *old_subject, const char *old_issuer,
-                                        const char *old_fingerprint, DWORD flags) {
-    (void)old_subject, (void)old_issuer, (void)flags;
-    const vistara_certificate certificate = {
-        .host = or_empty(host),
-        .port = port,
-        .common_name = or_empty(common_name),
-        .subject = or_empty(subject),
-        .issuer = or_empty(issuer),
-        .fingerprint = new_fingerprint,
-        .previous_fingerprint = or_empty(old_fingerprint),
-    };
-    return decide_certificate(session_of(instance->context), &certificate);
 }
 
 // MARK: Painting
@@ -313,8 +285,7 @@ vistara_session *vistara_session_create(void) {
     instance->PreConnect = pre_connect;
     instance->PostConnect = post_connect;
     instance->PostDisconnect = post_disconnect;
-    instance->VerifyCertificateEx = verify_certificate;
-    instance->VerifyChangedCertificateEx = verify_changed_certificate;
+    instance->VerifyX509Certificate = verify_x509_certificate;
 
     if (!freerdp_context_new(instance)) {
         freerdp_free(instance);
@@ -354,6 +325,10 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, options->require_nla ? FALSE : TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE) &&
+           // Certificates are judged by the application alone: the system's
+           // trust evaluation and Vistara's own trust store. FreeRDP's
+           // known-hosts file is neither read nor written.
+           freerdp_settings_set_bool(settings, FreeRDP_ExternalCertificateManagement, TRUE) &&
            // Offered to the server; each is used only if the server has it too.
            freerdp_settings_set_bool(settings, FreeRDP_HasHorizontalWheel, TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_HasExtendedMouseEvent, TRUE);

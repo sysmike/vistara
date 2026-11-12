@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import SwiftUI
 
 /// One session in one ordinary window: system title bar, no toolbar, the
@@ -12,6 +13,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     let window: NSWindow
     var onMainChange: ((Bool) -> Void)?
     var onClose: (() -> Void)?
+    private var changedCertificateAlert: NSAlert?
 
     init(model: SessionModel) {
         self.model = model
@@ -41,6 +43,41 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         if target.name != target.host {
             window.subtitle = target.host
+        }
+    }
+
+    /// Starts watching for a changed certificate, which is shown as an alert
+    /// on this window. Unknown certificates are a sheet in the content view.
+    func observeCertificates() {
+        withObservationTracking {
+            _ = model.pendingCertificate
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.pendingCertificateChanged()
+                self?.observeCertificates()
+            }
+        }
+    }
+
+    private func pendingCertificateChanged() {
+        guard let certificate = model.pendingCertificate, certificate.previousFingerprint != nil else {
+            // Answered or gone with the session: take the alert down.
+            if let alert = changedCertificateAlert {
+                changedCertificateAlert = nil
+                window.endSheet(alert.window)
+            }
+            return
+        }
+        guard changedCertificateAlert == nil else { return }
+        let alert = ChangedCertificateAlert.make(certificate: certificate, name: model.target.name)
+        changedCertificateAlert = alert
+        alert.beginSheetModal(for: window) { [weak self] response in
+            MainActor.assumeIsolated {
+                guard let self, self.changedCertificateAlert === alert else { return }
+                self.changedCertificateAlert = nil
+                let isConnect = response == ChangedCertificateAlert.connectResponse
+                self.model.answerCertificate(isConnect ? .trustOnce : .cancel)
+            }
         }
     }
 
