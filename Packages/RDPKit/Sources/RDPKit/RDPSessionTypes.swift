@@ -1,3 +1,5 @@
+import Foundation
+
 /// What a session connects to and how. Holds no password: the session asks
 /// for credentials when it needs them.
 public struct RDPSessionConfiguration: Sendable, Equatable {
@@ -56,17 +58,22 @@ extension RDPCredentials: CustomStringConvertible, CustomDebugStringConvertible,
     public var customMirror: Mirror { Mirror(self, children: [:]) }
 }
 
-/// A server certificate that could not be verified automatically and needs a
-/// decision.
+/// A server certificate that the system does not trust on its own and that
+/// needs a decision.
 public struct RDPCertificate: Sendable, Equatable {
     public var host: String
     public var port: UInt16
     public var commonName: String
     public var subject: String
     public var issuer: String
-    /// SHA-256 as colon-separated hex pairs.
+    /// SHA-256 of the certificate as colon-separated lowercase hex pairs.
     public var fingerprint: String
-    /// Set when a different certificate was recorded for this host before.
+    public var validFrom: Date?
+    public var validUntil: Date?
+    /// The certificate and the rest of the chain the server sent, each in DER.
+    public var chain: [Data]
+    /// Set by whoever keeps a trust store, when a different certificate was
+    /// trusted for this host before.
     public var previousFingerprint: String?
 
     public init(
@@ -76,6 +83,9 @@ public struct RDPCertificate: Sendable, Equatable {
         subject: String,
         issuer: String,
         fingerprint: String,
+        validFrom: Date? = nil,
+        validUntil: Date? = nil,
+        chain: [Data] = [],
         previousFingerprint: String? = nil
     ) {
         self.host = host
@@ -84,6 +94,9 @@ public struct RDPCertificate: Sendable, Equatable {
         self.subject = subject
         self.issuer = issuer
         self.fingerprint = fingerprint
+        self.validFrom = validFrom
+        self.validUntil = validUntil
+        self.chain = chain
         self.previousFingerprint = previousFingerprint
     }
 }

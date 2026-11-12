@@ -23,6 +23,20 @@ struct TestServer {
     }
 }
 
+/// A trust store in a folder of its own that trusts nothing yet.
+func temporaryTrustStore() -> CertificateTrustStore {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("vistara-trust-\(UUID().uuidString)", isDirectory: true)
+    return CertificateTrustStore(directory: directory)
+}
+
+extension SessionModel {
+    /// With a trust store that trusts nothing, for tests about other things.
+    convenience init(target: SessionTarget, credentialStore: any CredentialStore, phase: Phase = .connecting) {
+        self.init(target: target, credentialStore: credentialStore, trustStore: temporaryTrustStore(), phase: phase)
+    }
+}
+
 extension TestServer {
     /// A store that already holds the server's account, so no sheet appears.
     func storeWithCredentials() throws -> InMemoryCredentialStore {

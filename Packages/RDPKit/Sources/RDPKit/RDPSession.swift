@@ -135,6 +135,8 @@ public final class RDPSession: Sendable {
         let delegate = delegate
 
         let result = handle.connect(to: target) { certificate in
+            // A certificate macOS trusts on its own needs no question.
+            if RDPCertificateVerifier.isTrustedBySystem(certificate) { return true }
             self.continuation.yield(.awaitingCertificateDecision(certificate))
             let isAccepted = self.ask { await delegate.certificateDecision(certificate) } ?? false
             if isAccepted { self.continuation.yield(.connecting) }

@@ -11,6 +11,7 @@
 // same thread, except vistara_session_abort() and vistara_session_wake().
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #if __has_feature(nullability)
@@ -32,18 +33,15 @@ vistara_session *_Nullable vistara_session_create(void);
 /// NULL is allowed.
 void vistara_session_destroy(vistara_session *_Nullable session);
 
-/// A server certificate that OpenSSL could not verify on its own.
+/// The certificate a server presented. FreeRDP verifies nothing itself and
+/// keeps no certificate store of its own: every certificate comes here.
 typedef struct {
     const char *host;
     uint16_t port;
-    const char *common_name;
-    const char *subject;
-    const char *issuer;
-    /// SHA-256 as colon-separated hex pairs.
-    const char *fingerprint;
-    /// Set when FreeRDP's own store holds a different certificate for this
-    /// host. NULL otherwise.
-    const char *_Nullable previous_fingerprint;
+    /// The server's certificate followed by the rest of the chain it sent,
+    /// as PEM text of `pem_length` bytes. Valid during the callback only.
+    const char *pem;
+    size_t pem_length;
 } vistara_certificate;
 
 /// Decides whether to continue with a certificate. Called on the thread that
@@ -64,8 +62,8 @@ typedef struct {
     /// When false, the server may negotiate TLS without Network Level
     /// Authentication. Legacy RDP security is never offered.
     bool require_nla;
-    /// Asked about every certificate OpenSSL cannot verify. With NULL, such a
-    /// certificate is always rejected: nothing is ever accepted silently.
+    /// Asked about every server certificate. With NULL, every certificate is
+    /// rejected: nothing is ever accepted silently.
     vistara_certificate_decider _Nullable decide_certificate;
     void *_Nullable decide_certificate_context;
 } vistara_connect_options;
