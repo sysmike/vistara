@@ -550,6 +550,20 @@ void vistara_session_destroy(vistara_session *session) {
     free(session);
 }
 
+/// TLS1_2_VERSION from OpenSSL's prov_ssl.h, which the shim does not include.
+#define VISTARA_TLS1_2_VERSION 0x0303
+
+void vistara_session_read_settings(const vistara_session *session, vistara_security_settings *out) {
+    const rdpSettings *settings = session->instance->context->settings;
+    out->nla = freerdp_settings_get_bool(settings, FreeRDP_NlaSecurity);
+    out->tls = freerdp_settings_get_bool(settings, FreeRDP_TlsSecurity);
+    out->rdp = freerdp_settings_get_bool(settings, FreeRDP_RdpSecurity);
+    out->tls_min_version = freerdp_settings_get_uint16(settings, FreeRDP_TLSMinVersion);
+    out->tls_security_level = freerdp_settings_get_uint32(settings, FreeRDP_TlsSecLevel);
+    out->remote_console_audio = freerdp_settings_get_bool(settings, FreeRDP_RemoteConsoleAudio);
+    out->desktop_scale_factor = freerdp_settings_get_uint32(settings, FreeRDP_DesktopScaleFactor);
+}
+
 static bool apply_options(rdpSettings *settings, const vistara_connect_options *options) {
     return freerdp_settings_set_string(settings, FreeRDP_ServerHostname, options->host) &&
            freerdp_settings_set_uint32(settings, FreeRDP_ServerPort, options->port) &&
@@ -566,6 +580,12 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, options->require_nla ? FALSE : TRUE) &&
            freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE) &&
+           // TLS 1.2 or newer with OpenSSL's 112-bit security level. These are
+           // FreeRDP 3.33's defaults too; set here so an update cannot lower
+           // them unnoticed. No option weakens them.
+           freerdp_settings_set_uint16(settings, FreeRDP_TLSMinVersion, VISTARA_TLS1_2_VERSION) &&
+           freerdp_settings_set_uint32(settings, FreeRDP_TlsSecLevel, FREERDP_TLS_SECLEVEL_112BIT) &&
+           freerdp_settings_set_bool(settings, FreeRDP_RemoteConsoleAudio, options->play_audio_on_remote) &&
            // Certificates are judged by the application alone: the system's
            // trust evaluation and Vistara's own trust store. FreeRDP's
            // known-hosts file is neither read nor written.

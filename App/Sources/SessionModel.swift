@@ -21,6 +21,35 @@ struct SessionTarget: Equatable, Sendable {
     var fixedHeight = 1080
     var usesHiDPI = true
 
+    /// Security and device options from the saved connection.
+    var requiresNLA = true
+    var certificatePolicy = Connection.CertificatePolicy.askOnFirstUse
+    var audioMode = Connection.AudioMode.playOnThisMac
+    var sharesClipboard = true
+    var reconnectsAutomatically = true
+
+    /// What RDPKit is told about this target, for a desktop of the given size.
+    func configuration(desktop: DesktopSize) -> RDPSessionConfiguration {
+        let audio: RDPAudioMode = switch audioMode {
+        case .playOnThisMac: .thisMac
+        case .playOnRemote: .remote
+        case .off: .off
+        }
+        return RDPSessionConfiguration(
+            host: host,
+            port: port,
+            username: username,
+            domain: domain,
+            desktopWidth: UInt32(desktop.width),
+            desktopHeight: UInt32(desktop.height),
+            scalePercent: UInt32(desktop.scalePercent),
+            requiresNLA: requiresNLA,
+            audio: audio,
+            sharesClipboard: sharesClipboard,
+            reconnectsAutomatically: reconnectsAutomatically
+        )
+    }
+
     /// The saved connection this target comes from, if any.
     var connectionID: UUID?
 
@@ -82,6 +111,10 @@ final class SessionModel {
 
     /// Whether the session window is in full screen. Set by the window.
     var isFullScreen = false
+
+    /// The last session ended because the connection accepts only trusted
+    /// certificates and this one was not.
+    private(set) var refusedCertificateByPolicy = false
 
     /// The scale the current session was connected with, in percent.
     private(set) var connectedScale: UInt16 = 100
@@ -149,15 +182,8 @@ final class SessionModel {
         )
         let desktop = startingDesktopSize()
         connectedScale = desktop.scalePercent
-        let configuration = RDPSessionConfiguration(
-            host: target.host,
-            port: target.port,
-            username: target.username,
-            domain: target.domain,
-            desktopWidth: UInt32(desktop.width),
-            desktopHeight: UInt32(desktop.height),
-            scalePercent: UInt32(desktop.scalePercent)
-        )
+        refusedCertificateByPolicy = false
+        let configuration = target.configuration(desktop: desktop)
         let session = RDPSession(configuration: configuration, delegate: delegate)
         self.session = session
         framebuffer = session.framebuffer
@@ -312,6 +338,11 @@ final class SessionModel {
     private func decide(_ presented: RDPCertificate) async -> Bool {
         var shown = presented
         let known = trustStore.trust(forHost: shown.host, port: shown.port, fingerprint: shown.fingerprint)
+        // "Require a Trusted Certificate": nothing new is ever asked about.
+        if target.certificatePolicy == .requireTrusted, known != .trusted {
+            refusedCertificateByPolicy = true
+            return false
+        }
         switch known {
         case .trusted:
             return true

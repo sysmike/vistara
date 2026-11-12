@@ -32,7 +32,19 @@ struct DisconnectMessage: Equatable {
     /// `name` is the connection's name, `host` the address connected to.
     /// `canEditConnection` offers Edit Connection where a wrong address or
     /// port is a likely cause.
-    init(reason: RDPDisconnectReason, name: String, host: String, canEditConnection: Bool = false) {
+    init(
+        reason: RDPDisconnectReason, name: String, host: String, canEditConnection: Bool = false,
+        refusedByPolicy: Bool = false
+    ) {
+        if reason == .certificateRejected, refusedByPolicy {
+            self.init(
+                "“\(name)” presented a certificate this connection doesn’t trust",
+                "This connection accepts only certificates you or your Mac already trust. "
+                    + "To review this one, set Certificate to Ask on First Use in Edit Connection.",
+                canEditConnection ? .editConnection : nil
+            )
+            return
+        }
         switch reason {
         // Disconnecting a running session closes its window, so a window only
         // shows this after Cancel while connecting.

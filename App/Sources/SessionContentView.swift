@@ -31,7 +31,8 @@ struct SessionContentView: View {
                 DisconnectedView(
                     message: DisconnectMessage(
                         reason: reason, name: model.target.name, host: model.target.host,
-                        canEditConnection: model.onEditConnection != nil
+                        canEditConnection: model.onEditConnection != nil,
+                        refusedByPolicy: model.refusedCertificateByPolicy
                     ),
                     perform: { action in
                         switch action {
