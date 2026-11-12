@@ -38,18 +38,26 @@ enum AccessibilityAudit {
         return found
     }
 
-    private static func collect(_ element: any NSAccessibilityProtocol, into found: inout [Control], depth: Int) {
+    /// Reads an accessibility attribute by key-value coding, which works for
+    /// views and for SwiftUI's own elements alike. Nil when not implemented.
+    private static func attribute(_ element: NSObject, _ key: String, getter: String? = nil) -> Any? {
+        guard element.responds(to: NSSelectorFromString(getter ?? key)) else { return nil }
+        return element.value(forKey: key)
+    }
+
+    private static func collect(_ element: NSObject, into found: inout [Control], depth: Int) {
         guard depth < 60 else { return }
-        // Most of the protocol is optional, hence the ?() calls.
-        if let role = element.accessibilityRole?() ?? nil, controlRoles.contains(role),
-            element.isAccessibilityElement?() ?? true {
-            let label = [element.accessibilityLabel?() ?? nil, element.accessibilityTitle?() ?? nil]
-                .compactMap { $0 }
+        let role = (attribute(element, "accessibilityRole") as? String).map(NSAccessibility.Role.init(rawValue:))
+        let isElement = attribute(element, "accessibilityElement", getter: "isAccessibilityElement") as? Bool ?? true
+        if let role, controlRoles.contains(role), isElement {
+            let label = ["accessibilityLabel", "accessibilityTitle"]
+                .compactMap { attribute(element, $0) as? String }
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
-            found.append(Control(role: role.rawValue, label: label, size: element.accessibilityFrame().size))
+            let frame = (attribute(element, "accessibilityFrame") as? NSValue)?.rectValue ?? .zero
+            found.append(Control(role: role.rawValue, label: label, size: frame.size))
         }
-        for child in (element.accessibilityChildren?() ?? nil) ?? [] {
-            if let child = child as? any NSAccessibilityProtocol { collect(child, into: &found, depth: depth + 1) }
+        for child in attribute(element, "accessibilityChildren") as? [Any] ?? [] {
+            if let child = child as? NSObject { collect(child, into: &found, depth: depth + 1) }
         }
     }
 }
