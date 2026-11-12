@@ -71,6 +71,12 @@ final class SessionCoordinator {
         controllers.first { $0.model === model }?.window.close()
     }
 
+    /// Enters or leaves full screen for the session's window. This is what
+    /// View > Enter Full Screen does.
+    func toggleFullScreen(_ model: SessionModel) {
+        controllers.first { $0.model === model }?.toggleFullScreen()
+    }
+
     /// Disconnects every session and waits until all have ended, or the
     /// timeout has passed.
     func disconnectAll(timeout: Duration) async {

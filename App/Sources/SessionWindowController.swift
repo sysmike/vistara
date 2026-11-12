@@ -31,6 +31,11 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         window.title = target.name
         // Session tabs are a later feature (issue #37).
         window.tabbingMode = .disallowed
+        // The system's own full screen: the green button, View > Enter Full
+        // Screen, and its shortcut. The window gets a Space of its own, the
+        // menu bar appears at the top edge, and the system keeps clear of a
+        // camera housing. The desktop follows the new size like any resize.
+        window.collectionBehavior.insert(.fullScreenPrimary)
 
         let content = NSHostingView(rootView: SessionContentView(model: model))
         // The window decides its size, not the content.
@@ -112,6 +117,28 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
 
     func windowDidResignMain(_ notification: Notification) {
         onMainChange?(false)
+    }
+
+    /// Enters or leaves the system's full screen.
+    func toggleFullScreen() {
+        window.toggleFullScreen(nil)
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        model.isFullScreen = true
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        model.isFullScreen = false
+    }
+
+    // A transition the system could not finish leaves the window as it was.
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        model.isFullScreen = window.styleMask.contains(.fullScreen)
+    }
+
+    func windowDidFailToExitFullScreen(_ window: NSWindow) {
+        model.isFullScreen = window.styleMask.contains(.fullScreen)
     }
 
     /// Closing disconnects without asking: the remote session keeps running

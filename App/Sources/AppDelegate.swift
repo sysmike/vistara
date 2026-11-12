@@ -4,6 +4,12 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let quitWithoutAskingKey = "QuitWithoutAsking"
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Vistara puts its own full-screen command in the View menu; this
+        // keeps AppKit from adding a second one.
+        UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let coordinator = SessionCoordinator.shared
         let count = coordinator.liveSessionCount

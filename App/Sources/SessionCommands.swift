@@ -6,9 +6,29 @@ struct SessionCommands: Commands {
     let coordinator: SessionCoordinator
 
     var body: some Commands {
+        // AppKit adds no full-screen command of its own here, so the View menu
+        // would otherwise be empty.
+        CommandGroup(after: .toolbar) {
+            FullScreenMenuItem(coordinator: coordinator)
+        }
         CommandMenu("Session") {
             SessionMenuItems(coordinator: coordinator)
         }
+    }
+}
+
+/// View > Enter Full Screen, for the session in the main window. Only
+/// session windows can be full screen.
+private struct FullScreenMenuItem: View {
+    let coordinator: SessionCoordinator
+
+    var body: some View {
+        let model = coordinator.activeModel
+        Button(model?.isFullScreen == true ? "Exit Full Screen" : "Enter Full Screen") {
+            if let model { coordinator.toggleFullScreen(model) }
+        }
+        .keyboardShortcut("f", modifiers: [.control, .command])
+        .disabled(model == nil)
     }
 }
 
