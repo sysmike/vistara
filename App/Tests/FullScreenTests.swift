@@ -64,6 +64,28 @@ struct FullScreenTests {
         #expect(item.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask) == [.control, .command])
     }
 
+    /// Answers the certificate question and waits until connected.
+    private func waitForConnection(_ model: SessionModel) async {
+        await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
+        model.answerCertificate(.trustOnce)
+        await waitUntil("the session is connected") { model.phase == .connected }
+    }
+
+    /// Whether the remote desktop fills the window's content pixel for pixel.
+    private func desktopFills(_ window: NSWindow, of model: SessionModel) -> Bool {
+        guard let wanted = DesktopSize.filling(
+            viewSize: window.contentLayoutRect.size, backingScale: window.backingScaleFactor, usesHiDPI: true
+        ), let size = model.framebuffer?.size else { return false }
+        return size.width == Int(wanted.width) && size.height == Int(wanted.height)
+    }
+
+    /// For failure messages.
+    private func describe(_ window: NSWindow, of model: SessionModel) -> String {
+        "key \(window.isKeyWindow), main \(window.isMainWindow), sheet \(window.attachedSheet != nil), "
+            + "visible \(window.isVisible), app active \(NSApp.isActive), full screen \(model.isFullScreen), "
+            + "style \(String(window.styleMask.rawValue, radix: 16))"
+    }
+
     @Test(.enabled(if: TestServer.current != nil && NSScreen.main != nil))
     func theDesktopFillsTheScreenAndTheSessionStaysInFullScreenAfterADisconnect() async throws {
         let server = try #require(TestServer.current)
@@ -74,10 +96,7 @@ struct FullScreenTests {
         let model = controller.model
         let window = controller.window
         defer { window.close() }
-
-        await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
-        model.answerCertificate(.trustOnce)
-        await waitUntil("the session is connected") { model.phase == .connected }
+        await waitForConnection(model)
 
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -88,13 +107,7 @@ struct FullScreenTests {
         try #require(window.styleMask.contains(.fullScreen))
 
         // The remote desktop follows, pixel for pixel.
-        func fillsTheWindow() -> Bool {
-            guard let wanted = DesktopSize.filling(
-                viewSize: window.contentLayoutRect.size, backingScale: window.backingScaleFactor, usesHiDPI: true
-            ), let size = model.framebuffer?.size else { return false }
-            return size.width == Int(wanted.width) && size.height == Int(wanted.height)
-        }
-        await waitUntil("the desktop fills the screen") { fillsTheWindow() }
+        await waitUntil("the desktop fills the screen") { desktopFills(window, of: model) }
         let screen = try #require(window.screen)
         #expect(window.frame.size == screen.frame.size)
 
@@ -105,28 +118,19 @@ struct FullScreenTests {
         #expect(window.styleMask.contains(.fullScreen))
         #expect(window.isVisible)
 
-        // Reconnecting from there connects at the full-screen size at once.
+        // Reconnecting from there connects at the full-screen size.
         model.reconnect()
-        await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
-        model.answerCertificate(.trustOnce)
-        await waitUntil("the session is connected") { model.phase == .connected }
-        await waitUntil("the reconnected desktop fills the screen") { fillsTheWindow() }
+        await waitForConnection(model)
+        await waitUntil("the reconnected desktop fills the screen") { desktopFills(window, of: model) }
 
         // Leaving full screen is the user's choice, and the desktop follows back.
-        let state = {
-            """
-            key \(window.isKeyWindow), main \(window.isMainWindow), sheet \(window.attachedSheet != nil), \
-            visible \(window.isVisible), app active \(NSApp.isActive), full screen \(model.isFullScreen), \
-            style \(String(window.styleMask.rawValue, radix: 16))
-            """
-        }
-        let before = state()
+        let before = describe(window, of: model)
         coordinator.toggleFullScreen(model)
         await waitUntil("the window has left full screen", within: .seconds(20)) {
             !window.styleMask.contains(.fullScreen)
         }
-        #expect(!model.isFullScreen, "before: \(before); after: \(state())")
-        await waitUntil("the desktop fills the window again") { fillsTheWindow() }
+        #expect(!model.isFullScreen, "before: \(before); after: \(describe(window, of: model))")
+        await waitUntil("the desktop fills the window again") { desktopFills(window, of: model) }
         model.disconnect()
         await waitUntil("the session has ended") { !model.isLive }
     }
