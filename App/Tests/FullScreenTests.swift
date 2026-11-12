@@ -79,6 +79,29 @@ struct FullScreenTests {
         return size.width == Int(wanted.width) && size.height == Int(wanted.height)
     }
 
+    /// The full-screen notifications a window posts, for failure messages.
+    private final class TransitionLog {
+        private(set) var names: [String] = []
+        private var observers: [NSObjectProtocol] = []
+
+        init(window: NSWindow) {
+            let center = NotificationCenter.default
+            let watched: [Notification.Name] = [
+                NSWindow.willEnterFullScreenNotification, NSWindow.didEnterFullScreenNotification,
+                NSWindow.willExitFullScreenNotification, NSWindow.didExitFullScreenNotification
+            ]
+            observers = watched.map { name in
+                center.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
+                    MainActor.assumeIsolated { self?.names.append(note.name.rawValue) }
+                }
+            }
+        }
+
+        deinit {
+            observers.forEach(NotificationCenter.default.removeObserver)
+        }
+    }
+
     /// For failure messages.
     private func describe(_ window: NSWindow, of model: SessionModel) -> String {
         "key \(window.isKeyWindow), main \(window.isMainWindow), sheet \(window.attachedSheet != nil), "
@@ -124,12 +147,16 @@ struct FullScreenTests {
         await waitUntil("the reconnected desktop fills the screen") { desktopFills(window, of: model) }
 
         // Leaving full screen is the user's choice, and the desktop follows back.
+        let transitions = TransitionLog(window: window)
         let before = describe(window, of: model)
         coordinator.toggleFullScreen(model)
         await waitUntil("the window has left full screen", within: .seconds(20)) {
-            !window.styleMask.contains(.fullScreen)
+            !window.styleMask.contains(.fullScreen) && !model.isFullScreen
         }
-        #expect(!model.isFullScreen, "before: \(before); after: \(describe(window, of: model))")
+        #expect(
+            !model.isFullScreen && !window.styleMask.contains(.fullScreen),
+            "before: \(before); after: \(describe(window, of: model)); notifications: \(transitions.names)"
+        )
         await waitUntil("the desktop fills the window again") { desktopFills(window, of: model) }
         model.disconnect()
         await waitUntil("the session has ended") { !model.isLive }
