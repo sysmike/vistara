@@ -18,6 +18,19 @@
 #pragma clang assume_nonnull begin
 #endif
 
+/// Receives one line of FreeRDP's log: its level (0 trace to 5 fatal), the
+/// function that logged it, and the text. Called on any thread.
+typedef void (*vistara_log_sink)(uint32_t level, const char *function, const char *text);
+
+/// Sends all of FreeRDP's and WinPR's log messages to `sink` instead of the
+/// console, and sets the level below which messages are dropped (0 trace to
+/// 6 off). Binary data, images, and packets are never passed on. Call once,
+/// before the first session.
+void vistara_logging_install(vistara_log_sink sink, uint32_t level);
+
+/// Changes the level set by vistara_logging_install().
+void vistara_logging_set_level(uint32_t level);
+
 /// Version of the FreeRDP library this process is linked against, for example
 /// "3.33.1". The string has static storage and must not be freed.
 const char *vistara_freerdp_version(void);

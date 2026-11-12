@@ -10,3 +10,20 @@ identifier_name:
     - id
     - x
     - y
+
+# Logging goes through RDPLogging (Packages/RDPKit/Sources/RDPKit/RDPLogging.swift),
+# which redacts hosts, user names, and passwords. Tests may print.
+custom_rules:
+  no_direct_logging:
+    name: "Log through RDPLogging"
+    regex: '(?<![\w.])(print|debugPrint|NSLog|os_log)\s*\('
+    included: '/(App|Packages/[^/]+)/Sources/'
+    message: "Use RDPLogging.logger(_:) with privacy annotations instead of print, NSLog, or os_log."
+    severity: error
+  no_direct_logger:
+    name: "Create loggers through RDPLogging"
+    regex: '(?<![\w.])Logger\s*\(\s*subsystem'
+    included: '/(App|Packages/[^/]+)/Sources/'
+    excluded: 'RDPLogging\.swift$'
+    message: "Use RDPLogging.logger(_:) so every message shares one subsystem."
+    severity: error

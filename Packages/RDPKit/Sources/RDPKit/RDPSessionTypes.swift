@@ -142,3 +142,18 @@ public struct RDPSessionDelegate: Sendable {
         self.certificateDecision = certificateDecision
     }
 }
+
+extension RDPDisconnectReason {
+    /// For the log: the kind of ending and FreeRDP's error name, never a
+    /// host or an account.
+    var logDescription: String {
+        switch self {
+        case .userRequested: "user requested"
+        case .credentialsCancelled: "credentials cancelled"
+        case .certificateRejected: "certificate rejected"
+        case .authenticationFailed: "authentication failed"
+        case .connectionFailed(let failure): "connection failed, \(failure.kind), \(failure.name)"
+        case .connectionLost(let failure): "connection lost, \(failure.kind), \(failure.name)"
+        }
+    }
+}

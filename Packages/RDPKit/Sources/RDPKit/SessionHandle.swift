@@ -65,6 +65,8 @@ final class SessionHandle {
     private let session: OpaquePointer
 
     init?() {
+        // FreeRDP's log goes through Vistara's redaction from the start.
+        _ = RDPLogging.installed
         guard let session = vistara_session_create() else { return nil }
         self.session = session
     }

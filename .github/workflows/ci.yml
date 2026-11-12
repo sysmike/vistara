@@ -83,6 +83,17 @@ jobs:
       - name: Lint
         run: swiftlint lint --strict
 
+      - name: Check that the lint forbids print
+        run: |
+          probe=App/Sources/LintProbe.swift
+          printf 'func probe() {\n    print("x")\n}\n' > "$probe"
+          if swiftlint lint --strict --quiet "$probe"; then
+            echo "error: the no_direct_logging rule did not catch print" >&2
+            rm -f "$probe"
+            exit 1
+          fi
+          rm -f "$probe"
+
       - name: Test VistaraCore
         run: swift test --package-path Packages/VistaraCore
 
@@ -90,6 +101,9 @@ jobs:
         run: scripts/run-test-server.sh >> "$GITHUB_ENV"
 
       - name: Test RDPKit against the test server
+        env:
+          # FreeRDP's redacted log lines also go to the CI log.
+          VISTARA_LOG_STDERR: "1"
         run: swift test --package-path Packages/RDPKit
 
       - name: Show test server log
