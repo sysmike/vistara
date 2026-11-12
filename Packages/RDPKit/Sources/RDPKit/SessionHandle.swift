@@ -128,7 +128,7 @@ final class SessionHandle {
         }
 
         return withExtendedLifetime((decider, folders)) {
-            options.shared_folders = folders.pointer
+            options.shared_folders = folders.pointer.map { UnsafePointer($0) }
             options.shared_folder_count = folders.count
             switch vistara_session_connect(session, &options) {
             case VISTARA_CONNECT_OK: .connected

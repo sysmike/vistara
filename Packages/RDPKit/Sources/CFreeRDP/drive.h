@@ -10,7 +10,12 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 
+// rdpdr.h pulls in WinPR's interlocked lists, deprecated since WinPR 3.27
+// but still used by the header itself.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #include <freerdp/channels/rdpdr.h>
+#pragma clang diagnostic pop
 
 /// The name rdpdr asks the channel loader for to share a folder, as in
 /// FreeRDP's devman.c, which does not publish it.
