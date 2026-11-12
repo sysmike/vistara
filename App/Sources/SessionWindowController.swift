@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import RDPKitUI
 import SwiftUI
 
 /// One session in one ordinary window: system title bar, no toolbar, the
@@ -41,6 +42,14 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // Restores size and position from the last window for this computer.
         window.setFrameAutosaveName("Session \(target.host):\(target.port)")
         window.delegate = self
+        model.windowDesktopSize = { [weak window] in
+            guard let window else { return nil }
+            return DesktopSize.filling(
+                viewSize: window.contentLayoutRect.size,
+                backingScale: window.backingScaleFactor,
+                usesHiDPI: target.usesHiDPI
+            )
+        }
         if target.name != target.host {
             window.subtitle = target.host
         }

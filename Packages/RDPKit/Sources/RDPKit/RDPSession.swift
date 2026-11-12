@@ -72,8 +72,8 @@ public final class RDPSession: Sendable {
         control.withLock { control in
             guard control.acceptsInput else { return }
             for event in events {
-                // Only the latest position matters while moves pile up.
-                if event.isPointerMove, control.pendingInput.last?.isPointerMove == true {
+                // Only the latest position or size matters while they pile up.
+                if control.pendingInput.last?.isSuperseded(by: event) == true {
                     control.pendingInput.removeLast()
                 }
                 control.pendingInput.append(event)

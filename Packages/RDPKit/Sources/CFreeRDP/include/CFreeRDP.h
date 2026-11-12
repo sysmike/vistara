@@ -115,6 +115,19 @@ bool vistara_session_send_key(vistara_session *session, uint8_t code, bool exten
 bool vistara_session_send_lock_state(vistara_session *session, bool caps_lock, bool num_lock,
                                      bool scroll_lock);
 
+/// Asks the server to change the desktop to `width` x `height` pixels, shown
+/// at `scale_percent` (100 for standard displays, 200 for Retina). The server
+/// answers by resizing the framebuffer, which vistara_session_take_dirty()
+/// then reports as changed.
+///
+/// Display control becomes available shortly after connecting. A request made
+/// before that is kept and sent by vistara_session_poll() once it can be;
+/// a newer request replaces one that is still waiting. A server without
+/// display control never answers, and the desktop keeps its size. Returns
+/// false only when not connected.
+bool vistara_session_request_size(vistara_session *session, uint32_t width, uint32_t height,
+                                  uint32_t scale_percent);
+
 /// Moves the pointer to a position in framebuffer pixels.
 bool vistara_session_send_pointer_move(vistara_session *session, uint16_t x, uint16_t y);
 

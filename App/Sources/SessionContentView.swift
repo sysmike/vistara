@@ -19,6 +19,9 @@ struct SessionContentView: View {
                         framebuffer: framebuffer,
                         name: model.target.name,
                         translatesEditingShortcuts: translatesEditingShortcuts,
+                        resizesDesktop: model.target.resolutionMode == .matchWindow,
+                        usesHiDPI: model.target.usesHiDPI,
+                        connectedScale: model.connectedScale,
                         input: { model.send($0) }
                     )
                         .id(ObjectIdentifier(framebuffer))
@@ -121,6 +124,10 @@ struct RemoteDesktopView: NSViewRepresentable {
     let framebuffer: RDPFramebuffer
     let name: String
     let translatesEditingShortcuts: Bool
+    /// Whether the remote desktop follows the size of the window.
+    let resizesDesktop: Bool
+    let usesHiDPI: Bool
+    let connectedScale: UInt16
     let input: ([RDPInputEvent]) -> Void
 
     func makeNSView(context: Context) -> RDPSessionView {
@@ -133,5 +140,8 @@ struct RemoteDesktopView: NSViewRepresentable {
         view.connectionName = name
         view.translatesEditingShortcuts = translatesEditingShortcuts
         view.inputHandler = input
+        view.connectedScale = connectedScale
+        view.usesHiDPI = usesHiDPI
+        view.resizesDesktop = resizesDesktop
     }
 }

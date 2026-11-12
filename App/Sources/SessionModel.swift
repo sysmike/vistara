@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import RDPKit
+import RDPKitUI
 import VistaraCore
 
 /// The computer a session window connects to.
@@ -12,6 +13,14 @@ struct SessionTarget: Equatable, Sendable {
     /// Suggested in the credentials sheet when nothing is saved.
     var username = ""
     var domain: String?
+
+    /// How the remote desktop gets its size. Chosen per connection once the
+    /// connection editor exists (issue #22); until then every session follows
+    /// its window at full Retina resolution.
+    var resolutionMode = Connection.ResolutionMode.matchWindow
+    var fixedWidth = 1920
+    var fixedHeight = 1080
+    var usesHiDPI = true
 
     /// Identifies this computer's item in the credential store. A saved
     /// connection will use its own identifier here (issue #21).
@@ -67,6 +76,11 @@ final class SessionModel {
     /// The desktop of the current or last session.
     private(set) var framebuffer: RDPFramebuffer?
 
+    /// The scale the current session was connected with, in percent.
+    private(set) var connectedScale: UInt16 = 100
+    /// The desktop size that fills the session window now. Set by the window.
+    @ObservationIgnored var windowDesktopSize: (() -> DesktopSize?)?
+
     /// Set while the credentials sheet should be shown.
     private(set) var pendingCredentials: CredentialsRequest?
 
@@ -118,11 +132,16 @@ final class SessionModel {
                 await self?.decide(certificate) ?? false
             }
         )
+        let desktop = startingDesktopSize()
+        connectedScale = desktop.scalePercent
         let configuration = RDPSessionConfiguration(
             host: target.host,
             port: target.port,
             username: target.username,
-            domain: target.domain
+            domain: target.domain,
+            desktopWidth: UInt32(desktop.width),
+            desktopHeight: UInt32(desktop.height),
+            scalePercent: UInt32(desktop.scalePercent)
         )
         let session = RDPSession(configuration: configuration, delegate: delegate)
         self.session = session
@@ -133,6 +152,18 @@ final class SessionModel {
             }
         }
         session.start()
+    }
+
+    /// The size to connect with: the fixed size if the connection has one,
+    /// otherwise what fills the window, so the first picture already fits.
+    func startingDesktopSize() -> DesktopSize {
+        let window = windowDesktopSize?() ?? DesktopSize(width: 1280, height: 800, scalePercent: 100)
+        guard target.resolutionMode == .fixed else { return window }
+        return DesktopSize(
+            width: UInt16(clamping: min(max(target.fixedWidth, 200), 8192)),
+            height: UInt16(clamping: min(max(target.fixedHeight, 200), 8192)),
+            scalePercent: window.scalePercent
+        )
     }
 
     /// Ends the session, or cancels connecting. The window shows the result.
