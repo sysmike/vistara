@@ -25,7 +25,8 @@ final class SessionModel {
     private(set) var target: SessionTarget
     /// Opens the editor for this session's saved connection, if it has one.
     @ObservationIgnored var onEditConnection: (() -> Void)?
-    private(set) var phase: Phase
+    /// Set here and in SessionModel+Reconnection.swift only.
+    var phase: Phase
     /// A certificate waiting for the user's decision.
     private(set) var pendingCertificate: RDPCertificate?
     /// The desktop of the current or last session.
