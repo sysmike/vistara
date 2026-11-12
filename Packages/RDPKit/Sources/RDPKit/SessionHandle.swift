@@ -249,4 +249,9 @@ extension RDPFailure {
     static func freeRDPName(code: UInt32) -> String {
         String(cString: vistara_error_name(code))
     }
+
+    /// The shim's diagnostic connection, for tests.
+    static func probe(host: String, port: UInt16, timeoutMilliseconds: Int32) -> Int32 {
+        vistara_probe_connection(host, port, timeoutMilliseconds)
+    }
 }

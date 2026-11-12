@@ -109,4 +109,22 @@ struct RDPFailureTests {
         #expect(lines.last == "System error \(ECONNREFUSED): Connection refused")
         #expect(RDPFailure(kind: .networkLost).technicalDetail.isEmpty)
     }
+
+    // MARK: Diagnostic connection
+
+    @Test func theProbeSeesARefusal() {
+        #expect(RDPFailure.probe(host: "127.0.0.1", port: 1, timeoutMilliseconds: 2000) == ECONNREFUSED)
+    }
+
+    @Test func theProbeGivesUpAtItsTimeout() {
+        // TEST-NET-1 is never routed (RFC 5737): no answer, or no route.
+        let started = Date()
+        let error = RDPFailure.probe(host: "192.0.2.1", port: 3389, timeoutMilliseconds: 300)
+        #expect([ETIMEDOUT, EHOSTUNREACH, ENETUNREACH].contains(error), "errno \(error)")
+        #expect(Date().timeIntervalSince(started) < 2)
+    }
+
+    @Test func theProbeReportsNothingForANameThatDoesNotResolve() {
+        #expect(RDPFailure.probe(host: "vistara-test.invalid", port: 3389, timeoutMilliseconds: 300) == 0)
+    }
 }

@@ -1,4 +1,5 @@
 #include "CFreeRDP.h"
+#include "probe.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -389,15 +390,29 @@ static void post_disconnect(freerdp *instance) {
 
 // MARK: Errors
 
-/// Calls FreeRDP's TCP connect and keeps errno when it fails, because FreeRDP
-/// reports every failure to connect as FREERDP_ERROR_CONNECT_FAILED.
+/// How long a diagnostic connection may take, in milliseconds.
+#define VISTARA_PROBE_TIMEOUT_MS 2000
+
+/// Calls FreeRDP's TCP connect and works out why it failed, because FreeRDP
+/// reports every failure to connect as FREERDP_ERROR_CONNECT_FAILED and
+/// closes the socket, and with it the error, before returning.
+///
+/// An attempt that used up the whole timeout was not answered. One that
+/// failed sooner is repeated once, briefly, to learn whether it was refused
+/// or found no route.
 static int tcp_connect(rdpContext *context, rdpSettings *settings, const char *hostname, int port,
                        DWORD timeout) {
     vistara_session *session = session_of(context);
-    errno = 0;
+    const uint64_t started = vistara_monotonic_ms();
     const int socket = session->default_tcp_connect(context, settings, hostname, port, timeout);
-    if (socket < 0) {
-        session->tcp_os_error = errno;
+    if (socket >= 0 || freerdp_get_last_error(context) != FREERDP_ERROR_CONNECT_FAILED || !hostname) {
+        return socket;
+    }
+    const uint64_t elapsed = vistara_monotonic_ms() - started;
+    if (timeout > 0 && timeout != INFINITE && elapsed + 500 >= timeout) {
+        session->tcp_os_error = ETIMEDOUT;
+    } else {
+        session->tcp_os_error = vistara_probe_tcp_error(hostname, port, VISTARA_PROBE_TIMEOUT_MS);
     }
     return socket;
 }
@@ -416,6 +431,10 @@ static bool wrap_tcp_connect(vistara_session *session) {
 
 uint32_t vistara_session_last_error_code(const vistara_session *session) {
     return freerdp_get_last_error(session->instance->context);
+}
+
+int32_t vistara_probe_connection(const char *hostname, uint16_t port, int32_t timeout_ms) {
+    return vistara_probe_tcp_error(hostname, port, timeout_ms);
 }
 
 int32_t vistara_session_last_os_error(const vistara_session *session) {

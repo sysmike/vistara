@@ -99,10 +99,14 @@ const char *vistara_session_last_error_name(const vistara_session *session);
 /// errors the server reported, 2 for connection errors), the error below.
 uint32_t vistara_session_last_error_code(const vistara_session *session);
 
-/// The operating system's error (errno) from the last failed TCP connection
-/// attempt, or 0. FreeRDP reports a refused and an unanswered connection
-/// alike; this tells them apart.
+/// Why the last TCP connection attempt failed, as an errno value
+/// (ECONNREFUSED, ETIMEDOUT, EHOSTUNREACH, ...), or 0 when unknown. FreeRDP
+/// reports a refused and an unanswered connection alike; this tells them
+/// apart. Learning it may cost one short extra connection attempt.
 int32_t vistara_session_last_os_error(const vistara_session *session);
+
+/// Tries one TCP connection and returns how it failed, as above. For tests.
+int32_t vistara_probe_connection(const char *hostname, uint16_t port, int32_t timeout_ms);
 
 /// FreeRDP's name and English description for an error code. Static storage.
 const char *vistara_error_name(uint32_t code);
