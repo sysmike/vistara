@@ -97,8 +97,28 @@ struct LibrarySidebar: View {
     }
 
     private func row(_ item: LibraryModel.SidebarItem, systemImage: String) -> some View {
-        Label(model.title(for: item), systemImage: systemImage)
-            .tag(item)
+        Label {
+            Text(model.title(for: item))
+        } icon: {
+            SidebarIcon(systemImage: systemImage)
+        }
+        .tag(item)
+    }
+}
+
+/// A sidebar symbol in the accent color, and in the selection's own color
+/// on the selected row (HIG Sidebars).
+private struct SidebarIcon: View {
+    let systemImage: String
+    @Environment(\.backgroundProminence) private var prominence
+
+    var body: some View {
+        if prominence == .increased {
+            Image(systemName: systemImage)
+        } else {
+            Image(systemName: systemImage)
+                .foregroundStyle(.tint)
+        }
     }
 }
 
@@ -169,10 +189,12 @@ struct ConnectionTable: View {
             TableColumn("Name", value: \Connection.name, comparator: .localizedStandard) { connection in
                 Label(SessionTarget(connection: connection).name, systemImage: "desktopcomputer")
             }
+            .width(min: 120, ideal: 220)
             .customizationID("name")
             TableColumn("Host", value: \Connection.host, comparator: .localizedStandard) { connection in
                 Text(Self.address(of: connection))
             }
+            .width(min: 120, ideal: 220)
             .customizationID("host")
             TableColumn("Last Used", value: \Connection.lastUsedSortKey) { connection in
                 Text(LastUsedFormat.string(for: connection.lastConnectedAt))
