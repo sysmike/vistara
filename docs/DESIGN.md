@@ -177,6 +177,12 @@ stop asking. *Judgment.*
 - A session stays in full screen until the user leaves it, including after a
   disconnect (HIG Going full screen: "Let people choose when to exit
   full-screen mode").
+- AppKit adds no full-screen item to a SwiftUI app's View menu, so Vistara
+  provides View > Enter Full Screen itself, for the session in the main
+  window. It reads Exit Full Screen while in full screen.
+- Session > Disconnect closes the window, as closing does, and so also leaves
+  full screen. A session that ends any other way (dropped, refused, timed
+  out) keeps its full-screen window and shows what happened there.
 
 ## Keyboard
 
