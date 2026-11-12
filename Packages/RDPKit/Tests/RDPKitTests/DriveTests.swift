@@ -48,21 +48,24 @@ struct DriveReport {
         for line in Self.logLines() {
             let fields = Self.fields(of: line)
             guard fields["name"] == name, let marker = line.range(of: "vistara-drive ") else { continue }
-            let event = line[marker.upperBound...].prefix { $0 != " " }
-            let status = fields["status"].flatMap { UInt32($0.dropFirst(2), radix: 16) }
-            switch event {
-            case "announced": isAnnounced = true
-            case "list":
-                if let file = fields["file"] { listed.append(file) }
-            case "read":
-                readStatus = status
-                readData = Self.bytes(hex: fields["data"] ?? "")
-            case "escape": escapeStatus = status
-            case "escape-read": escapeData = Self.bytes(hex: fields["data"] ?? "")
-            case "write": writeStatus = status
-            case "done": isDone = true
-            default: break
-            }
+            apply(String(line[marker.upperBound...].prefix { $0 != " " }), fields)
+        }
+    }
+
+    private mutating func apply(_ event: String, _ fields: [String: String]) {
+        let status = fields["status"].flatMap { UInt32($0.dropFirst(2), radix: 16) }
+        switch event {
+        case "announced": isAnnounced = true
+        case "list":
+            if let file = fields["file"] { listed.append(file) }
+        case "read":
+            readStatus = status
+            readData = Self.bytes(hex: fields["data"] ?? "")
+        case "escape": escapeStatus = status
+        case "escape-read": escapeData = Self.bytes(hex: fields["data"] ?? "")
+        case "write": writeStatus = status
+        case "done": isDone = true
+        default: break
         }
     }
 
