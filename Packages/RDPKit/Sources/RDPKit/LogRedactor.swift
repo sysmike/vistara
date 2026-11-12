@@ -30,9 +30,12 @@ public final class LogRedactor: Sendable {
     static let minimumLength = 3
     private let state = OSAllocatedUnfairLock(initialState: State())
 
+    // Constant patterns, exercised by the tests: they cannot fail at run time.
+    // swiftlint:disable:next force_try
     private static let ipv4 = try! NSRegularExpression(pattern: #"\b(?:\d{1,3}\.){3}\d{1,3}\b"#)
     // Two or more colons between hex groups; also catches some timestamps
     // and fingerprints, which is harmless.
+    // swiftlint:disable:next force_try
     private static let ipv6 = try! NSRegularExpression(
         pattern: #"(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%\w+)?(?![\w:])"#
     )
