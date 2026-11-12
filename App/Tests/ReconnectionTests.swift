@@ -69,8 +69,15 @@ struct ReconnectionFlowTests {
     ) async throws -> SessionModel {
         let server = try #require(TestServer.current)
         var target = server.address
+        // A saved connection: its password stays found when its address changes.
+        target.connectionID = UUID()
         change(&target)
-        let model = SessionModel(target: target, credentialStore: try server.storeWithCredentials())
+        let store = InMemoryCredentialStore()
+        let account = StoredCredentials(
+            username: server.target.username, domain: server.target.domain, password: server.password
+        )
+        try store.save(account, for: target.credentialKey, label: "Test")
+        let model = SessionModel(target: target, credentialStore: store)
         model.reconnectionPolicy = Self.quickly
         model.connect()
         await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
