@@ -93,7 +93,8 @@ struct AccessibilityLabelTests {
     @Test
     func theConnectionsWindow() async throws {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
-        await audit("connections", ConnectionsView(model: model) { _ in }, size: NSSize(width: 780, height: 420), expected: 0)
+        let view = ConnectionsView(model: model) { _ in }
+        await audit("connections", view, size: NSSize(width: 780, height: 420), expected: 0)
     }
 
     @Test
@@ -115,7 +116,8 @@ struct AccessibilityLabelTests {
               size: NSSize(width: 420, height: 230), expected: 5)
         await audit("certificate", CertificateSheet(certificate: Self.certificate) { _ in },
               size: NSSize(width: 520, height: 420), expected: 3)
-        await audit("connecting", ConnectingView(name: "Build Server") {}, size: NSSize(width: 480, height: 300), expected: 1)
+        await audit("connecting", ConnectingView(name: "Build Server") {},
+                    size: NSSize(width: 480, height: 300), expected: 1)
         await audit("reconnecting", ReconnectingView(name: "Build Server", lastFrame: nil, isTrying: false, cancel: {},
                                                reconnectNow: {}),
               size: NSSize(width: 480, height: 300), expected: 2)
