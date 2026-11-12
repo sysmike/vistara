@@ -31,6 +31,11 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         window.title = target.name
         // Session tabs are a later feature (issue #37).
         window.tabbingMode = .disallowed
+        // The system's own full screen: the green button, View > Enter Full
+        // Screen, and its shortcut. The window gets a Space of its own, the
+        // menu bar appears at the top edge, and the system keeps clear of a
+        // camera housing. The desktop follows the new size like any resize.
+        window.collectionBehavior.insert(.fullScreenPrimary)
 
         let content = NSHostingView(rootView: SessionContentView(model: model))
         // The window decides its size, not the content.
