@@ -127,9 +127,11 @@ final class SessionHandle {
             options.decide_certificate_context = Unmanaged.passUnretained(decider).toOpaque()
         }
 
+        // Valid while `folders` lives, which the call below ensures.
+        options.shared_folders = folders.pointer.map { UnsafePointer($0) }
+        options.shared_folder_count = folders.count
+
         return withExtendedLifetime((decider, folders)) {
-            options.shared_folders = folders.pointer.map { UnsafePointer($0) }
-            options.shared_folder_count = folders.count
             switch vistara_session_connect(session, &options) {
             case VISTARA_CONNECT_OK: .connected
             case VISTARA_CONNECT_CERTIFICATE_UNTRUSTED: .certificateRejected
