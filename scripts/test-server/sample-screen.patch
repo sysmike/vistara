@@ -15,7 +15,7 @@
  
  #include <freerdp/log.h>
  #include <freerdp/codec/color.h>
-@@ -30,22 +35,165 @@
+@@ -30,22 +35,184 @@
  
  #define TAG SERVER_TAG("shadow.sample")
  
@@ -166,6 +166,27 @@
 + * as a network that goes away would, so tests can check reconnection. */
 +#define VISTARA_DROP_SCANCODE 0x76
 +
++/* The peer's own sockfd is -1 once its transport took the socket; the
++ * transport's event handles wrap it instead. */
++static void vistara_drop(freerdp_peer* peer)
++{
++	HANDLE events[32] = { 0 };
++	const DWORD count = peer->GetEventHandles(peer, events, ARRAYSIZE(events));
++	for (DWORD i = 0; i < count; i++)
++	{
++		const int fd = GetEventFileDescriptor(events[i]);
++		int type = 0;
++		socklen_t length = sizeof(type);
++		if ((fd >= 0) && (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &length) == 0) &&
++		    (type == SOCK_STREAM))
++		{
++			(void)fprintf(stderr, "vistara-drop fd=%d\n", fd);
++			(void)fflush(stderr);
++			(void)shutdown(fd, SHUT_RDWR);
++		}
++	}
++}
++
  WINPR_ATTR_NODISCARD
  static BOOL sample_shadow_input_keyboard_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
 -                                               WINPR_ATTR_UNUSED rdpShadowClient* client,
@@ -180,14 +201,12 @@
 +	if ((code == VISTARA_DROP_SCANCODE) && !(flags & KBD_FLAGS_RELEASE) && client &&
 +	    client->context.peer)
 +	{
-+		(void)fprintf(stderr, "vistara-drop\n");
-+		(void)fflush(stderr);
-+		(void)shutdown(client->context.peer->sockfd, SHUT_RDWR);
++		vistara_drop(client->context.peer);
 +	}
  	return TRUE;
  }
  
-@@ -61,19 +209,22 @@
+@@ -61,19 +228,22 @@
  WINPR_ATTR_NODISCARD
  static BOOL sample_shadow_input_mouse_event(WINPR_ATTR_UNUSED rdpShadowSubsystem* subsystem,
                                              WINPR_ATTR_UNUSED rdpShadowClient* client,
@@ -215,7 +234,7 @@
  	return TRUE;
  }
  
-@@ -91,7 +242,15 @@
+@@ -91,7 +261,15 @@
  	sampleShadowSubsystem* subsystem = (sampleShadowSubsystem*)arg;
  	WINPR_ASSERT(subsystem);
  
@@ -232,7 +251,7 @@
  
  	WLog_WARN(TAG, "TODO: Implement!");
  
-@@ -124,7 +283,14 @@
+@@ -124,7 +302,14 @@
  	if (!subsystem)
  		return -1;
  
@@ -248,7 +267,7 @@
  
  	return 1;
  }
-@@ -137,7 +303,15 @@
+@@ -137,7 +322,15 @@
  	if (!subsystem)
  		return -1;
  
