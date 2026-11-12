@@ -148,6 +148,7 @@ struct ConnectionEditor: View {
             Text("The remote computer sees only these folders, each as a drive named after the folder.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
