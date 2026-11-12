@@ -117,6 +117,45 @@ bool vistara_session_send_key(vistara_session *session, uint8_t code, bool exten
 bool vistara_session_send_lock_state(vistara_session *session, bool caps_lock, bool num_lock,
                                      bool scroll_lock);
 
+/// Moves the pointer to a position in framebuffer pixels.
+bool vistara_session_send_pointer_move(vistara_session *session, uint16_t x, uint16_t y);
+
+/// Presses or releases a mouse button at a position. `button` is 0 for left,
+/// 1 for right, 2 for middle, 3 for back, and 4 for forward. Back and forward
+/// are ignored by servers that do not support them.
+bool vistara_session_send_pointer_button(vistara_session *session, uint8_t button, bool down,
+                                         uint16_t x, uint16_t y);
+
+/// Turns the wheel at a position. `rotation` is in wheel units, 120 for one
+/// notch, positive for up or right, and is limited to -255...255. Horizontal
+/// turns are ignored by servers that do not support them.
+bool vistara_session_send_wheel(vistara_session *session, bool horizontal, int16_t rotation,
+                                uint16_t x, uint16_t y);
+
+typedef enum {
+    /// The system's standard arrow.
+    VISTARA_CURSOR_DEFAULT = 0,
+    VISTARA_CURSOR_HIDDEN = 1,
+    VISTARA_CURSOR_IMAGE = 2,
+} vistara_cursor_kind;
+
+/// The cursor the server wants shown.
+typedef struct {
+    vistara_cursor_kind kind;
+    /// For VISTARA_CURSOR_IMAGE: size, hot spot, and `width * height` pixels
+    /// of 32-bit BGRA with straight alpha, top row first. The pixels stay
+    /// valid until the next vistara_session_poll() or the session's end.
+    uint32_t width;
+    uint32_t height;
+    uint32_t hotspot_x;
+    uint32_t hotspot_y;
+    const uint8_t *_Nullable pixels;
+} vistara_cursor;
+
+/// Reports the cursor if it changed since the last call. Returns false when
+/// it did not.
+bool vistara_session_take_cursor(vistara_session *session, vistara_cursor *cursor);
+
 /// Framebuffer geometry and pixels (32-bit BGRA, rows of `stride` bytes).
 /// Valid while connected; the buffer may move when the desktop is resized.
 uint32_t vistara_session_width(const vistara_session *session);

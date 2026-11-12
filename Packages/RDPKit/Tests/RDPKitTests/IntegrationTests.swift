@@ -40,23 +40,46 @@ enum TestHost {
     }
 
     /// What the test server reported about received input, one entry per
-    /// event: "locks 6", "key 1e down", "key 53e up" (e marks extended).
+    /// event, with numbers in hexadecimal: "locks 6", "key 1e down",
+    /// "key 53e up" (e marks extended), "mouse 9000 64 32" (flags, x, y),
+    /// and "xmouse 8001 64 32".
     static func receivedInput() -> [String] {
         guard let path = environment["VISTARA_TEST_SERVER_LOG"],
             let log = try? String(contentsOfFile: path, encoding: .utf8)
         else { return [] }
         return log.split(separator: "\n").compactMap { line in
             guard let marker = line.range(of: "vistara-input ") else { return nil }
+            let words = line[marker.upperBound...].split(separator: " ")
+            guard let kind = words.first else { return nil }
             var fields: [String: UInt32] = [:]
-            for field in line[marker.upperBound...].split(separator: " ") {
+            for field in words.dropFirst() {
                 let parts = field.split(separator: "=")
                 if parts.count == 2 { fields[String(parts[0])] = UInt32(parts[1].dropFirst(2), radix: 16) }
             }
-            guard let flags = fields["flags"] else { return nil }
-            guard let code = fields["code"] else { return "locks \(String(flags, radix: 16))" }
-            let extended = flags & 0x0100 != 0 ? "e" : ""
-            return "key \(String(code, radix: 16))\(extended) \(flags & 0x8000 != 0 ? "up" : "down")"
+            func hex(_ name: String) -> String { String(fields[name] ?? 0, radix: 16) }
+            switch kind {
+            case "sync":
+                return "locks \(hex("flags"))"
+            case "key":
+                let flags = fields["flags"] ?? 0
+                let extended = flags & 0x0100 != 0 ? "e" : ""
+                return "key \(hex("code"))\(extended) \(flags & 0x8000 != 0 ? "up" : "down")"
+            default:
+                return "\(kind) \(hex("flags")) \(hex("x")) \(hex("y"))"
+            }
         }
+    }
+
+    /// Polls until the server has reported `count` more input events than
+    /// `before`, and returns the new ones.
+    static func receivedInput(after before: Int, count: Int) -> [String] {
+        let deadline = Date().addingTimeInterval(10)
+        var received: [String] = []
+        while received.count < count, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+            received = Array(receivedInput().dropFirst(before))
+        }
+        return received
     }
 
     /// Answers with the test account and accepts or rejects any certificate.
@@ -203,18 +226,82 @@ struct IntegrationTests {
             "locks 6", "key 1e down", "key 1e up",
             "key 1d down", "key 38 down", "key 53e down", "key 53e up", "key 38 up", "key 1d up"
         ]
+        let before = TestHost.receivedInput().count
         var received: [String] = []
         _ = await runToEnd(session) { state, session in
             guard case .connected = state else { return }
             session.send([.lockState([.capsLock, .numLock])] + RDPInputEvent.tap(keyA))
             session.send(RDPInputEvent.controlAltDelete)
-            let deadline = Date().addingTimeInterval(10)
-            while received.count < expected.count, Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.05)
-                received = TestHost.receivedInput()
-            }
+            received = TestHost.receivedInput(after: before, count: expected.count)
             session.disconnect()
         }
         #expect(received == expected)
+    }
+
+    @Test(.enabled(if: TestHost.environment["VISTARA_TEST_SERVER_LOG"] != nil))
+    func pointerInputArrivesAtTheServer() async {
+        let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
+        // Positions 100, 50 and 300, 200 are 0x64, 0x32 and 0x12c, 0xc8.
+        let expected = [
+            "mouse 800 64 32",  // move
+            "mouse 9000 64 32", "mouse 1000 64 32",  // left down, up
+            "mouse a000 64 32", "mouse 2000 64 32",  // right
+            "mouse c000 64 32", "mouse 4000 64 32",  // middle
+            "xmouse 8001 64 32", "xmouse 1 64 32",  // back
+            "xmouse 8002 64 32", "xmouse 2 64 32",  // forward
+            "mouse 278 64 32",  // one notch up
+            "mouse 3e2 64 32",  // a quarter notch down: -30 in nine bits
+            "mouse 478 64 32",  // one notch right
+            "mouse 800 12c c8"  // of three moves in a row, only the last
+        ]
+        let before = TestHost.receivedInput().count
+        var received: [String] = []
+        _ = await runToEnd(session) { state, session in
+            guard case .connected = state else { return }
+            var events: [RDPInputEvent] = [.pointerMove(x: 100, y: 50)]
+            for button in RDPPointerButton.allCases {
+                events.append(.pointerButton(button, isDown: true, x: 100, y: 50))
+                events.append(.pointerButton(button, isDown: false, x: 100, y: 50))
+            }
+            events += [
+                .wheel(.vertical, rotation: 120, x: 100, y: 50),
+                .wheel(.vertical, rotation: -30, x: 100, y: 50),
+                .wheel(.horizontal, rotation: 120, x: 100, y: 50),
+                .pointerMove(x: 10, y: 10), .pointerMove(x: 20, y: 20), .pointerMove(x: 300, y: 200)
+            ]
+            session.send(events)
+            received = TestHost.receivedInput(after: before, count: expected.count)
+            session.disconnect()
+        }
+        #expect(received == expected)
+    }
+
+    @Test func theServersCursorArrivesWithItsShape() async {
+        let session = RDPSession(configuration: TestHost.configuration, delegate: TestHost.delegate())
+        var cursor: RDPCursor?
+        _ = await runToEnd(session) { state, session in
+            guard case .connected = state else { return }
+            let deadline = Date().addingTimeInterval(10)
+            while cursor == nil, Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+                cursor = session.framebuffer.takeCursor()
+            }
+            session.disconnect()
+        }
+        guard case .image(let shape) = cursor else {
+            Issue.record("expected a cursor image, got \(String(describing: cursor))")
+            return
+        }
+        // The test server's cursor: 16x8, hot spot 3, 5, one colour, and a
+        // transparent pixel in the top left corner.
+        #expect(shape.width == 16)
+        #expect(shape.height == 8)
+        #expect(shape.hotspotX == 3)
+        #expect(shape.hotspotY == 5)
+        #expect(shape.pixels.count == 16 * 8 * 4)
+        let bytes = [UInt8](shape.pixels)
+        #expect(bytes.count >= 8 && bytes[3] == 0)
+        #expect(bytes.count >= 8 && Array(bytes[4..<8]) == [0x50, 0xC0, 0x10, 0xFF])
+        #expect(Array(bytes.suffix(4)) == [0x50, 0xC0, 0x10, 0xFF])
     }
 }

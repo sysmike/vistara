@@ -131,3 +131,21 @@ private struct Source {
     for await _ in framebuffer.changes { signals += 1 }
     #expect(signals == 1)
 }
+
+@Test func cursorIsReportedOnceWhenItChanges() {
+    let framebuffer = RDPFramebuffer()
+    #expect(framebuffer.takeCursor() == nil)
+
+    framebuffer.setCursor(.hidden)
+    #expect(framebuffer.takeCursor() == .hidden)
+    #expect(framebuffer.takeCursor() == nil)
+
+    // The same cursor again is no change.
+    framebuffer.setCursor(.hidden)
+    #expect(framebuffer.takeCursor() == nil)
+
+    let shape = RDPCursorImage(width: 1, height: 1, hotspotX: 0, hotspotY: 0, pixels: Data([1, 2, 3, 255]))
+    framebuffer.setCursor(.image(shape))
+    framebuffer.setCursor(.systemDefault)
+    #expect(framebuffer.takeCursor() == .systemDefault)
+}
