@@ -405,7 +405,17 @@ scrolling direction (HIG Settings: "Respect people's systemwide settings").
   a picture; reading it is the job of the remote system's own assistive tools,
   and the app says so in its help.
 - Reduce Motion, Reduce Transparency, and Increase Contrast are honored by
-  using system components and semantic colors.
+  using system components and semantic colors. Vistara has no animations of
+  its own, and its one material (the reconnecting panel) is a system one.
+- VoiceOver announces when a session connects, is lost and reconnects, or
+  ends, with the same words the window shows.
+- Words are drawn in the label colors only. Red marks a problem with its
+  icon, never with its text: red text on a light form measures about 3.5:1.
+  Explanations use the system's secondary label color, which measures below
+  4.5:1 in the standard appearances and above it with Increase Contrast; the
+  design keeps the system color rather than inventing a darker one.
+- Icon-only buttons have a label, a tooltip, and at least 20 by 20 points to
+  aim at.
 
 ## Wording
 

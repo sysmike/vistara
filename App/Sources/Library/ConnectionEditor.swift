@@ -180,10 +180,16 @@ struct ConnectionEditor: View {
     @ViewBuilder
     private func problem(_ message: String?) -> some View {
         if showsProblems, let message {
-            Label(message, systemImage: "exclamationmark.circle")
-                .font(.callout)
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
+            // Red marks it; the words stay in the label color, because red
+            // text on a light form is below 4.5:1 (docs/DESIGN.md, Accessibility).
+            Label {
+                Text(message)
+            } icon: {
+                Image(systemName: "exclamationmark.circle")
+                    .foregroundStyle(.red)
+            }
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 

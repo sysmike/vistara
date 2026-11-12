@@ -39,12 +39,7 @@ struct SessionContentView: View {
                 )
             case .disconnected(let reason):
                 DisconnectedView(
-                    message: DisconnectMessage(
-                        reason: reason, name: model.target.name, host: model.target.host,
-                        canEditConnection: model.onEditConnection != nil,
-                        refusedByPolicy: model.refusedCertificateByPolicy,
-                        gaveUpReconnecting: model.didGiveUpReconnecting
-                    ),
+                    message: message(for: reason),
                     perform: { action in
                         switch action {
                         case .connect: model.reconnect()
@@ -56,6 +51,14 @@ struct SessionContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: model.phase) { old, new in
+            guard SessionAnnouncement.kind(of: old) != SessionAnnouncement.kind(of: new) else { return }
+            var disconnectMessage: DisconnectMessage?
+            if case .disconnected(let reason) = new { disconnectMessage = message(for: reason) }
+            if let text = SessionAnnouncement.text(for: new, name: model.target.name, message: disconnectMessage) {
+                SessionAnnouncement.post(text)
+            }
+        }
         .sheet(isPresented: credentialsArePresented) {
             if let request = model.pendingCredentials {
                 CredentialsSheet(name: model.target.name, request: request) { answer in
@@ -70,6 +73,15 @@ struct SessionContentView: View {
                 }
             }
         }
+    }
+
+    private func message(for reason: RDPDisconnectReason) -> DisconnectMessage {
+        DisconnectMessage(
+            reason: reason, name: model.target.name, host: model.target.host,
+            canEditConnection: model.onEditConnection != nil,
+            refusedByPolicy: model.refusedCertificateByPolicy,
+            gaveUpReconnecting: model.didGiveUpReconnecting
+        )
     }
 
     private var credentialsArePresented: Binding<Bool> {
@@ -101,6 +113,7 @@ struct ConnectingView: View {
     var body: some View {
         VStack(spacing: 16) {
             ProgressView()
+                .accessibilityLabel("Connecting")
             Text("Connecting to “\(name)”…")
             Button("Cancel", action: cancel)
                 .keyboardShortcut(.cancelAction)
@@ -131,6 +144,7 @@ struct ReconnectingView: View {
             }
             VStack(spacing: 12) {
                 ProgressView()
+                    .accessibilityLabel("Reconnecting")
                 Text("Reconnecting to “\(name)”…")
                     .font(.title3)
                 Text("The connection was lost. Your session keeps running on the computer.")
