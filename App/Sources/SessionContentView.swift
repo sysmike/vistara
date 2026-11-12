@@ -27,12 +27,21 @@ struct SessionContentView: View {
                     )
                         .id(ObjectIdentifier(framebuffer))
                 }
+            case .reconnecting(let reconnection):
+                ReconnectingView(
+                    name: model.target.name,
+                    lastFrame: model.lastFrame,
+                    isTrying: reconnection.isTrying,
+                    cancel: { model.cancelReconnecting() },
+                    reconnectNow: { model.reconnectNow() }
+                )
             case .disconnected(let reason):
                 DisconnectedView(
                     message: DisconnectMessage(
                         reason: reason, name: model.target.name, host: model.target.host,
                         canEditConnection: model.onEditConnection != nil,
-                        refusedByPolicy: model.refusedCertificateByPolicy
+                        refusedByPolicy: model.refusedCertificateByPolicy,
+                        gaveUpReconnecting: model.didGiveUpReconnecting
                     ),
                     perform: { action in
                         switch action {
@@ -95,6 +104,50 @@ struct ConnectingView: View {
                 .keyboardShortcut(.cancelAction)
         }
         .padding(40)
+    }
+}
+
+/// The last picture of the lost session, dimmed, with what is happening and
+/// a way to stop it.
+struct ReconnectingView: View {
+    let name: String
+    let lastFrame: CGImage?
+    /// An attempt is running, rather than waiting for the next one.
+    let isTrying: Bool
+    let cancel: () -> Void
+    let reconnectNow: () -> Void
+
+    var body: some View {
+        ZStack {
+            if let lastFrame {
+                Color.black
+                Image(decorative: lastFrame, scale: 1)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .opacity(0.4)
+            }
+            VStack(spacing: 12) {
+                ProgressView()
+                Text("Reconnecting to “\(name)”…")
+                    .font(.title3)
+                Text("The connection was lost. Your session keeps running on the computer.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Cancel", action: cancel)
+                        .keyboardShortcut(.cancelAction)
+                    Button("Reconnect Now", action: reconnectNow)
+                        .disabled(isTrying)
+                }
+                .padding(.top, 4)
+            }
+            .frame(maxWidth: 360)
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 

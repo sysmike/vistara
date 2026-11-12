@@ -1,96 +1,9 @@
+import CoreGraphics
 import Foundation
 import Observation
 import RDPKit
 import RDPKitUI
 import VistaraCore
-
-/// The computer a session window connects to.
-struct SessionTarget: Equatable, Sendable {
-    /// Shown as the window title.
-    var name: String
-    var host: String
-    var port: UInt16
-    /// Suggested in the credentials sheet when nothing is saved.
-    var username = ""
-    var domain: String?
-
-    /// How the remote desktop gets its size: from the saved connection, or
-    /// following the window at full Retina resolution.
-    var resolutionMode = Connection.ResolutionMode.matchWindow
-    var fixedWidth = 1920
-    var fixedHeight = 1080
-    var usesHiDPI = true
-
-    /// Security and device options from the saved connection.
-    var requiresNLA = true
-    var certificatePolicy = Connection.CertificatePolicy.askOnFirstUse
-    var audioMode = Connection.AudioMode.playOnThisMac
-    var sharesClipboard = true
-    var reconnectsAutomatically = true
-    /// Opened for each session by SharedFolderAccess.
-    var sharedFolders: [Connection.SharedFolder] = []
-
-    /// What RDPKit is told about this target, for a desktop of the given size.
-    func configuration(desktop: DesktopSize) -> RDPSessionConfiguration {
-        let audio: RDPAudioMode = switch audioMode {
-        case .playOnThisMac: .thisMac
-        case .playOnRemote: .remote
-        case .off: .off
-        }
-        return RDPSessionConfiguration(
-            host: host,
-            port: port,
-            username: username,
-            domain: domain,
-            desktopWidth: UInt32(desktop.width),
-            desktopHeight: UInt32(desktop.height),
-            scalePercent: UInt32(desktop.scalePercent),
-            requiresNLA: requiresNLA,
-            audio: audio,
-            sharesClipboard: sharesClipboard,
-            reconnectsAutomatically: reconnectsAutomatically
-        )
-    }
-
-    /// The saved connection this target comes from, if any.
-    var connectionID: UUID?
-
-    /// Identifies this target's item in the credential store: the saved
-    /// connection's identifier, or else the computer's address.
-    var credentialKey: String {
-        connectionID?.uuidString ?? "\(host.lowercased()):\(port)"
-    }
-}
-
-/// What the credentials sheet starts with. Never a password.
-struct CredentialsRequest: Equatable {
-    var username: String
-    var domain: String
-    var remember: Bool
-    /// Why the sheet is back, after credentials were refused.
-    var message: String?
-}
-
-/// What the user entered in the credentials sheet.
-struct CredentialsAnswer {
-    var username: String
-    var domain: String
-    var password: String
-    var remember: Bool
-
-    var domainOrNil: String? {
-        domain.isEmpty ? nil : domain
-    }
-}
-
-/// What the user decided about a certificate.
-enum CertificateDecision {
-    case cancel
-    /// Continue this time and ask again next time.
-    case trustOnce
-    /// Continue, and remember the certificate for this computer.
-    case alwaysTrust
-}
 
 /// Everything one session window shows, and the session behind it.
 @MainActor
@@ -99,13 +12,21 @@ final class SessionModel {
     enum Phase: Equatable {
         case connecting
         case connected
+        /// The network went away; the session is being brought back.
+        case reconnecting(Reconnection)
         case disconnected(RDPDisconnectReason)
+
+        var isReconnecting: Bool {
+            if case .reconnecting = self { return true }
+            return false
+        }
     }
 
     private(set) var target: SessionTarget
     /// Opens the editor for this session's saved connection, if it has one.
     @ObservationIgnored var onEditConnection: (() -> Void)?
-    private(set) var phase: Phase
+    /// Set here and in SessionModel+Reconnection.swift only.
+    var phase: Phase
     /// A certificate waiting for the user's decision.
     private(set) var pendingCertificate: RDPCertificate?
     /// The desktop of the current or last session.
@@ -125,6 +46,14 @@ final class SessionModel {
     @ObservationIgnored private var clipboard: ClipboardBridge?
     /// The shared folders, open while a session runs.
     @ObservationIgnored private var folderAccess: SharedFolderAccess?
+
+    /// The last picture of a lost session, shown dimmed while reconnecting.
+    var lastFrame: CGImage?
+    /// Reconnecting ran out of attempts; the window says so.
+    var didGiveUpReconnecting = false
+    @ObservationIgnored var reconnectionPolicy = ReconnectionPolicy()
+    @ObservationIgnored var reconnectWait: Task<Void, Never>?
+    @ObservationIgnored var reconnectionTriggers: ReconnectionTriggers?
 
     /// The desktop size that fills the session window now. Set by the window.
     @ObservationIgnored var windowDesktopSize: (() -> DesktopSize?)?
@@ -191,7 +120,11 @@ final class SessionModel {
     /// Starts a session unless one is running.
     func connect() {
         guard session == nil else { return }
-        phase = .connecting
+        // A reconnection attempt keeps showing the reconnecting state.
+        if !phase.isReconnecting {
+            phase = .connecting
+            didGiveUpReconnecting = false
+        }
 
         let delegate = RDPSessionDelegate(
             credentials: { [weak self] _ in await self?.credentials() },
@@ -231,12 +164,34 @@ final class SessionModel {
 
     /// Ends the session, or cancels connecting. The window shows the result.
     func disconnect() {
+        if phase.isReconnecting {
+            cancelReconnecting()
+            return
+        }
         session?.disconnect()
     }
 
+    /// Connects again after the session ended; while reconnecting, tries now.
     func reconnect() {
+        if phase.isReconnecting {
+            reconnectNow()
+            return
+        }
         guard !isLive else { return }
         connect()
+    }
+
+    /// Drops the attempt in progress at once, without waiting for it to end.
+    func abandonAttempt() {
+        if let session {
+            self.session = nil
+            session.disconnect()
+            folderAccess?.stop()
+            folderAccess = nil
+            enteredCredentials = nil
+        }
+        answerCertificate(trust: false)
+        answerCredentials(nil)
     }
 
     /// Connects again and asks for credentials, even when some are saved.
@@ -284,13 +239,15 @@ final class SessionModel {
         guard source === session else { return }
         switch state {
         case .connecting, .awaitingCredentials, .awaitingCertificateDecision:
-            phase = .connecting
+            if !phase.isReconnecting { phase = .connecting }
         case .connected:
+            endReconnection()
             startClipboard(for: source)
             keepOrForgetEnteredCredentials()
             wasRefused = false
             phase = .connected
         case .disconnected(let reason):
+            let wasConnected = phase == .connected
             clipboard?.stop()
             clipboard = nil
             folderAccess?.stop()
@@ -305,11 +262,17 @@ final class SessionModel {
                 connect()
             } else {
                 wasRefused = false
-                phase = .disconnected(reason)
+                if !continueReconnecting(after: reason, wasConnected: wasConnected) {
+                    phase = .disconnected(reason)
+                }
             }
         }
     }
+}
 
+// MARK: Questions for the user
+
+extension SessionModel {
     /// The credentials for a connection attempt: what is saved, or else what
     /// the user enters in the sheet. Returns nil when the user cancels or the
     /// session is disconnected meanwhile.
