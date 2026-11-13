@@ -133,9 +133,10 @@ jobs:
         if: failure()
         run: |
           # ReportCrash writes the report some seconds after the crash.
-          for _ in $(seq 1 30); do
+          # A name that starts with a dot is a report still being written.
+          for _ in $(seq 1 45); do
             reports=$(find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports \
-              -name '*.ips' -mmin -15 2>/dev/null | head -3)
+              -name '[!.]*.ips' -mmin -15 2>/dev/null | head -3)
             [[ -n "$reports" ]] && break
             sleep 2
           done
@@ -145,7 +146,11 @@ jobs:
             python3 - "$report" <<'PY'
           import json, sys
           lines = open(sys.argv[1]).read().split("\n", 1)
-          body = json.loads(lines[1])
+          try:
+              body = json.loads(lines[1])
+          except ValueError:
+              print(lines[1][:20000])
+              sys.exit(0)
           images = body.get("usedImages", [])
           print(body.get("exception"), body.get("termination", {}).get("indicator"))
           for thread in body.get("threads", []):
