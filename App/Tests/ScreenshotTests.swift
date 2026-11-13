@@ -276,7 +276,10 @@ struct ScreenshotTests {
         let bytes = try await Screenshots.write(view, size: size, name: "settings-security")
         #expect(bytes > 0)
     }
+}
 
+/// The certificate's fingerprint and sheet.
+extension ScreenshotTests {
     @Test
     func fingerprintLinesNeverSplitAPair() {
         #expect(CertificateSheet.lines(ofFingerprint: "aa:bb:cc:dd:ee", pairsPerLine: 2) == "aa:bb\ncc:dd\nee")
