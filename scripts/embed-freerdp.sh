@@ -14,10 +14,21 @@ if [[ ! -d "$PREFIX/lib" ]]; then
   exit 1
 fi
 
+# Signed with the app's identity: under the hardened runtime, library
+# validation loads only libraries signed by the app's own team. A real
+# identity also gets a secure timestamp, which notarization requires.
+identity="${EXPANDED_CODE_SIGN_IDENTITY:--}"
+sign_flags=(--force --sign "$identity")
+if [[ "$identity" == "-" ]]; then
+  sign_flags+=(--timestamp=none)
+else
+  sign_flags+=(--timestamp --options runtime)
+fi
+
 mkdir -p "$DEST"
 # The names the libraries are loaded by (their install names).
 for name in libfreerdp-client3.3 libfreerdp3.3 libwinpr3.3 libssl.3 libcrypto.3; do
   cp -fL "$PREFIX/lib/$name.dylib" "$DEST/$name.dylib"
   chmod u+w "$DEST/$name.dylib"
-  codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --timestamp=none "$DEST/$name.dylib"
+  codesign "${sign_flags[@]}" "$DEST/$name.dylib"
 done

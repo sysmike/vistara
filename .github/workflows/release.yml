@@ -1,0 +1,176 @@
+name: Release
+
+# A tag such as v0.1.0 builds, signs, notarizes, and staples Vistara, and
+# creates a draft release with the DMG and its checksums. Without the
+# signing secrets (and on pull requests that change the release itself), the
+# same steps run as a dry run: signed ad hoc, not notarized, uploaded as an
+# artifact only. See docs/RELEASING.md.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release/**
+      - scripts/embed-freerdp.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign, and notarize
+    runs-on: macos-15
+    timeout-minutes: 120
+    # The signing secrets live in this environment. GitHub never gives them
+    # to pull requests from forks, and the environment can require approval.
+    environment: ${{ github.event_name == 'pull_request' && 'dry-run' || 'release' }}
+    permissions:
+      contents: write
+    env:
+      VISTARA_RELEASE_DIR: ${{ github.workspace }}/build/release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Decide what kind of run this is
+        id: mode
+        env:
+          HAS_CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE != '' }}
+          HAS_NOTARY_KEY: ${{ secrets.NOTARY_KEY != '' }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" && "$HAS_CERTIFICATE" == "true" && "$HAS_NOTARY_KEY" == "true" ]]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Signed run: Developer ID, notarized."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "Dry run: signed ad hoc, not notarized, no release."
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+          else
+            version="0.0.0-dry-run"
+          fi
+          echo "VISTARA_VERSION=$version" >> "$GITHUB_ENV"
+          echo "VISTARA_BUILD_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Compute build key
+        id: key
+        run: echo "key=$(scripts/build-freerdp.sh --print-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FreeRDP prefix
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/freerdp/prefix
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+
+      - name: Build FreeRDP
+        run: scripts/build-freerdp.sh
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Import the Developer ID certificate
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          certificate="$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$certificate"
+          security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ {print $2; exit}')"
+          [[ -n "$identity" ]] || { echo "error: no Developer ID Application identity in the certificate" >&2; exit 1; }
+          echo "VISTARA_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Build and sign the app
+        env:
+          VISTARA_TEAM_ID: ${{ secrets.DEVELOPER_ID_TEAM_ID }}
+        run: scripts/release/build-app.sh
+
+      - name: Check that the bundled libraries load
+        run: |
+          # Hide the build prefix: the app may load only its embedded copies,
+          # and with a Developer ID signature only under library validation.
+          mv build/freerdp/prefix build/freerdp/prefix.hidden
+          open "$VISTARA_RELEASE_DIR/Vistara.app"
+          sleep 8
+          pgrep -x Vistara
+          pkill -x Vistara
+          mv build/freerdp/prefix.hidden build/freerdp/prefix
+
+      - name: Write the notary key
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          key="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$NOTARY_KEY" > "$key"
+          echo "VISTARA_NOTARY_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - name: Notarize and staple the app
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          VISTARA_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          VISTARA_NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: scripts/release/notarize.sh "$VISTARA_RELEASE_DIR/Vistara.app"
+
+      - name: Make the DMG
+        run: echo "DMG=$(scripts/release/make-dmg.sh | tail -1)" >> "$GITHUB_ENV"
+
+      - name: Notarize and staple the DMG
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          VISTARA_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          VISTARA_NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: scripts/release/notarize.sh "$DMG"
+
+      - name: Check what Gatekeeper says
+        if: steps.mode.outputs.signed == 'true'
+        run: |
+          spctl --assess --type execute --verbose=4 "$VISTARA_RELEASE_DIR/Vistara.app"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
+
+      - name: Write checksums
+        run: scripts/release/checksums.sh "$DMG"
+
+      - name: Remove the signing keychain and notary key
+        if: always() && steps.mode.outputs.signed == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true
+          rm -f "$RUNNER_TEMP/notary.p8"
+
+      - name: Upload the DMG
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vistara-${{ env.VISTARA_VERSION }}
+          path: |
+            ${{ env.DMG }}
+            ${{ env.VISTARA_RELEASE_DIR }}/SHA256SUMS
+
+      - name: Create a draft release
+        if: steps.mode.outputs.signed == 'true' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$DMG" "$VISTARA_RELEASE_DIR/SHA256SUMS" \
+            --draft --verify-tag --title "Vistara $VISTARA_VERSION" \
+            --notes "Signed with Developer ID and notarized by Apple. See SHA256SUMS for the checksum."

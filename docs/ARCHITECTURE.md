@@ -71,8 +71,12 @@ without the app.
   fingerprint; a changed certificate produces a loud warning.
 - Hostnames, usernames, and credentials are redacted from logs at the default
   level.
-- The hardened runtime is enabled. The App Sandbox is enabled; if a feature
-  cannot work inside it, that becomes a `decision` issue, not a quiet opt-out.
+- The hardened runtime is enabled with no exceptions: no
+  `com.apple.security.cs.*` entitlement, which the release workflow checks.
+  The App Sandbox is enabled; if a feature cannot work inside it, that becomes
+  a `decision` issue, not a quiet opt-out.
+- Releases are signed with a Developer ID, notarized, and stapled by a
+  workflow that runs for version tags only (docs/RELEASING.md).
 
 ## Testing and CI
 
