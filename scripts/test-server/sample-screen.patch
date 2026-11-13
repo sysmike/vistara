@@ -286,7 +286,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,514 @@
+@@ -37,6 +37,515 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -370,7 +370,8 @@
 +	if (!disp)
 +		return;
 +	disp->custom = state;
-+	disp->MaxNumMonitors = 1;
++	/* As many monitors as RDP allows, for multi-monitor layouts. */
++	disp->MaxNumMonitors = 16;
 +	disp->MaxMonitorAreaFactorA = 8192;
 +	disp->MaxMonitorAreaFactorB = 8192;
 +	disp->DispMonitorLayout = vistara_disp_layout;
@@ -801,7 +802,7 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -574,6 +1082,32 @@
+@@ -574,6 +1083,32 @@
  	subsystem = server->subsystem;
  	WINPR_ASSERT(subsystem);
  
@@ -834,7 +835,7 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -735,6 +1269,8 @@
+@@ -735,6 +1270,8 @@
  	WINPR_ASSERT(client);
  
  	client->suppressOutput = !(allow);
@@ -843,7 +844,7 @@
  
  	if (allow)
  	{
-@@ -2845,6 +3381,9 @@
+@@ -2845,6 +3382,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -853,7 +854,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3489,11 @@
+@@ -2950,6 +3490,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -865,7 +866,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3581,8 @@
+@@ -3037,6 +3582,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -874,7 +875,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3736,15 @@
+@@ -3190,6 +3737,15 @@
  
  fail:
  
