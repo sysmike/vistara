@@ -101,6 +101,7 @@ struct DockMenuTests {
 }
 
 @Suite
+@MainActor
 struct HelpTests {
     @Test
     func vistaraHelpOpensTheUserGuide() throws {
