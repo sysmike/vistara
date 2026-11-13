@@ -144,7 +144,7 @@ jobs:
           for report in $reports; do
             echo "== $report"
             python3 - "$report" <<'PY'
-          import json, sys
+          import json, subprocess, sys
           lines = open(sys.argv[1]).read().split("\n", 1)
           try:
               body = json.loads(lines[1])
@@ -157,8 +157,15 @@ jobs:
               if not thread.get("triggered"):
                   continue
               for frame in thread.get("frames", [])[:40]:
-                  image = images[frame["imageIndex"]].get("name", "?") if frame.get("imageIndex") is not None else "?"
-                  print(f'{image:32} {frame.get("symbol", hex(frame.get("imageOffset", 0)))} +{frame.get("symbolLocation", 0)}'
+                  used = images[frame["imageIndex"]] if frame.get("imageIndex") is not None else {}
+                  symbol = frame.get("symbol")
+                  if symbol is None and used.get("path") and "base" in used:
+                      # Frames without a symbol: ask atos, with the image's load address.
+                      address = used["base"] + frame.get("imageOffset", 0)
+                      symbol = subprocess.run(
+                          ["atos", "-o", used["path"], "-l", hex(used["base"]), hex(address)],
+                          capture_output=True, text=True).stdout.strip()
+                  print(f'{used.get("name", "?"):24} {symbol} +{frame.get("symbolLocation", 0)}'
                         f' {frame.get("sourceFile", "")}:{frame.get("sourceLine", "")}')
           PY
           done
