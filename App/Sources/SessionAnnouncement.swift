@@ -29,8 +29,12 @@ enum SessionAnnouncement {
         }
     }
 
+    /// Sees each announcement as it is posted. For tests.
+    @MainActor static var observer: ((String) -> Void)?
+
     @MainActor
     static func post(_ text: String) {
+        observer?(text)
         NSAccessibility.post(
             element: NSApp as Any,
             notification: .announcementRequested,

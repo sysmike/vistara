@@ -140,7 +140,12 @@ the same way.
 Window > Merge All Windows puts every session window into one; drag a tab
 out, or choose Window > Move Tab to New Window, to give it a window of its
 own again. Connecting to a computer whose session is in a tab brings that
-tab to the front. Shift-Command-] and
+tab to the front.
+
+A tab shows how its session is doing without your selecting it: a spinner
+while it connects or reconnects, and a symbol once it has ended; point at the
+symbol to see why. VoiceOver announces a background tab's news with the
+connection's name. Shift-Command-] and
 Shift-Command-[ show the next and previous tab. Control-Tab and
 Control-Shift-Tab stay with the remote computer, where Windows apps use them
 to switch their own tabs.

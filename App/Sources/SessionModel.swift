@@ -378,3 +378,15 @@ extension SessionModel {
         onRenewedSharedFolders?(renewals)
     }
 }
+
+extension SessionModel {
+    /// What the window says about a session that ended.
+    func disconnectMessage(for reason: RDPDisconnectReason) -> DisconnectMessage {
+        DisconnectMessage(
+            reason: reason, name: target.name, host: target.host,
+            canEditConnection: onEditConnection != nil,
+            refusedByPolicy: refusedCertificateByPolicy,
+            gaveUpReconnecting: didGiveUpReconnecting
+        )
+    }
+}

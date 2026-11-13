@@ -51,14 +51,6 @@ struct SessionContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: model.phase) { old, new in
-            guard SessionAnnouncement.kind(of: old) != SessionAnnouncement.kind(of: new) else { return }
-            var disconnectMessage: DisconnectMessage?
-            if case .disconnected(let reason) = new { disconnectMessage = message(for: reason) }
-            if let text = SessionAnnouncement.text(for: new, name: model.target.name, message: disconnectMessage) {
-                SessionAnnouncement.post(text)
-            }
-        }
         .sheet(isPresented: credentialsArePresented) {
             if let request = model.pendingCredentials {
                 CredentialsSheet(name: model.target.name, request: request) { answer in
@@ -76,12 +68,7 @@ struct SessionContentView: View {
     }
 
     private func message(for reason: RDPDisconnectReason) -> DisconnectMessage {
-        DisconnectMessage(
-            reason: reason, name: model.target.name, host: model.target.host,
-            canEditConnection: model.onEditConnection != nil,
-            refusedByPolicy: model.refusedCertificateByPolicy,
-            gaveUpReconnecting: model.didGiveUpReconnecting
-        )
+        model.disconnectMessage(for: reason)
     }
 
     private var credentialsArePresented: Binding<Bool> {
