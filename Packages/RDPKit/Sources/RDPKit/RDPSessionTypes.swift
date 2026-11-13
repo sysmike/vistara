@@ -71,6 +71,9 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     public var keyboard: RDPKeyboard?
     /// Applied by reconnection (issue #28).
     public var reconnectsAutomatically: Bool
+    /// Several monitors for one desktop across them. With fewer than two, one
+    /// monitor of `desktopWidth` x `desktopHeight` at `scalePercent`.
+    public var monitors: [RDPMonitor] = []
 
     public init(
         host: String,

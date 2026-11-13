@@ -6,24 +6,6 @@ import Foundation
 /// Not thread-safe: use one handle from one thread. The exception is
 /// `abortToken`, which may be used from anywhere.
 final class SessionHandle {
-    struct Target {
-        var host: String
-        var port: UInt16 = 3389
-        var username: String
-        var domain: String?
-        var password: String
-        var width: UInt32 = 1024
-        var height: UInt32 = 768
-        var scalePercent: UInt32 = 100
-        var requiresNLA = true
-        /// Off unless asked for, so tests that are not about sound load no
-        /// sound channel.
-        var audio: RDPAudioMode = .off
-        var sharesClipboard = false
-        var sharedFolders: [RDPSharedFolder] = []
-        var keyboard: RDPKeyboard?
-    }
-
     enum ConnectResult: Equatable {
         case connected
         case certificateRejected
@@ -115,13 +97,18 @@ final class SessionHandle {
         options.shared_folders = folders.pointer.map { UnsafePointer($0) }
         options.shared_folder_count = folders.count
 
+        let monitors = target.monitors.map(\.cMonitor)
         return withExtendedLifetime((decider, folders)) {
-            switch vistara_session_connect(session, &options) {
-            case VISTARA_CONNECT_OK: .connected
-            case VISTARA_CONNECT_CERTIFICATE_UNTRUSTED: .certificateRejected
-            case VISTARA_CONNECT_AUTHENTICATION_FAILED: .authenticationFailed
-            case VISTARA_CONNECT_CANCELLED: .cancelled
-            default: Self.result(for: lastFailure(whileConnected: false))
+            monitors.withUnsafeBufferPointer { monitors in
+                options.monitors = monitors.baseAddress
+                options.monitor_count = monitors.count
+                return switch vistara_session_connect(session, &options) {
+                case VISTARA_CONNECT_OK: .connected
+                case VISTARA_CONNECT_CERTIFICATE_UNTRUSTED: .certificateRejected
+                case VISTARA_CONNECT_AUTHENTICATION_FAILED: .authenticationFailed
+                case VISTARA_CONNECT_CANCELLED: .cancelled
+                default: Self.result(for: lastFailure(whileConnected: false))
+                }
             }
         }
     }
@@ -204,6 +191,11 @@ final class SessionHandle {
         case .clipboardText(let text):
             offerClipboardText(text)
         case .displayUpdates(let allowed): vistara_session_set_display_updates(session, allowed)
+        case .monitorLayout(let monitors):
+            monitors.map(\.cMonitor).withUnsafeBufferPointer { buffer in
+                guard let first = buffer.baseAddress else { return false }
+                return vistara_session_request_layout(session, first, buffer.count)
+            }
         }
     }
 
@@ -335,66 +327,5 @@ extension SessionHandle {
     /// Makes every sound output act as if another default output was picked. For tests.
     static func pretendAudioOutputChanged() {
         vistara_audio_pretend_output_changed()
-    }
-}
-
-/// Shared folders as the C interface takes them, valid while this lives.
-private final class SharedFolderList {
-    private var strings: [UnsafeMutablePointer<CChar>] = []
-    private var folders: [vistara_shared_folder] = []
-    private(set) var pointer: UnsafeMutablePointer<vistara_shared_folder>?
-
-    init(_ shared: [RDPSharedFolder]) {
-        for folder in shared {
-            guard let name = strdup(folder.name) else { continue }
-            guard let path = strdup(folder.path) else {
-                free(name)
-                continue
-            }
-            strings += [name, path]
-            folders.append(vistara_shared_folder(name: name, path: path, read_only: folder.isReadOnly))
-        }
-        guard !folders.isEmpty else { return }
-        pointer = .allocate(capacity: folders.count)
-        pointer?.initialize(from: folders, count: folders.count)
-    }
-
-    var count: Int { folders.count }
-
-    deinit {
-        pointer?.deallocate()
-        strings.forEach { free($0) }
-    }
-}
-
-extension SessionHandle.Target {
-    /// The C options for these settings, pointing at the given strings. Shared
-    /// folders and the certificate question are filled in by the caller.
-    fileprivate func options(
-        host: UnsafePointer<CChar>, username: UnsafePointer<CChar>, domain: UnsafePointer<CChar>?,
-        password: UnsafePointer<CChar>
-    ) -> vistara_connect_options {
-        vistara_connect_options(
-            host: host,
-            port: port,
-            username: username,
-            domain: domain,
-            password: password,
-            width: width,
-            height: height,
-            scale_percent: scalePercent,
-            require_nla: requiresNLA,
-            play_audio_on_remote: audio == .remote,
-            play_audio_here: audio == .thisMac,
-            share_clipboard: sharesClipboard,
-            shared_folders: nil,
-            shared_folder_count: 0,
-            keyboard_layout: keyboard?.layout ?? 0,
-            keyboard_type: keyboard?.type ?? 0,
-            keyboard_subtype: keyboard?.subtype ?? 0,
-            keyboard_function_keys: keyboard?.functionKeys ?? 0,
-            decide_certificate: nil,
-            decide_certificate_context: nil
-        )
     }
 }

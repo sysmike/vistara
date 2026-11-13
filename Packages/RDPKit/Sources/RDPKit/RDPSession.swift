@@ -164,7 +164,8 @@ public final class RDPSession: Sendable {
             audio: configuration.audio,
             sharesClipboard: configuration.sharesClipboard,
             sharedFolders: configuration.sharedFolders,
-            keyboard: configuration.keyboard
+            keyboard: configuration.keyboard,
+            monitors: configuration.monitors
         )
         let delegate = delegate
 
