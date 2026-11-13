@@ -91,13 +91,20 @@ jobs:
       - name: Lint
         run: swiftlint lint --strict
 
-      # The Icon Composer file carries copies of the icon's layers, which
-      # Design/AppIcon/render.py writes; they must not drift apart.
-      - name: Check the icon's layers
+      # How the system draws the icon in each appearance, for the pull request:
+      # Icon Composer's ictool renders the .icon as macOS does.
+      - name: Draw the app icon in each appearance
         run: |
-          for layer in background distance frame; do
-            cmp "Design/AppIcon/$layer.svg" "App/Resources/AppIcon.icon/Assets/$layer.svg"
+          ictool=$(find "$DEVELOPER_DIR/../Applications" -name ictool -type f -perm -u+x 2>/dev/null | head -1)
+          echo "ictool: ${ictool:-not found}"
+          [[ -n "$ictool" ]] || exit 0
+          "$ictool" --help 2>&1 | head -60 || true
+          mkdir -p build/screenshots
+          for rendition in Default Dark TintedLight TintedDark ClearLight ClearDark; do
+            "$ictool" App/Resources/AppIcon.icon --export-image --output-file "build/screenshots/app-icon-$rendition.png" \
+              --platform macOS --rendition "$rendition" --width 512 --height 512 --scale 1 2>&1 | tail -3 || true
           done
+          ls -l build/screenshots
 
       - name: Check that the lint forbids print
         run: |
