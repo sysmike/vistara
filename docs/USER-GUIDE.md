@@ -134,7 +134,10 @@ A connection set to *All Displays* (in the editor's Display section) opens
 in full screen on every display of your Mac, as one remote desktop: Windows
 sees a monitor for each display, arranged as they are in System Settings >
 Displays, with its taskbar on the display that has the menu bar. The pointer
-moves across them freely.
+moves across them freely. Connecting, removing, or rearranging a display
+during the session changes the remote desktop to match; with one display
+left, the session goes on in full screen on it, and spreads out again when
+you connect another.
 
 It is still one session: closing any of its windows, or Session >
 Disconnect, ends it. Leaving full screen on any display brings the session

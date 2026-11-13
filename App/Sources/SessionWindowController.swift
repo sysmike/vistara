@@ -67,12 +67,21 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         updateTitle()
         window.tab.accessoryView = tabState.makeView()
         observePhase()
-        if target.usesAllDisplays { startSpanIfPossible() }
+        if target.usesAllDisplays {
+            startSpanIfPossible()
+            observeDisplays()
+        }
     }
 
     /// The windows on the other displays, while the session spans them.
     /// See DisplaySpan.swift.
     var span: DisplaySpan?
+    /// Display changes, followed while the session is meant for all displays.
+    var displayObserver: (any NSObjectProtocol)?
+    var pendingDisplayChange: Task<Void, Never>?
+    /// The span gave way because only one display was left, and comes back
+    /// with a second one. Not after the user left full screen.
+    var spanWaitsForDisplays = false
 
     /// What the tab and VoiceOver were last told.
     private var lastPhase: SessionModel.Phase
@@ -253,6 +262,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         model.disconnect()
         span?.close()
         span = nil
+        stopObservingDisplays()
         onClose?()
     }
 }

@@ -117,12 +117,75 @@ extension SessionWindowController {
         }
     }
 
+    // MARK: Displays that change
+
+    /// How long the displays have to rest before the session follows, as a
+    /// window's size does.
+    static var displayChangeDelay = Duration.milliseconds(250)
+
+    func observeDisplays() {
+        displayObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.displaysMayHaveChanged() }
+        }
+    }
+
+    func stopObservingDisplays() {
+        if let displayObserver { NotificationCenter.default.removeObserver(displayObserver) }
+        displayObserver = nil
+        pendingDisplayChange?.cancel()
+        pendingDisplayChange = nil
+    }
+
+    /// A burst of changes is followed once, after it has rested.
+    private func displaysMayHaveChanged() {
+        pendingDisplayChange?.cancel()
+        let delay = Self.displayChangeDelay
+        pendingDisplayChange = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.followDisplays()
+        }
+    }
+
+    /// Displays added, removed, or rearranged: a window on each, and the
+    /// new layout for the server. Left with one, the session goes on in full
+    /// screen on it; given a second again, it spans them again.
+    func followDisplays() {
+        let displays = Self.displays()
+        let canSpan = displays.count > 1 && Self.displaysHaveSeparateSpaces()
+        if span != nil, !canSpan {
+            span?.close()
+            span = nil
+            model.displayMonitors = []
+            spanWaitsForDisplays = true
+        } else if canSpan, span != nil || spanWaitsForDisplays {
+            let monitors = DisplayLayout.monitors(for: displays, usesHiDPI: model.target.usesHiDPI)
+            guard monitors != model.displayMonitors else { return }
+            spanWaitsForDisplays = false
+            span?.close()
+            model.displayMonitors = monitors
+            let rebuilt = DisplaySpan(controller: self, monitors: monitors, displays: displays)
+            span = rebuilt
+            window.tabbingMode = .disallowed
+            for other in rebuilt.windows {
+                other.orderFront(nil)
+                if Self.spansEnterFullScreen { other.toggleFullScreen(nil) }
+            }
+        }
+        model.requestDisplayLayout()
+    }
+
     /// Leaves the other displays and full screen: the session goes on in
     /// this window, and its desktop follows the window again.
     func endSpan() {
+        // The user's choice: no coming back when displays change.
+        spanWaitsForDisplays = false
         guard let span else { return }
         self.span = nil
         model.displayMonitors = []
+        model.requestDisplayLayout()
         span.close()
         if window.styleMask.contains(.fullScreen) {
             window.toggleFullScreen(nil)
