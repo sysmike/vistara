@@ -55,7 +55,7 @@ struct SessionSpanTests {
             #expect(span.windows.count == 1)
             #expect(session.model.displayMonitors.count == 2)
             // One session in the menus; never tabs.
-            #expect(span.windows.allSatisfy(\.isExcludedFromWindowsMenu))
+            #expect(span.windows.allSatisfy { $0.isExcludedFromWindowsMenu })
             #expect(!session.window.isExcludedFromWindowsMenu)
             #expect(([session.window] + span.windows).allSatisfy { $0.tabbingMode == .disallowed })
             #expect(coordinator.sessionWindows.count == 1)
