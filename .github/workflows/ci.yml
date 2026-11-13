@@ -152,6 +152,22 @@ jobs:
               print(lines[1][:20000])
               sys.exit(0)
           images = body.get("usedImages", [])
+          tables = {}
+          def nearest(path, offset):
+              # The closest symbol at or before the offset, from nm, for a
+              # bundle whose text starts at 0 or at the usual 4 GB.
+              if path not in tables:
+                  out = subprocess.run(["nm", "-n", "--defined-only", path], capture_output=True, text=True).stdout
+                  tables[path] = [(int(a, 16), n) for a, _, n in (l.split(" ", 2) for l in out.splitlines() if l.count(" ") >= 2)]
+              table = tables[path]
+              for base in (0, 0x100000000):
+                  before = [entry for entry in table if entry[0] <= base + offset]
+                  if before and base + offset - before[-1][0] < 0x10000:
+                      name = subprocess.run(["xcrun", "swift-demangle", "--simplified", before[-1][1]],
+                                            capture_output=True, text=True).stdout.strip()
+                      return f"{name} +{base + offset - before[-1][0]}"
+              return f"{path} offset {hex(offset)}"
+
           print(body.get("exception"), body.get("termination", {}).get("indicator"))
           for thread in body.get("threads", []):
               if not thread.get("triggered"):
@@ -162,9 +178,10 @@ jobs:
                   if symbol is None and used.get("path") and "base" in used:
                       # Frames without a symbol: ask atos, with the image's load address.
                       address = used["base"] + frame.get("imageOffset", 0)
-                      symbol = subprocess.run(
+                      result = subprocess.run(
                           ["atos", "-o", used["path"], "-l", hex(used["base"]), hex(address)],
-                          capture_output=True, text=True).stdout.strip()
+                          capture_output=True, text=True)
+                      symbol = result.stdout.strip() or nearest(used["path"], frame.get("imageOffset", 0))
                   print(f'{used.get("name", "?"):24} {symbol} +{frame.get("symbolLocation", 0)}'
                         f' {frame.get("sourceFile", "")}:{frame.get("sourceLine", "")}')
           PY
