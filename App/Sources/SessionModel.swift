@@ -36,6 +36,9 @@ final class SessionModel {
 
     /// Whether the session window is in full screen. Set by the window.
     var isFullScreen = false
+    /// The remote monitors when the session spans several displays; empty
+    /// otherwise. Set by the window. See SessionModel+Displays.swift.
+    var displayMonitors: [DisplayLayout.Monitor] = []
     /// Whether anyone can see the session. Set by the window; while false the
     /// server stops sending the screen (docs/DESIGN.md, Session tabs).
     /// The user ended the session; set by disconnect(), read when it ends.
@@ -146,6 +149,7 @@ final class SessionModel {
         connectedScale = desktop.scalePercent
         refusedCertificateByPolicy = false
         var configuration = target.configuration(desktop: desktop)
+        applyDisplays(to: &configuration)
         let access = SharedFolderAccess(target.sharedFolders)
         folderAccess = access
         configuration.sharedFolders = access.folders

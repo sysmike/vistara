@@ -52,7 +52,10 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // Restores size and position from the last window for this computer.
         window.setFrameAutosaveName("Session \(target.host):\(target.port)")
         window.delegate = self
-        model.isInFront = { [weak window] in window?.isKeyWindow ?? false }
+        model.isInFront = { [weak self] in
+            guard let self else { return false }
+            return window.isKeyWindow || (span?.hasKeyWindow ?? false)
+        }
         model.windowDesktopSize = { [weak window, weak model] in
             guard let window, let model else { return nil }
             return DesktopSize.filling(
@@ -64,7 +67,12 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         updateTitle()
         window.tab.accessoryView = tabState.makeView()
         observePhase()
+        if target.usesAllDisplays { startSpanIfPossible() }
     }
+
+    /// The windows on the other displays, while the session spans them.
+    /// See DisplaySpan.swift.
+    var span: DisplaySpan?
 
     /// What the tab and VoiceOver were last told.
     private var lastPhase: SessionModel.Phase
@@ -146,7 +154,11 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        window.makeKeyAndOrderFront(nil)
+        if let span {
+            showSpan(span)
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     /// The default size, or less on a small screen.
@@ -189,7 +201,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     private func readVisibility() {
         let isSelectedTab = (window.tabGroup?.selectedWindow ?? window) === window
         let isVisible = window.isVisible && isSelectedTab && !window.isMiniaturized
-            && window.occlusionState.contains(.visible)
+            && window.occlusionState.contains(.visible) || (span?.hasVisibleWindow ?? false)
         // The model sends only when this changes.
         if model.isVisible != isVisible { model.isVisible = isVisible }
     }
@@ -223,6 +235,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
 
     func windowDidExitFullScreen(_ notification: Notification) {
         model.isFullScreen = false
+        endSpan()
     }
 
     // A transition the system could not finish leaves the window as it was.
@@ -238,6 +251,8 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     /// and Reconnect brings it back.
     func windowWillClose(_ notification: Notification) {
         model.disconnect()
+        span?.close()
+        span = nil
         onClose?()
     }
 }

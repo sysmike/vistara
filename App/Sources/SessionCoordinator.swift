@@ -95,14 +95,15 @@ final class SessionCoordinator {
         controllers.append(controller)
         controller.observeCertificates()
         model.connect()
-        if placement == .tab, let host, host.window.isVisible {
+        // A session across displays is never a tab, nor joined by one.
+        if placement == .tab, let host, host.window.isVisible, host.span == nil, controller.span == nil {
             host.window.addTabbedWindow(controller.window, ordered: .above)
             controller.show()
         } else {
             // A window of its own, even where AppKit would make it a tab.
             controller.window.tabbingMode = .disallowed
             controller.show()
-            controller.window.tabbingMode = .automatic
+            if controller.span == nil { controller.window.tabbingMode = .automatic }
         }
         frontSession = controller
         return controller

@@ -9,7 +9,11 @@ struct PointerTranslator {
     /// desktop's size in its own pixels.
     struct Geometry {
         var viewSize: CGSize
+        /// The part of the desktop the view shows, in the desktop's pixels:
+        /// all of it, unless the view shows one display's region of a
+        /// desktop across several (docs/DESIGN.md, Multiple displays).
         var desktopSize: CGSize
+        var origin: CGPoint = .zero
     }
 
     struct ScrollDelta {
@@ -72,8 +76,11 @@ struct PointerTranslator {
     }
 
     private func position(at point: CGPoint, in geometry: Geometry, clamped: Bool) -> DesktopPoint? {
-        PointerMapper.desktopPoint(
+        guard let local = PointerMapper.desktopPoint(
             at: point, viewSize: geometry.viewSize, desktopSize: geometry.desktopSize, clamped: clamped
-        )
+        ) else { return nil }
+        let x = min(max(CGFloat(local.x) + geometry.origin.x, 0), CGFloat(UInt16.max))
+        let y = min(max(CGFloat(local.y) + geometry.origin.y, 0), CGFloat(UInt16.max))
+        return DesktopPoint(x: UInt16(x), y: UInt16(y))
     }
 }
