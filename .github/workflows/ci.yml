@@ -172,7 +172,9 @@ jobs:
           for thread in body.get("threads", []):
               if not thread.get("triggered"):
                   continue
-              for frame in thread.get("frames", [])[:40]:
+              frames = thread.get("frames", [])
+              print(f"{len(frames)} frames; the first 30 and the last 15:")
+              for frame in frames[:30] + frames[-15:]:
                   used = images[frame["imageIndex"]] if frame.get("imageIndex") is not None else {}
                   symbol = frame.get("symbol")
                   if symbol is None and used.get("path") and "base" in used:
@@ -226,20 +228,29 @@ jobs:
           TEST_RUNNER_VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS: ${{ env.VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS }}
           # The sandboxed tests cannot read the log; they only learn it is the test server.
           TEST_RUNNER_VISTARA_TEST_SERVER_LOG: ${{ env.VISTARA_TEST_SERVER_LOG }}
+          # Screenshots of real windows: the sandboxed tests cannot capture the
+          # screen, so they ask this step, which can. See App/Tests/Screenshots.swift.
+          TEST_RUNNER_VISTARA_SCREEN_CAPTURE: "1"
         run: |
+          capture_windows() {
+            shopt -s nullglob
+            while true; do
+              for request in "$HOME"/Library/Containers/*/Data/tmp/vistara-capture/*.request; do
+                picture="${request%.request}.png"
+                screencapture -x -o -l"$(cat "$request")" "$picture.part.png" &&
+                  mv "$picture.part.png" "$picture"
+                rm -f "$request"
+              done
+              sleep 0.1
+            done
+          }
+          capture_windows &
+          capturer=$!
+          status=0
           xcodebuild test -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
-            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
-
-      - name: Probe screen capture (temporary)
-        if: always()
-        run: |
-          mkdir -p build/screenshots
-          app=build/DerivedData/Build/Products/Debug/Vistara.app
-          open "$app"
-          sleep 8
-          screencapture -x build/screenshots/probe-screen.png && echo "screencapture ok" || echo "screencapture failed: $?"
-          osascript -e 'tell application "System Events" to get name of every process whose visible is true' || true
-          pkill -x Vistara || true
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData || status=$?
+          kill "$capturer"
+          exit "$status"
 
       - name: Collect screenshots
         if: always()

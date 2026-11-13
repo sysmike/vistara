@@ -83,56 +83,6 @@ func waitUntil(
     }
 }
 
-/// Renders views to PNG files so a person can look at each state.
-@MainActor
-enum Screenshots {
-    static let directory = FileManager.default.temporaryDirectory.appendingPathComponent("vistara-screenshots")
-
-    /// Shows the view in a window of the given content size, renders it, and
-    /// returns the file's size in bytes.
-    @discardableResult
-    static func write(
-        _ view: some View, size: NSSize, name: String, dark: Bool = false, appearance: NSAppearance.Name? = nil
-    ) async throws -> Int {
-        let content = view
-            .frame(width: size.width, height: size.height)
-            .background(Color(nsColor: .windowBackgroundColor))
-        let hosting = NSHostingView(rootView: content)
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: appearance ?? (dark ? .darkAqua : .aqua))
-        window.contentView = hosting
-        window.setContentSize(size)
-        window.center()
-        // Controls draw their key-window look only in the key window.
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        try await Task.sleep(for: .milliseconds(200))
-        hosting.layoutSubtreeIfNeeded()
-        defer { window.close() }
-        return try write(hosting, name: name)
-    }
-
-    @discardableResult
-    static func write(_ view: NSView, name: String) throws -> Int {
-        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        guard let data = bitmap.representation(using: .png, properties: [:]) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try data.write(to: directory.appendingPathComponent("\(name).png"))
-        return data.count
-    }
-}
-
 extension NSView {
     /// The first view of the given type in this view's hierarchy.
     func firstDescendant<T: NSView>(_ type: T.Type) -> T? {
