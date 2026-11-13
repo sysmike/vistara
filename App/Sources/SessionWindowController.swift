@@ -26,6 +26,8 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
+        lastPhase = model.phase
+        tabState = SessionTabState.of(model)
         super.init()
 
         let target = model.target
@@ -60,6 +62,45 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
             )
         }
         updateTitle()
+        window.tab.accessoryView = tabState.makeView()
+        observePhase()
+    }
+
+    /// What the tab and VoiceOver were last told.
+    private var lastPhase: SessionModel.Phase
+    private var tabState: SessionTabState
+
+    /// Watches the session's state for its tab and for VoiceOver. Here, not
+    /// in the window's SwiftUI content, so that a tab in the background,
+    /// whose window is ordered out, still says what happened.
+    private func observePhase() {
+        withObservationTracking {
+            _ = model.phase
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.phaseChanged()
+                self?.observePhase()
+            }
+        }
+    }
+
+    private func phaseChanged() {
+        let phase = model.phase
+        let state = SessionTabState.of(model)
+        if state != tabState {
+            tabState = state
+            window.tab.accessoryView = state.makeView()
+        }
+        defer { lastPhase = phase }
+        guard SessionAnnouncement.kind(of: lastPhase) != SessionAnnouncement.kind(of: phase) else { return }
+        var message: DisconnectMessage?
+        if case .disconnected(let reason) = phase { message = model.disconnectMessage(for: reason) }
+        let name = model.target.name
+        guard var text = SessionAnnouncement.text(for: phase, name: name, message: message) else { return }
+        // A tab in the background says whose session it is.
+        let isInFront = window.isVisible && (window.tabGroup?.selectedWindow ?? window) === window
+        if !isInFront, !text.contains(name) { text = "\(name): \(text)" }
+        SessionAnnouncement.post(text)
     }
 
     /// The connection's name, and the host when that says something more.
