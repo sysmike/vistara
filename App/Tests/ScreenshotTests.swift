@@ -39,7 +39,7 @@ struct ScreenshotTests {
     ])
     func library(name: String, appearance: NSAppearance.Name) async throws {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
-        let view = ConnectionsView(model: model) { _ in }
+        let view = ConnectionsView(model: model) { _, _ in }
         let bytes = try await Screenshots.write(
             view, size: Self.librarySize, name: name, appearance: appearance, frame: Self.libraryWindow
         )
@@ -51,12 +51,12 @@ struct ScreenshotTests {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         model.selection = .recents
         let recents = try await Screenshots.write(
-            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-recents",
+            ConnectionsView(model: model) { _, _ in }, size: Self.librarySize, name: "library-recents",
             frame: Self.libraryWindow
         )
         model.addFolder()
         let naming = try await Screenshots.write(
-            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-new-folder",
+            ConnectionsView(model: model) { _, _ in }, size: Self.librarySize, name: "library-new-folder",
             frame: Self.libraryWindow
         )
         #expect(recents > 0 && naming > 0)
@@ -65,7 +65,7 @@ struct ScreenshotTests {
     @Test
     func libraryNarrow() async throws {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
-        let view = ConnectionsView(model: model) { _ in }
+        let view = ConnectionsView(model: model) { _, _ in }
         let size = NSSize(width: 560, height: 320)
         let bytes = try await Screenshots.write(view, size: size, name: "library-narrow", frame: Self.libraryWindow)
         #expect(bytes > 0)
@@ -75,13 +75,13 @@ struct ScreenshotTests {
     func libraryEmptyAndNoResults() async throws {
         let (empty, _) = try await temporaryLibrary()
         let first = try await Screenshots.write(
-            ConnectionsView(model: empty) { _ in }, size: Self.librarySize, name: "library-empty",
+            ConnectionsView(model: empty) { _, _ in }, size: Self.librarySize, name: "library-empty",
             frame: Self.libraryWindow
         )
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         model.searchText = "printer"
         let second = try await Screenshots.write(
-            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-no-results",
+            ConnectionsView(model: model) { _, _ in }, size: Self.librarySize, name: "library-no-results",
             frame: Self.libraryWindow
         )
         #expect(first > 0 && second > 0)

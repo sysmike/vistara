@@ -128,9 +128,19 @@ also lists your favorites.
 
 ### Tabs
 
-Several sessions can share one window as tabs. Window > Merge All Windows
-puts every session window into one; drag a tab out, or choose Window > Move
-Tab to New Window, to give it a window of its own again. Shift-Command-] and
+Several sessions can share one window as tabs. Where a new session opens
+follows your Mac's setting *Prefer tabs when opening documents* (System
+Settings > Desktop & Dock): *Always* opens it as a tab of the session window
+in front, *In Full Screen* does so when that window is in full screen, and
+*Never* gives it a window of its own. Hold Option to do the other: File >
+Connect becomes *Connect in New Tab* or *Connect in New Window*, in the
+connection's context menu too, and Option-double-click or Option-Return work
+the same way.
+
+Window > Merge All Windows puts every session window into one; drag a tab
+out, or choose Window > Move Tab to New Window, to give it a window of its
+own again. Connecting to a computer whose session is in a tab brings that
+tab to the front. Shift-Command-] and
 Shift-Command-[ show the next and previous tab. Control-Tab and
 Control-Shift-Tab stay with the remote computer, where Windows apps use them
 to switch their own tabs.

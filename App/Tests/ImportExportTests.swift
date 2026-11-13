@@ -118,7 +118,7 @@ struct ImportExportTests {
         )
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         model.importReport = report
-        let view = ConnectionsView(model: model) { _ in }
+        let view = ConnectionsView(model: model) { _, _ in }
         let name = dark ? "import-notice-dark" : "import-notice"
         let bytes = try await Screenshots.write(
             view, size: NSSize(width: 780, height: 460), name: name, dark: dark, frame: .window(title: "Connections")
@@ -141,7 +141,7 @@ struct ImportExportTests {
         try Data(contents.utf8).write(to: directory.appendingPathComponent(ConnectionStore.fileName))
         let model = LibraryModel(store: ConnectionStore(directory: directory))
         await model.load()
-        let view = ConnectionsView(model: model) { _ in }
+        let view = ConnectionsView(model: model) { _, _ in }
         let bytes = try await Screenshots.write(
             view, size: NSSize(width: 780, height: 460), name: "skipped-notice", frame: .window(title: "Connections")
         )
