@@ -69,7 +69,7 @@ public enum DisplayLayout {
         func add(_ index: Int, beside neighbour: Monitor, on side: Side) {
             waiting.removeAll { $0 == index }
             guard let size = Self.size(of: displays[index], usesHiDPI: usesHiDPI) else { return }
-            let monitor = place(size, of: displays[index], index: index, beside: neighbour, on: side, in: displays)
+            let monitor = place(size, index: index, beside: neighbour, on: side, in: displays)
             placed.append(moveOut(monitor, from: placed, on: side))
         }
 
@@ -126,10 +126,10 @@ public enum DisplayLayout {
 
     /// For a display touching no other: the side its centre lies furthest towards.
     private static func dominantSide(of frame: CGRect, from anchor: CGRect) -> Side {
-        let dx = frame.midX - anchor.midX
-        let dy = frame.midY - anchor.midY
-        if abs(dx) >= abs(dy) { return dx >= 0 ? .right : .left }
-        return dy >= 0 ? .above : .below
+        let across = frame.midX - anchor.midX
+        let upward = frame.midY - anchor.midY
+        if abs(across) >= abs(upward) { return across >= 0 ? .right : .left }
+        return upward >= 0 ? .above : .below
     }
 
     /// The waiting display nearest to a placed monitor, centre to centre.
@@ -151,9 +151,9 @@ public enum DisplayLayout {
     /// taken from the Mac in the neighbour's pixels per point, and kept so
     /// that the two still share some of the edge.
     private static func place(
-        _ size: DesktopSize, of display: Display, index: Int, beside neighbour: Monitor, on side: Side,
-        in displays: [Display]
+        _ size: DesktopSize, index: Int, beside neighbour: Monitor, on side: Side, in displays: [Display]
     ) -> Monitor {
+        let display = displays[index]
         let neighbourDisplay = displays[neighbour.displayIndex]
         let width = Int(size.width)
         let height = Int(size.height)
