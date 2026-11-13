@@ -256,8 +256,10 @@ bool vistara_session_request_size(vistara_session *session, uint32_t width, uint
 
 /// Whether the server sends the screen ([MS-RDPBCGR] 2.2.11.3, Suppress
 /// Output). False while nobody can see the session; true asks for the whole
-/// desktop again. Returns false, sending nothing, when the server did not say
-/// it supports this, or the session is not connected.
+/// desktop again. A request made before the connection is fully active is
+/// kept and sent by vistara_session_poll() once it is; a newer one replaces
+/// it. Returns false, sending nothing, when the server did not say it
+/// supports this, or the session is not connected.
 bool vistara_session_set_display_updates(vistara_session *session, bool allowed);
 
 /// Moves the pointer to a position in framebuffer pixels.

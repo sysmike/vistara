@@ -38,6 +38,8 @@ final class SessionModel {
     var isFullScreen = false
     /// Whether anyone can see the session. Set by the window; while false the
     /// server stops sending the screen (docs/DESIGN.md, Session tabs).
+    /// The user ended the session; set by disconnect(), read when it ends.
+    @ObservationIgnored var endedByUser = false
     @ObservationIgnored var isVisible = true {
         didSet { if isVisible != oldValue, isConnected { send([.displayUpdates(isVisible)]) } }
     }
@@ -127,6 +129,7 @@ final class SessionModel {
     /// Starts a session unless one is running.
     func connect() {
         guard session == nil else { return }
+        endedByUser = false
         // A reconnection attempt keeps showing the reconnecting state.
         if !phase.isReconnecting {
             phase = .connecting
@@ -178,6 +181,8 @@ final class SessionModel {
             cancelReconnecting()
             return
         }
+        // A loss that was already on its way does not start reconnecting.
+        endedByUser = true
         session?.disconnect()
     }
 
