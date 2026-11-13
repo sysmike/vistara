@@ -100,7 +100,7 @@ struct SessionTabsTests {
         first.window.setFrame(NSRect(x: 100, y: 100, width: 700, height: 500), display: true)
         try await Task.sleep(for: .milliseconds(300))
         let alone = UserDefaults.standard.string(forKey: key)
-        #expect(alone == first.window.stringWithSavedFrame, "autosaved while alone")
+        #expect(alone == first.window.frameDescriptor, "autosaved while alone")
 
         tabGroup(first, second)
         first.window.setFrame(NSRect(x: 120, y: 120, width: 900, height: 640), display: true)
