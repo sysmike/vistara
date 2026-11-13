@@ -52,6 +52,13 @@ if [[ $FORCE -eq 0 && -f "$STAMP" && "$(cat "$STAMP")" == "$BUILD_KEY" ]]; then
 fi
 [[ -f "$DEPS/lib/libssl.3.dylib" ]] || die "OpenSSL not found in $DEPS. Run scripts/build-freerdp.sh first."
 
+# The client side of the channels the app leaves out (scripts/build-freerdp.sh);
+# the server keeps its side of each.
+CLIENT_CHANNEL_FLAGS=()
+for channel in AUDIN LOCATION PARALLEL PRINTER RDP2TCP RDPEAR RDPECAM REMDESK SERIAL SMARTCARD SSHAGENT TSMF URBDRC; do
+  CLIENT_CHANNEL_FLAGS+=("-DCHANNEL_${channel}_CLIENT=OFF")
+done
+
 GENERATOR=()
 if command -v ninja >/dev/null; then GENERATOR=(-G Ninja); fi
 
@@ -89,7 +96,6 @@ cmake -S "$WORK/src" -B "$WORK/obj" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DWITH_WINPR_TOOLS=ON \
   -DWITH_CLIENT=ON \
   -DWITH_CLIENT_SDL=OFF \
-  -DWITH_CLIENT_CHANNELS=OFF \
   -DWITH_SAMPLE=ON \
   -DWITH_X11=OFF \
   -DWITH_MANPAGES=OFF \
@@ -107,7 +113,8 @@ cmake -S "$WORK/src" -B "$WORK/obj" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DWITH_INTERNAL_MD4=ON \
   -DWITH_INTERNAL_MD5=ON \
   -DWITH_INTERNAL_RC4=ON \
-  -DCHANNEL_URBDRC=OFF
+  -DCHANNEL_URBDRC=OFF \
+  "${CLIENT_CHANNEL_FLAGS[@]}"
 cmake --build "$WORK/obj" --parallel "$(sysctl -n hw.ncpu)"
 cmake --install "$WORK/obj"
 
