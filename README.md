@@ -8,6 +8,7 @@ work is tracked in the [issues](https://github.com/sysmike/vistara/issues),
 grouped by milestone.
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Releasing](docs/RELEASING.md)
 - [Interface specification](docs/DESIGN.md)
 - Requires macOS 14 or later
 
