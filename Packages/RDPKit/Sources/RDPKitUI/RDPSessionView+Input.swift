@@ -37,7 +37,24 @@ extension RDPSessionView {
         }
     }
 
+    /// Control-Tab and Control-Shift-Tab, while the session has the keyboard,
+    /// go to the remote computer, where Windows apps switch their own tabs
+    /// with them. In a tabbed window the Mac's Window menu would take them for
+    /// Show Next Tab, so the window asks here before its menus do
+    /// (docs/DESIGN.md, Keyboard). The key's release arrives as usual.
+    public func takesControlTab(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard event.type == .keyDown, event.keyCode == Self.tabKeyCode, window?.firstResponder === self,
+            modifiers.contains(.control), !modifiers.contains(.command)
+        else { return false }
+        send(translator.keyDown(keyCode: event.keyCode))
+        return true
+    }
+
+    static let tabKeyCode: UInt16 = 0x30
+
     override public func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if takesControlTab(event) { return true }
         // Right Command as the Windows key: Windows-R, Windows-E and the
         // rest go to the remote computer, not to the Mac's menus.
         if event.type == .keyDown, window?.firstResponder === self,

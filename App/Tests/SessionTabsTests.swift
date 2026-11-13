@@ -178,6 +178,51 @@ struct SessionTabsTests {
         await waitUntil("the session has ended") { !models[0].isLive }
     }
 
+    /// A key press as AppKit delivers it: through the application, so the
+    /// window's and the menus' key equivalents get their turn.
+    private func press(
+        _ keyCode: UInt16, _ characters: String, _ flags: NSEvent.ModifierFlags, in window: NSWindow
+    ) throws {
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            let event = try #require(NSEvent.keyEvent(
+                with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
+            ))
+            NSApp.sendEvent(event)
+        }
+    }
+
+    /// Control-Tab reaches a session that has the keyboard instead of
+    /// switching tabs; Shift-Command-] and [ switch tabs (#101).
+    @Test
+    func controlTabGoesToTheSessionAndShiftCommandBracketsSwitchTabs() async throws {
+        let first = controller("Build Server", host: "build01.example.com")
+        let second = controller("Jump Host", host: "jump.example.com")
+        defer { close(first, second) }
+        let session = RDPSessionView(framebuffer: RDPFramebuffer(), connectionName: "Build Server")
+        var sent: [RDPInputEvent] = []
+        session.inputHandler = { sent.append(contentsOf: $0) }
+        first.window.contentView = session
+        tabGroup(first, second)
+        await waitUntil("the first tab has the keyboard") {
+            first.window.isKeyWindow && first.window.firstResponder === session
+        }
+        let tabGroup = try #require(first.window.tabGroup)
+        let tab = RDPScancode(0x0F)
+
+        try press(0x30, "\t", .control, in: first.window)
+        try press(0x30, "\t", [.control, .shift], in: first.window)
+        #expect(tabGroup.selectedWindow === first.window)
+        #expect(sent.filter { $0 == .key(tab, isDown: true) }.count == 2)
+        #expect(sent.contains(.key(tab, isDown: false)))
+
+        try press(0x1E, "]", [.command, .shift], in: first.window)
+        await waitUntil("the next tab is shown") { tabGroup.selectedWindow === second.window }
+        try press(0x21, "[", [.command, .shift], in: second.window)
+        await waitUntil("the previous tab is shown") { tabGroup.selectedWindow === first.window }
+    }
+
     @Test(arguments: [false, true])
     func screenshotOfATabbedSessionWindow(dark: Bool) async throws {
         let first = controller("Build Server", host: "build01.example.com", phase: .connecting)

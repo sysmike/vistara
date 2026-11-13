@@ -351,6 +351,38 @@ struct SessionViewKeyboardTests {
         window.contentView = nil
     }
 
+    /// Control-Tab and Control-Shift-Tab belong to the remote computer while
+    /// the session has the keyboard, also as key equivalents (#101).
+    @Test func controlTabGoesToTheRemoteComputer() throws {
+        let (view, recorder) = makeView()
+        let controlTab = try key(.keyDown, keyCode: 0x30, characters: "\t", flags: .control)
+        // Not in a window: not ours to handle.
+        #expect(!view.takesControlTab(controlTab))
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 150), styleMask: [.titled], backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        let control = NSEvent.ModifierFlags(rawValue: leftControlFlags)
+        try view.flagsChanged(with: key(.flagsChanged, keyCode: 0x3B, flags: control))
+        recorder.events.removeAll()
+
+        #expect(view.performKeyEquivalent(with: controlTab))
+        try view.keyUp(with: key(.keyUp, keyCode: 0x30, characters: "\t", flags: .control))
+        let controlShiftTab = try key(.keyDown, keyCode: 0x30, characters: "\t", flags: [.control, .shift])
+        #expect(view.takesControlTab(controlShiftTab))
+        #expect(recorder.events == [press(0x0F), release(0x0F), press(0x0F)])
+
+        // Plain Tab is a key press, not a key equivalent; Command-Tab is the Mac's.
+        let tab = try key(.keyDown, keyCode: 0x30, characters: "\t")
+        let commandTab = try key(.keyDown, keyCode: 0x30, characters: "\t", flags: [.command, .control])
+        #expect(!view.takesControlTab(tab))
+        #expect(!view.takesControlTab(commandTab))
+        window.contentView = nil
+    }
+
     @Test func rightCommandShortcutsGoToTheRemoteComputerWhenItIsTheWindowsKey() throws {
         let (view, recorder) = makeView()
         let window = NSWindow(
