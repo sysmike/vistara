@@ -173,8 +173,10 @@ your microphone.
 
 **Shared folders.** Add folders with *Add Folder…*. The remote computer sees
 each one as a drive named after the folder, and nothing else on your Mac.
-Turn on *Read only* to let it read a folder but not change anything in it. A
-folder that has been moved or deleted says so in the editor and isn't shared.
+Turn on *Read only* to let it read a folder but not change anything in it. If
+you move or rename a shared folder, Vistara finds it and, from the next
+connection, shows it in its new place. A folder that has been deleted, or
+that Vistara cannot find any more, says so in the editor and isn't shared.
 
 ![Shared folders in the editor](images/editor-shared-folders.png)
 

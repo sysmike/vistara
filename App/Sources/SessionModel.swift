@@ -25,6 +25,8 @@ final class SessionModel {
     private(set) var target: SessionTarget
     /// Opens the editor for this session's saved connection, if it has one.
     @ObservationIgnored var onEditConnection: (() -> Void)?
+    /// Saves fresh bookmarks of moved shared folders to the saved connection.
+    @ObservationIgnored var onRenewedSharedFolders: (([SharedFolderAccess.Renewal]) -> Void)?
     /// Set here and in SessionModel+Reconnection.swift only.
     var phase: Phase
     /// A certificate waiting for the user's decision.
@@ -139,6 +141,7 @@ final class SessionModel {
         let access = SharedFolderAccess(target.sharedFolders)
         folderAccess = access
         configuration.sharedFolders = access.folders
+        keepRenewedFolders(access.renewed)
         // The Mac's input source, as the layout a new remote session starts with.
         configuration.keyboard = MacKeyboardLayout.current
         let session = RDPSession(configuration: configuration, delegate: delegate)
@@ -359,5 +362,19 @@ extension SessionModel {
                 self?.answerCertificate(trust: false)
             }
         }
+    }
+}
+
+extension SessionModel {
+    /// Uses the fresh bookmarks of moved shared folders for the rest of this
+    /// window's sessions, and passes them on to be saved (#79).
+    func keepRenewedFolders(_ renewals: [SharedFolderAccess.Renewal]) {
+        guard !renewals.isEmpty else { return }
+        var target = target
+        target.sharedFolders = target.sharedFolders.map { folder in
+            renewals.first { $0.old == folder }?.new ?? folder
+        }
+        self.target = target
+        onRenewedSharedFolders?(renewals)
     }
 }

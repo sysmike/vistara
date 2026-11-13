@@ -26,6 +26,9 @@ struct VistaraApp: App {
                     library.editorRequest = .edit(id)
                 }
                 coordinator.showConnections = { openWindow(id: "connections") }
+                coordinator.renewSharedFolders = { id, renewals in
+                    Task { await library.renewSharedFolders(of: id, renewals) }
+                }
             }
         }
         .defaultSize(width: 780, height: 480)
