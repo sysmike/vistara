@@ -75,7 +75,8 @@ public final class RDPFramebuffer: Sendable {
     private let continuation: AsyncStream<Void>.Continuation
     private let storage = OSAllocatedUnfairLock(initialState: Storage())
 
-    init() {
+    /// An empty framebuffer, for a view that has no session yet.
+    public init() {
         let (stream, continuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
         self.changes = stream
         self.continuation = continuation
