@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Foreground layer, on top: the nearest screen, a thick plain frame in
+       a screen's proportions, so it still reads at 16 points. -->
+  <rect x="172.0" y="300.0" width="680.0" height="425.0" rx="68.0" fill="none" stroke="#FFFFFF" stroke-width="64.0"/>
+</svg>

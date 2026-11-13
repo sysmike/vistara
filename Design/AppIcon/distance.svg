@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Foreground layer, behind the frame: the same screen again and again,
+       each further away, converging on one point right of centre. A remote
+       desktop is a screen seen from a distance: the vista the name speaks
+       of, and the tunnel a session shows when it shows itself. -->
+  <rect x="354.4" y="375.2" width="408.0" height="255.0" rx="40.8" fill="none" stroke="#FFB547" stroke-width="38.4"/>
+  <rect x="463.8" y="420.3" width="244.8" height="153.0" rx="24.5" fill="none" stroke="#BDEAF3" stroke-width="23.0"/>
+  <rect x="529.5" y="447.4" width="146.9" height="91.8" rx="14.7" fill="#FFB547"/>
+</svg>

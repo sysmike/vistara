@@ -26,6 +26,8 @@ targets:
     platform: macOS
     sources:
       - App/Sources
+      # The app icon, rendered from Design/AppIcon by its render.py.
+      - App/Resources
     dependencies:
       - package: RDPKit
         product: RDPKit
@@ -38,6 +40,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: App/Info.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: App/Vistara.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         # Ad hoc signing for local and CI builds. Xcode applies the hardened
