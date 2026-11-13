@@ -132,7 +132,15 @@ jobs:
       - name: Show crash reports
         if: failure()
         run: |
-          for report in $(ls -t "$HOME"/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+          # ReportCrash writes the report some seconds after the crash.
+          for _ in $(seq 1 30); do
+            reports=$(find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports \
+              -name '*.ips' -mmin -15 2>/dev/null | head -3)
+            [[ -n "$reports" ]] && break
+            sleep 2
+          done
+          echo "reports: ${reports:-none}"
+          for report in $reports; do
             echo "== $report"
             python3 - "$report" <<'PY'
           import json, sys
