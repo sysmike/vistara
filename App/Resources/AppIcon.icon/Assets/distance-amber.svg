@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Middle layer, amber: the next screen and the last, furthest one, on
+       the way to one point right of centre. A remote desktop is a screen seen
+       from a distance: the vista the name speaks of. -->
+  <path fill="#FFB547" fill-rule="evenodd" d="M395.2 356H721.6A60 60 0 0 1 781.6 416V589.4A60 60 0 0 1 721.6 649.4H395.2A60 60 0 0 1 335.2 589.4V416A60 60 0 0 1 395.2 356ZM395.2 394.4H721.6A21.6 21.6 0 0 1 743.2 416V589.4A21.6 21.6 0 0 1 721.6 611H395.2A21.6 21.6 0 0 1 373.6 589.4V416A21.6 21.6 0 0 1 395.2 394.4Z"/>
+  <path fill="#FFB547" d="M544.2 447.4H661.7A14.7 14.7 0 0 1 676.4 462.1V524.5A14.7 14.7 0 0 1 661.7 539.2H544.2A14.7 14.7 0 0 1 529.5 524.5V462.1A14.7 14.7 0 0 1 544.2 447.4Z"/>
+</svg>

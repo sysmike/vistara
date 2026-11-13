@@ -95,52 +95,11 @@ jobs:
       # Icon Composer's ictool renders the .icon as macOS does.
       - name: Draw the app icon in each appearance
         run: |
-          ictool=$(find "$DEVELOPER_DIR/../Applications" -name ictool -type f -perm -u+x 2>/dev/null | head -1)
-          echo "ictool: ${ictool:-not found}"
-          [[ -n "$ictool" ]] || exit 0
-          "$ictool" --help 2>&1 | head -60 || true
+          ictool="$DEVELOPER_DIR/../Applications/Icon Composer.app/Contents/Executables/ictool"
           mkdir -p build/screenshots
           for rendition in Default Dark TintedLight TintedDark ClearLight ClearDark; do
             "$ictool" App/Resources/AppIcon.icon --export-image --output-file "build/screenshots/app-icon-$rendition.png" \
-              --platform macOS --rendition "$rendition" --width 512 --height 512 --scale 1 2>&1 | tail -3 || true
-          done
-          ls -l build/screenshots
-          # Temporary: dark-appearance experiments.
-          python3 - <<'PY'
-          import copy, json, pathlib, shutil
-          base = json.loads(pathlib.Path("App/Resources/AppIcon.icon/icon.json").read_text())
-          def variant(name, change):
-              doc = copy.deepcopy(base)
-              change(doc)
-              target = pathlib.Path(f"build/icon-variants/{name}.icon")
-              shutil.copytree("App/Resources/AppIcon.icon", target, dirs_exist_ok=True)
-              (target / "icon.json").write_text(json.dumps(doc, indent=2))
-          dark_fill = {"solid": "srgb:0.04314,0.06275,0.14902,1.00000"}
-          def b(doc): doc["fill-specializations"] = [{"appearance": "dark", "value": dark_fill}]
-          def c(doc):
-              b(doc)
-              for group in doc["groups"]:
-                  group["translucency"] = {"enabled": False, "value": 0}
-          def d(doc):
-              b(doc)
-              doc["groups"][0]["layers"][0]["fill-specializations"] = [
-                  {"appearance": "dark", "value": {"solid": "srgb:1.00000,1.00000,1.00000,1.00000"}}]
-          def e(doc):
-              doc.pop("fill-specializations", None)
-              doc["groups"][2]["layers"][0].pop("hidden-specializations", None)
-          def f(doc):
-              b(doc)
-              for group in doc["groups"][:2]:
-                  for layer in group["layers"]:
-                      layer["glass"] = False
-          for name, change in [("b-dark-fill", b), ("c-no-translucency", c), ("d-white-frame", d),
-                               ("e-keep-gradient", e), ("f-no-glass", f)]:
-              variant(name, change)
-          PY
-          for icon in build/icon-variants/*.icon; do
-            name=$(basename "$icon" .icon)
-            "$ictool" "$icon" --export-image --output-file "build/screenshots/variant-$name-Dark.png" \
-              --platform macOS --rendition Dark --width 512 --height 512 --scale 1 >/dev/null 2>&1 || echo "$name failed"
+              --platform macOS --rendition "$rendition" --width 512 --height 512 --scale 1 >/dev/null
           done
 
       - name: Check that the lint forbids print
