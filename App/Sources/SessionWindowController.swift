@@ -186,6 +186,29 @@ final class SessionWindow: NSWindow {
 
     static let closeTitle = "Close"
 
+    /// Asked before the menus. Control-Tab goes to a session that has the
+    /// keyboard; Shift-Command-] and [ show the next and previous tab, as in
+    /// other Mac apps with tabs (docs/DESIGN.md, Keyboard).
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let session = firstResponder as? RDPSessionView, session.takesControlTab(event) {
+            return true
+        }
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        if event.type == .keyDown, isTabbed, modifiers == [.command, .shift] {
+            switch event.characters(byApplyingModifiers: []) {
+            case "]":
+                selectNextTab(nil)
+                return true
+            case "[":
+                selectPreviousTab(nil)
+                return true
+            default:
+                break
+            }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     /// The Connections window, Settings, and any other window never become a
     /// tab: each is set so as it first becomes key, before anyone can merge
     /// or drag it. SwiftUI makes those windows, so this is where Vistara

@@ -130,8 +130,10 @@ also lists your favorites.
 
 Several sessions can share one window as tabs. Window > Merge All Windows
 puts every session window into one; drag a tab out, or choose Window > Move
-Tab to New Window, to give it a window of its own again. Window > Show Next
-Tab and Show Previous Tab switch between them.
+Tab to New Window, to give it a window of its own again. Shift-Command-] and
+Shift-Command-[ show the next and previous tab. Control-Tab and
+Control-Shift-Tab stay with the remote computer, where Windows apps use them
+to switch their own tabs.
 
 Each tab is a session of its own: closing a tab (Command-W) disconnects only
 that session, and File > Close Window (Shift-Command-W) closes the window with
