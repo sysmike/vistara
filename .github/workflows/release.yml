@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+# One Xcode for every job, so the libraries CI tests are the ones releases
+# ship. The version is part of the cache keys: a new toolchain rebuilds.
+env:
+  XCODE_VERSION: "26.6"
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -26,7 +32,7 @@ concurrency:
 jobs:
   release:
     name: Build, sign, and notarize
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 120
     # The signing secrets live in this environment. GitHub never gives them
     # to pull requests from forks, and the environment can require approval.
@@ -69,7 +75,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/freerdp/prefix
-          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-xcode${{ env.XCODE_VERSION }}-${{ steps.key.outputs.key }}
 
       - name: Build FreeRDP
         run: scripts/build-freerdp.sh

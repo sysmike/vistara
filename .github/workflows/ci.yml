@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# One Xcode for every job, so the libraries CI tests are the ones releases
+# ship. The version is part of the cache keys: a new toolchain rebuilds.
+env:
+  XCODE_VERSION: "26.6"
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -15,7 +21,7 @@ concurrency:
 jobs:
   freerdp:
     name: Build FreeRDP
-    runs-on: macos-15
+    runs-on: macos-26
     # Two architectures, built one after the other, when nothing is cached.
     timeout-minutes: 90
     steps:
@@ -32,7 +38,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/freerdp/prefix
-          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-xcode${{ env.XCODE_VERSION }}-${{ steps.key.outputs.key }}
 
       - name: Build FreeRDP
         run: scripts/build-freerdp.sh
@@ -48,7 +54,7 @@ jobs:
   app:
     name: Build, test, and lint
     needs: freerdp
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,7 +69,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/freerdp/prefix
-          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-xcode${{ env.XCODE_VERSION }}-${{ steps.key.outputs.key }}
           fail-on-cache-miss: true
 
       - name: Compute test server key
@@ -74,7 +80,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/test-server/prefix
-          key: test-server-${{ runner.os }}-${{ runner.arch }}-${{ steps.server-key.outputs.key }}
+          key: test-server-${{ runner.os }}-${{ runner.arch }}-xcode${{ env.XCODE_VERSION }}-${{ steps.server-key.outputs.key }}
 
       - name: Build test server
         run: scripts/build-test-server.sh
@@ -163,6 +169,17 @@ jobs:
         run: |
           xcodebuild test -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
+
+      - name: Probe screen capture (temporary)
+        if: always()
+        run: |
+          mkdir -p build/screenshots
+          app=build/DerivedData/Build/Products/Debug/Vistara.app
+          open "$app"
+          sleep 8
+          screencapture -x build/screenshots/probe-screen.png && echo "screencapture ok" || echo "screencapture failed: $?"
+          osascript -e 'tell application "System Events" to get name of every process whose visible is true' || true
+          pkill -x Vistara || true
 
       - name: Collect screenshots
         if: always()
