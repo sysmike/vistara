@@ -28,6 +28,9 @@ struct SessionTarget: Equatable, Sendable {
     var reconnectsAutomatically = true
     /// Opened for each session by SharedFolderAccess.
     var sharedFolders: [Connection.SharedFolder] = []
+    /// One desktop across all of the Mac's displays, in full screen
+    /// (docs/DESIGN.md, Multiple displays).
+    var usesAllDisplays = false
 
     /// What RDPKit is told about this target, for a desktop of the given size.
     func configuration(desktop: DesktopSize) -> RDPSessionConfiguration {

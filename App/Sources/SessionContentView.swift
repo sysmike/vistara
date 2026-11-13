@@ -22,9 +22,11 @@ struct SessionContentView: View {
                         name: model.target.name,
                         translatesEditingShortcuts: translatesEditingShortcuts,
                         rightCommandIsWindowsKey: rightCommandIsWindowsKey,
-                        resizesDesktop: model.target.resolutionMode == .matchWindow,
+                        // Across displays, the window controller sends the layout.
+                        resizesDesktop: model.target.resolutionMode == .matchWindow && !model.spansDisplays,
                         usesHiDPI: model.target.usesHiDPI,
                         connectedScale: model.connectedScale,
+                        region: model.region(forMonitor: 0),
                         input: { model.send($0) }
                     )
                         .id(ObjectIdentifier(framebuffer))
@@ -237,6 +239,8 @@ struct RemoteDesktopView: NSViewRepresentable {
     let resizesDesktop: Bool
     let usesHiDPI: Bool
     let connectedScale: UInt16
+    /// The part of the framebuffer shown, for a session across displays.
+    var region: CGRect?
     let input: ([RDPInputEvent]) -> Void
 
     func makeNSView(context: Context) -> RDPSessionView {
@@ -253,5 +257,6 @@ struct RemoteDesktopView: NSViewRepresentable {
         view.connectedScale = connectedScale
         view.usesHiDPI = usesHiDPI
         view.resizesDesktop = resizesDesktop
+        view.region = region
     }
 }

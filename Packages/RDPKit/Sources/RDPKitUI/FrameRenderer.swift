@@ -22,12 +22,14 @@ final class FrameRenderer {
             float2 uv;
         };
 
-        vertex VertexOut vistara_vertex(uint vertexID [[vertex_id]], constant float2 &scale [[buffer(0)]]) {
+        vertex VertexOut vistara_vertex(uint vertexID [[vertex_id]], constant float2 &scale [[buffer(0)]],
+                                        constant float4 &region [[buffer(1)]]) {
             const float2 corners[4] = { float2(-1, -1), float2(1, -1), float2(-1, 1), float2(1, 1) };
             float2 corner = corners[vertexID];
             VertexOut out;
             out.position = float4(corner * scale, 0, 1);
-            out.uv = float2((corner.x + 1) * 0.5, (1 - corner.y) * 0.5);
+            // The region of the texture shown: origin and size, from 0 to 1.
+            out.uv = region.xy + float2((corner.x + 1) * 0.5, (1 - corner.y) * 0.5) * region.zw;
             return out;
         }
 
@@ -111,18 +113,26 @@ final class FrameRenderer {
         return true
     }
 
-    /// Draws the desktop, scaled to fit `targetSize`, into `pass`. The area
-    /// around it keeps the pass's clear colour. Returns the command buffer,
-    /// not yet committed, so the caller can present a drawable or wait for it.
-    func draw(pass: MTLRenderPassDescriptor, targetSize: CGSize) -> (any MTLCommandBuffer)? {
+    /// Draws the desktop, or the given region of it in desktop pixels, scaled
+    /// to fit `targetSize`, into `pass`. The area around it keeps the pass's
+    /// clear colour. Returns the command buffer, not yet committed, so the
+    /// caller can present a drawable or wait for it.
+    func draw(pass: MTLRenderPassDescriptor, targetSize: CGSize, region: CGRect? = nil) -> (any MTLCommandBuffer)? {
         guard let commandBuffer = queue.makeCommandBuffer(),
             let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass)
         else { return nil }
 
-        if let texture {
-            var scale = FitLayout.scale(content: desktopSize, container: targetSize)
+        let whole = CGRect(origin: .zero, size: desktopSize)
+        let shown = region.map { $0.intersection(whole) } ?? whole
+        if let texture, !shown.isNull, shown.width > 0, shown.height > 0 {
+            var scale = FitLayout.scale(content: shown.size, container: targetSize)
+            var uvRegion = SIMD4<Float>(
+                Float(shown.minX / whole.width), Float(shown.minY / whole.height),
+                Float(shown.width / whole.width), Float(shown.height / whole.height)
+            )
             encoder.setRenderPipelineState(pipeline)
             encoder.setVertexBytes(&scale, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
+            encoder.setVertexBytes(&uvRegion, length: MemoryLayout<SIMD4<Float>>.stride, index: 1)
             encoder.setFragmentTexture(texture, index: 0)
             encoder.setFragmentSamplerState(sampler, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)

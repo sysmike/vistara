@@ -34,6 +34,17 @@ public final class RDPSessionView: MTKView {
         didSet { if resizesDesktop != oldValue { desktopSizeMayHaveChanged() } }
     }
 
+    /// The part of the framebuffer to show, in its pixels, or nil for all of
+    /// it. A session across several displays shows each display's region in
+    /// a view of its own (docs/DESIGN.md, Multiple displays).
+    public var region: CGRect? {
+        didSet {
+            guard region != oldValue else { return }
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+        }
+    }
+
     /// Gives the desktop every pixel of a Retina display. See `DesktopSize`.
     public var usesHiDPI = true {
         didSet { if usesHiDPI != oldValue { desktopSizeMayHaveChanged() } }
@@ -129,7 +140,7 @@ public final class RDPSessionView: MTKView {
 
     override public func draw(_ dirtyRect: NSRect) {
         guard let renderer, let pass = currentRenderPassDescriptor, let drawable = currentDrawable,
-            let commandBuffer = renderer.draw(pass: pass, targetSize: drawableSize)
+            let commandBuffer = renderer.draw(pass: pass, targetSize: drawableSize, region: region)
         else { return }
         commandBuffer.present(drawable)
         commandBuffer.commit()
@@ -190,10 +201,19 @@ public final class RDPSessionView: MTKView {
     /// not sent for what the desktop already is.
     public var connectedScale: UInt16 = 100
 
-    /// Size of the remote desktop in its own pixels.
-    var desktopSize: CGSize {
+    /// The part of the desktop shown, in its pixels: the region, within the
+    /// framebuffer, or the whole framebuffer.
+    var shownRegion: CGRect {
         let size = framebuffer.size
-        return CGSize(width: size.width, height: size.height)
+        let whole = CGRect(x: 0, y: 0, width: size.width, height: size.height)
+        guard let region else { return whole }
+        let shown = region.intersection(whole)
+        return shown.isNull ? .zero : shown
+    }
+
+    /// Size of what the view shows of the remote desktop, in its pixels.
+    var desktopSize: CGSize {
+        shownRegion.size
     }
 
     func send(_ events: [RDPInputEvent]) {

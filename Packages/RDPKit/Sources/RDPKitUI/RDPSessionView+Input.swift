@@ -117,7 +117,7 @@ extension RDPSessionView {
     // MARK: Pointer
 
     private var geometry: PointerTranslator.Geometry {
-        PointerTranslator.Geometry(viewSize: bounds.size, desktopSize: desktopSize)
+        PointerTranslator.Geometry(viewSize: bounds.size, desktopSize: desktopSize, origin: shownRegion.origin)
     }
 
     override public func updateTrackingAreas() {
