@@ -4,7 +4,9 @@
 # for integration tests only. It is never bundled in the app.
 #
 # rdpgw is two programs: the gateway, and an authentication helper that holds
-# the users and answers the gateway's NTLM questions over a local socket.
+# the users and answers the gateway's NTLM questions over a local socket. The
+# helper's other mode, passwords checked by PAM, does not build on macOS; a
+# patch takes it out (scripts/test-gateway/no-pam.patch).
 #
 # Requires Go (brew install go). The rdpgw source ships no go.sum; the one in
 # scripts/test-gateway/go.sum pins every module it needs, and Go checks each
@@ -21,6 +23,7 @@ WORK="$ROOT/build/test-gateway"
 BIN="$WORK/bin"
 STAMP="$BIN/.vistara-build-key"
 GO_SUM="$ROOT/scripts/test-gateway/go.sum"
+PATCH="$ROOT/scripts/test-gateway/no-pam.patch"
 
 read -r RDPGW_VERSION RDPGW_SHA256 <"$ROOT/scripts/RDPGW_VERSION"
 RDPGW_URL="https://codeload.github.com/bolkedebruin/rdpgw/tar.gz/refs/tags/v$RDPGW_VERSION"
@@ -28,7 +31,7 @@ RDPGW_URL="https://codeload.github.com/bolkedebruin/rdpgw/tar.gz/refs/tags/v$RDP
 sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 die() { echo "error: $*" >&2; exit 1; }
 
-BUILD_KEY="$(printf '%s\n' "$RDPGW_SHA256" "$ARCH" "$(sha256 "${BASH_SOURCE[0]}")" \
+BUILD_KEY="$(printf '%s\n' "$RDPGW_SHA256" "$ARCH" "$(sha256 "${BASH_SOURCE[0]}")" "$(sha256 "$PATCH")" \
   "$(sha256 "$GO_SUM" 2>/dev/null || true)" | shasum -a 256 | cut -d' ' -f1)"
 
 FORCE=0
@@ -56,10 +59,11 @@ fi
 [[ "$(sha256 "$archive")" == "$RDPGW_SHA256" ]] || { rm -f "$archive"; die "checksum mismatch for $RDPGW_URL"; }
 tar -xzf "$archive" -C "$WORK/src" --strip-components 1
 [[ ! -e "$WORK/src/go.sum" ]] || die "rdpgw $RDPGW_VERSION ships a go.sum now; compare it with $GO_SUM"
+patch -d "$WORK/src" -p1 <"$PATCH"
 
 # Modules go to a cache inside the build folder, removed afterwards.
 export GOPATH="$WORK/go" GOMODCACHE="$WORK/go/mod" GOFLAGS="-mod=readonly -modcacherw"
-export GOARCH="${ARCH/x86_64/amd64}" CGO_ENABLED=1
+export GOARCH="${ARCH/x86_64/amd64}"
 go version
 if [[ ! -f "$GO_SUM" ]]; then
   # Bootstrap: resolve the modules once, checked against Go's checksum database,
@@ -69,7 +73,6 @@ if [[ ! -f "$GO_SUM" ]]; then
   die "no $GO_SUM yet; commit the go.sum printed above"
 fi
 cp "$GO_SUM" "$WORK/src/go.sum"
-# The helper links PAM through cgo for its PAM mode; the tests use its NTLM mode.
 (cd "$WORK/src" && go build -trimpath -o "$BIN/rdpgw" ./cmd/rdpgw && go build -trimpath -o "$BIN/rdpgw-auth" ./cmd/auth)
 rm -rf "$WORK/go" "$WORK/src"
 
