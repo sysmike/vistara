@@ -9,6 +9,7 @@ grouped by milestone.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Releasing](docs/RELEASING.md)
+- [Updating FreeRDP](docs/UPDATING-FREERDP.md)
 - [Interface specification](docs/DESIGN.md)
 - Requires macOS 14 or later
 

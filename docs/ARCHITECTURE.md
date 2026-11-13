@@ -39,7 +39,9 @@ without the app.
   its own non-native window, and the upstream Mac client is unmaintained.
 - `scripts/build-freerdp.sh` builds a pinned release tag, and the result is
   bundled in the app. The pinned version lives in one file. FreeRDP ships
-  security fixes often, so a bump is a one-line change plus a rebuild.
+  security fixes often, so a bump is a one-line change plus a rebuild:
+  `scripts/update-pin.sh`, and a daily workflow opens an issue for every new
+  release (docs/UPDATING-FREERDP.md).
 - Every FreeRDP call is checked against the headers of the pinned version. The
   API shifts between minor releases, so calls are never written from memory.
 
