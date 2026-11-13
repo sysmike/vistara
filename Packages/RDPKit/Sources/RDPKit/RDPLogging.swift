@@ -30,9 +30,15 @@ public enum RDPLogging {
 
     /// Receives each FreeRDP line after redaction, besides the unified log.
     /// For tests.
-    private static let observer = OSAllocatedUnfairLock<(@Sendable (FreeRDPLevel, String) -> Void)?>(
-        initialState: nil
-    )
+    private static let observer = OSAllocatedUnfairLock<Observer?>(initialState: nil)
+
+    /// The closure in a struct of its own. Kept bare as the lock's generic
+    /// state, a closure is wrapped in one more reabstraction thunk each time
+    /// the lock hands it out and writes it back, once per line; thousands of
+    /// lines later, releasing it overflowed the stack (#96).
+    private struct Observer: Sendable {
+        let observe: @Sendable (FreeRDPLevel, String) -> Void
+    }
 
     /// Also writes FreeRDP's redacted lines to standard error, for CI logs.
     private static let echoesToStandardError = ProcessInfo.processInfo.environment["VISTARA_LOG_STDERR"] == "1"
@@ -65,7 +71,7 @@ public enum RDPLogging {
     /// `stopObservingFreeRDP()`. For tests.
     public static func observeFreeRDP(_ observe: @escaping @Sendable (FreeRDPLevel, String) -> Void) {
         _ = installed
-        observer.withLock { $0 = observe }
+        observer.withLock { $0 = Observer(observe: observe) }
     }
 
     public static func stopObservingFreeRDP() {
@@ -85,6 +91,10 @@ public enum RDPLogging {
         if echoesToStandardError {
             FileHandle.standardError.write(Data("[FreeRDP \(level)] \(line)\n".utf8))
         }
-        observer.withLock { $0 }?(level, line)
+        deliverToObserver(level, line)
+    }
+
+    static func deliverToObserver(_ level: FreeRDPLevel, _ line: String) {
+        observer.withLock { $0 }?.observe(level, line)
     }
 }

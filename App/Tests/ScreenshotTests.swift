@@ -27,7 +27,9 @@ struct ScreenshotTests {
         validUntil: Date(timeIntervalSince1970: 1_990_000_000)
     )
 
-    private static let librarySize = NSSize(width: 780, height: 420)
+    private static let librarySize = NSSize(width: 780, height: 460)
+    private static let libraryWindow = Screenshots.Frame.window(title: "Connections")
+    private static let sessionWindow = Screenshots.Frame.window(title: "Build Server")
 
     @Test(arguments: [
         ("library", NSAppearance.Name.aqua),
@@ -38,7 +40,9 @@ struct ScreenshotTests {
     func library(name: String, appearance: NSAppearance.Name) async throws {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         let view = ConnectionsView(model: model) { _ in }
-        let bytes = try await Screenshots.write(view, size: Self.librarySize, name: name, appearance: appearance)
+        let bytes = try await Screenshots.write(
+            view, size: Self.librarySize, name: name, appearance: appearance, frame: Self.libraryWindow
+        )
         #expect(bytes > 0)
     }
 
@@ -47,11 +51,13 @@ struct ScreenshotTests {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         model.selection = .recents
         let recents = try await Screenshots.write(
-            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-recents"
+            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-recents",
+            frame: Self.libraryWindow
         )
         model.addFolder()
         let naming = try await Screenshots.write(
-            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-new-folder"
+            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-new-folder",
+            frame: Self.libraryWindow
         )
         #expect(recents > 0 && naming > 0)
     }
@@ -61,7 +67,7 @@ struct ScreenshotTests {
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         let view = ConnectionsView(model: model) { _ in }
         let size = NSSize(width: 560, height: 320)
-        let bytes = try await Screenshots.write(view, size: size, name: "library-narrow")
+        let bytes = try await Screenshots.write(view, size: size, name: "library-narrow", frame: Self.libraryWindow)
         #expect(bytes > 0)
     }
 
@@ -69,12 +75,14 @@ struct ScreenshotTests {
     func libraryEmptyAndNoResults() async throws {
         let (empty, _) = try await temporaryLibrary()
         let first = try await Screenshots.write(
-            ConnectionsView(model: empty) { _ in }, size: Self.librarySize, name: "library-empty"
+            ConnectionsView(model: empty) { _ in }, size: Self.librarySize, name: "library-empty",
+            frame: Self.libraryWindow
         )
         let (model, _) = try await temporaryLibrary(SampleLibrary.library)
         model.searchText = "printer"
         let second = try await Screenshots.write(
-            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-no-results"
+            ConnectionsView(model: model) { _ in }, size: Self.librarySize, name: "library-no-results",
+            frame: Self.libraryWindow
         )
         #expect(first > 0 && second > 0)
     }
@@ -134,7 +142,9 @@ struct ScreenshotTests {
             name: "Build Server", lastFrame: Self.sampleDesktop(), isTrying: false, cancel: {}, reconnectNow: {}
         )
         let name = dark ? "reconnecting-dark" : "reconnecting"
-        let bytes = try await Screenshots.write(view, size: NSSize(width: 800, height: 500), name: name, dark: dark)
+        let bytes = try await Screenshots.write(
+            view, size: NSSize(width: 800, height: 500), name: name, dark: dark, frame: Self.sessionWindow
+        )
         #expect(bytes > 0)
     }
 
@@ -176,7 +186,9 @@ struct ScreenshotTests {
         let model = SessionModel(target: Self.target, credentialStore: InMemoryCredentialStore(), phase: .connecting)
         let name = dark ? "connecting-dark" : "connecting"
         let view = SessionContentView(model: model)
-        let bytes = try await Screenshots.write(view, size: Self.windowSize, name: name, dark: dark)
+        let bytes = try await Screenshots.write(
+            view, size: Self.windowSize, name: name, dark: dark, frame: Self.sessionWindow
+        )
         #expect(bytes > 0)
     }
 
@@ -199,7 +211,9 @@ struct ScreenshotTests {
                 target: Self.target, credentialStore: InMemoryCredentialStore(), phase: .disconnected(example.reason)
             )
             let view = SessionContentView(model: model)
-            let bytes = try await Screenshots.write(view, size: Self.windowSize, name: example.name)
+            let bytes = try await Screenshots.write(
+                view, size: Self.windowSize, name: example.name, frame: Self.sessionWindow
+            )
             #expect(bytes > 0)
         }
     }
@@ -240,14 +254,14 @@ struct ScreenshotTests {
     }
 
     @Test
-    func changedCertificateAlert() throws {
+    func changedCertificateAlert() async throws {
         var changed = Self.certificate
         changed.previousFingerprint =
             "a1:07:5c:de:42:90:3b:f8:19:c6:7e:05:d3:68:2a:b4:91:0c:e7:36:5f:a8:14:7b:c0:29:e5:83:4d:f1:6a:9e"
         let alert = ChangedCertificateAlert.make(certificate: changed, name: "Build Server")
         alert.layout()
-        let content = try #require(alert.window.contentView)
-        let bytes = try Screenshots.write(content, name: "certificate-changed")
+        defer { alert.window.close() }
+        let bytes = try await Screenshots.write(alert.window, name: "certificate-changed")
         #expect(bytes > 0)
     }
 
@@ -262,7 +276,10 @@ struct ScreenshotTests {
         let bytes = try await Screenshots.write(view, size: size, name: "settings-security")
         #expect(bytes > 0)
     }
+}
 
+/// The certificate's fingerprint and sheet.
+extension ScreenshotTests {
     @Test
     func fingerprintLinesNeverSplitAPair() {
         #expect(CertificateSheet.lines(ofFingerprint: "aa:bb:cc:dd:ee", pairsPerLine: 2) == "aa:bb\ncc:dd\nee")

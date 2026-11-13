@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# One Xcode for every job, so the libraries CI tests are the ones releases
+# ship. The version is part of the cache keys: a new toolchain rebuilds.
+env:
+  XCODE_VERSION: "26.6"
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -15,7 +21,7 @@ concurrency:
 jobs:
   freerdp:
     name: Build FreeRDP
-    runs-on: macos-15
+    runs-on: macos-26
     # Two architectures, built one after the other, when nothing is cached.
     timeout-minutes: 90
     steps:
@@ -32,7 +38,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/freerdp/prefix
-          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-xcode${{ env.XCODE_VERSION }}-${{ steps.key.outputs.key }}
 
       - name: Build FreeRDP
         run: scripts/build-freerdp.sh
@@ -48,7 +54,7 @@ jobs:
   app:
     name: Build, test, and lint
     needs: freerdp
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,7 +69,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/freerdp/prefix
-          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ steps.key.outputs.key }}
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-xcode${{ env.XCODE_VERSION }}-${{ steps.key.outputs.key }}
           fail-on-cache-miss: true
 
       - name: Compute test server key
@@ -74,7 +80,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/test-server/prefix
-          key: test-server-${{ runner.os }}-${{ runner.arch }}-${{ steps.server-key.outputs.key }}
+          key: test-server-${{ runner.os }}-${{ runner.arch }}-xcode${{ env.XCODE_VERSION }}-${{ steps.server-key.outputs.key }}
 
       - name: Build test server
         run: scripts/build-test-server.sh
@@ -121,15 +127,82 @@ jobs:
         if: always()
         run: cat build/test-server/run/server.log || true
 
+      # A test process that crashes leaves only its signal in the log; the
+      # crashed thread's frames say where.
+      - name: Show crash reports
+        if: failure()
+        run: |
+          # ReportCrash writes the report some seconds after the crash.
+          # A name that starts with a dot is a report still being written.
+          for _ in $(seq 1 45); do
+            reports=$(find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports \
+              -name '[!.]*.ips' -mmin -15 2>/dev/null | head -3)
+            [[ -n "$reports" ]] && break
+            sleep 2
+          done
+          echo "reports: ${reports:-none}"
+          for report in $reports; do
+            echo "== $report"
+            python3 - "$report" <<'PY'
+          import glob, json, os, subprocess, sys
+          lines = open(sys.argv[1]).read().split("\n", 1)
+          try:
+              body = json.loads(lines[1])
+          except ValueError:
+              print(lines[1][:20000])
+              sys.exit(0)
+          images = body.get("usedImages", [])
+          tables = {}
+          def nearest(path, offset):
+              # The closest symbol at or before the offset, from nm, for a
+              # bundle whose text starts at 0 or at the usual 4 GB.
+              if not os.path.exists(path):
+                  # Reports hide the user's folder; find the binary by name.
+                  found = glob.glob(f"Packages/*/.build/*/debug/*/Contents/MacOS/{os.path.basename(path)}")
+                  path = found[0] if found else path
+              if path not in tables:
+                  out = subprocess.run(["nm", "-n", "--defined-only", path], capture_output=True, text=True).stdout
+                  tables[path] = [(int(a, 16), n) for a, _, n in (l.split(" ", 2) for l in out.splitlines() if l.count(" ") >= 2)]
+              table = tables[path]
+              for base in (0, 0x100000000):
+                  before = [entry for entry in table if entry[0] <= base + offset]
+                  if before and base + offset - before[-1][0] < 0x10000:
+                      name = subprocess.run(["xcrun", "swift-demangle", "--simplified", before[-1][1]],
+                                            capture_output=True, text=True).stdout.strip()
+                      return f"{name} +{base + offset - before[-1][0]}"
+              return f"{path} offset {hex(offset)}"
+
+          print(body.get("exception"), body.get("termination", {}).get("indicator"))
+          for thread in body.get("threads", []):
+              if not thread.get("triggered"):
+                  continue
+              frames = thread.get("frames", [])
+              print("thread:", thread.get("name"), thread.get("queue"), "sp:", thread.get("threadState", {}).get("sp"))
+              print(f"{len(frames)} frames; the first 30 and the last 15:")
+              for frame in frames[:30] + frames[-15:]:
+                  used = images[frame["imageIndex"]] if frame.get("imageIndex") is not None else {}
+                  symbol = frame.get("symbol")
+                  if symbol is None and used.get("name"):
+                      # Frames without a symbol: ask atos, with the image's load address.
+                      symbol = nearest(used.get("path", used["name"]), frame.get("imageOffset", 0))
+                  print(f'{used.get("name", "?"):24} {symbol} +{frame.get("symbolLocation", 0)}'
+                        f' {frame.get("sourceFile", "")}:{frame.get("sourceLine", "")}')
+          PY
+          done
+
       - name: Generate project
+        # Also after a failed package test, so one run reports both.
+        if: ${{ !cancelled() }}
         run: xcodegen generate
 
       - name: Build app
+        if: ${{ !cancelled() }}
         run: |
           xcodebuild build -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
 
       - name: Check hardened runtime and sandbox
+        if: ${{ !cancelled() }}
         run: |
           app=build/DerivedData/Build/Products/Debug/Vistara.app
           codesign --verify --strict "$app"
@@ -152,6 +225,7 @@ jobs:
 
       # The tests run inside the sandboxed app and connect to the test server.
       - name: Test app
+        if: ${{ !cancelled() }}
         env:
           TEST_RUNNER_VISTARA_TEST_RDP_HOST: ${{ env.VISTARA_TEST_RDP_HOST }}
           TEST_RUNNER_VISTARA_TEST_RDP_PORT: ${{ env.VISTARA_TEST_RDP_PORT }}
@@ -160,9 +234,29 @@ jobs:
           TEST_RUNNER_VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS: ${{ env.VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS }}
           # The sandboxed tests cannot read the log; they only learn it is the test server.
           TEST_RUNNER_VISTARA_TEST_SERVER_LOG: ${{ env.VISTARA_TEST_SERVER_LOG }}
+          # Screenshots of real windows: the sandboxed tests cannot capture the
+          # screen, so they ask this step, which can. See App/Tests/Screenshots.swift.
+          TEST_RUNNER_VISTARA_SCREEN_CAPTURE: "1"
         run: |
+          capture_windows() {
+            shopt -s nullglob
+            while true; do
+              for request in "$HOME"/Library/Containers/*/Data/tmp/vistara-capture/*.request; do
+                picture="${request%.request}.png"
+                screencapture -x -o -l"$(cat "$request")" "$picture.part.png" &&
+                  mv "$picture.part.png" "$picture"
+                rm -f "$request"
+              done
+              sleep 0.1
+            done
+          }
+          capture_windows &
+          capturer=$!
+          status=0
           xcodebuild test -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
-            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData || status=$?
+          kill "$capturer"
+          exit "$status"
 
       - name: Collect screenshots
         if: always()

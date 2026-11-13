@@ -58,6 +58,8 @@ The version comes from the tag; the build number is the workflow run number.
 
 ## What the workflow checks
 
+- **Toolchain:** the same pinned Xcode as CI (`XCODE_VERSION`), on the
+  `macos-26` runner, so the release is built the way it was tested.
 - **App and libraries:** both have an arm64 and an x86_64 slice.
 - **Signature:** it verifies deeply and strictly. The app carries the hardened
   runtime flag, a Developer ID authority, and a secure timestamp.

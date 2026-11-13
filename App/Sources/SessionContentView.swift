@@ -160,9 +160,22 @@ struct ReconnectingView: View {
             }
             .frame(maxWidth: 360)
             .padding(24)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .modifier(ReconnectingPanel())
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// The controls float over the remote picture: on macOS 26 in one panel
+/// of regular Liquid Glass, which keeps the text legible over any desktop
+/// (HIG Materials), and in a material panel before.
+private struct ReconnectingPanel: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        }
     }
 }
 

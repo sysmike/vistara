@@ -27,8 +27,6 @@ struct ImportNotice: View {
             .help("Close")
             .accessibilityLabel("Close")
         }
-        .padding(12)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
+        .noticeBackground()
     }
 }

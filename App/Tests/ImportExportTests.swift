@@ -120,7 +120,9 @@ struct ImportExportTests {
         model.importReport = report
         let view = ConnectionsView(model: model) { _ in }
         let name = dark ? "import-notice-dark" : "import-notice"
-        let bytes = try await Screenshots.write(view, size: NSSize(width: 780, height: 420), name: name, dark: dark)
+        let bytes = try await Screenshots.write(
+            view, size: NSSize(width: 780, height: 460), name: name, dark: dark, frame: .window(title: "Connections")
+        )
         #expect(bytes > 0)
     }
 
@@ -140,7 +142,9 @@ struct ImportExportTests {
         let model = LibraryModel(store: ConnectionStore(directory: directory))
         await model.load()
         let view = ConnectionsView(model: model) { _ in }
-        let bytes = try await Screenshots.write(view, size: NSSize(width: 780, height: 420), name: "skipped-notice")
+        let bytes = try await Screenshots.write(
+            view, size: NSSize(width: 780, height: 460), name: "skipped-notice", frame: .window(title: "Connections")
+        )
         #expect(bytes > 0)
     }
 }

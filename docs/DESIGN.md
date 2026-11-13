@@ -20,7 +20,14 @@ Consequences:
   Settings (HIG Sidebars: "make sure your sidebar icons display the color
   people choose").
 - No in-app appearance switch, no custom blur or translucency. Standard
-  components pick up the system's materials on their own.
+  components pick up the system's materials on their own, Liquid Glass on
+  macOS 26 included. The one custom surface is the reconnecting panel, which
+  floats over the remote picture: regular Liquid Glass on macOS 26, a system
+  material before (HIG Materials).
+- Notices above the connection list belong to the content, not the toolbar:
+  on macOS 26 an inset, rounded callout below the toolbar's glass, never a
+  band of bar material beneath it (HIG Layout); before macOS 26, a bar band
+  with a divider.
 
 ## Windows
 
@@ -424,7 +431,7 @@ scrolling direction (HIG Settings: "Respect people's systemwide settings").
   amber screen on a deep indigo to teal gradient. No text, no screenshot, no
   hardware (HIG App icons). The layers in `Design/AppIcon` are the one
   source; `render.py` draws every size in the macOS 11–15 shape. A layered
-  Icon Composer icon with dark and tinted variants needs Xcode 26 (issue #87).
+  Icon Composer icon with dark and tinted variants follows (issue #87).
 
 ## Accessibility
 
@@ -437,7 +444,8 @@ scrolling direction (HIG Settings: "Respect people's systemwide settings").
   and the app says so in its help.
 - Reduce Motion, Reduce Transparency, and Increase Contrast are honored by
   using system components and semantic colors. Vistara has no animations of
-  its own, and its one material (the reconnecting panel) is a system one.
+  its own, and its one material (the reconnecting panel) is a system one:
+  Liquid Glass on macOS 26 turns opaque with Reduce Transparency on its own.
 - VoiceOver announces when a session connects, is lost and reconnects, or
   ends, with the same words the window shows.
 - Words are drawn in the system's label colors only. Red marks a problem
