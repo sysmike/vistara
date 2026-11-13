@@ -358,3 +358,19 @@ extension SessionTarget {
         sharedFolders = connection.sharedFolders
     }
 }
+
+extension LibraryModel {
+    /// Saves fresh bookmarks of shared folders that moved, so the connection
+    /// follows them. A folder the user removed or changed meanwhile is left
+    /// as it is.
+    func renewSharedFolders(of id: Connection.ID, _ renewals: [SharedFolderAccess.Renewal]) async {
+        guard canChange, let index = library.connections.firstIndex(where: { $0.id == id }) else { return }
+        var changed = false
+        for renewal in renewals {
+            guard let folder = library.connections[index].sharedFolders.firstIndex(of: renewal.old) else { continue }
+            library.connections[index].sharedFolders[folder] = renewal.new
+            changed = true
+        }
+        if changed { await save() }
+    }
+}

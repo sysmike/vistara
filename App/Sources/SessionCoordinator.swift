@@ -14,6 +14,9 @@ final class SessionCoordinator {
     @ObservationIgnored let credentialStore: any CredentialStore
     /// Opens the editor for a saved connection. Set by the Connections window.
     @ObservationIgnored var editConnection: ((UUID) -> Void)?
+    /// Saves fresh bookmarks of moved shared folders to a saved connection.
+    /// Set by the app.
+    @ObservationIgnored var renewSharedFolders: ((UUID, [SharedFolderAccess.Renewal]) -> Void)?
     /// Opens the Connections window or brings it forward. Set by the app.
     @ObservationIgnored var showConnections: (() -> Void)?
     @ObservationIgnored let trustStore: CertificateTrustStore
@@ -53,6 +56,7 @@ final class SessionCoordinator {
         let model = SessionModel(target: target, credentialStore: credentialStore, trustStore: trustStore)
         if let id = target.connectionID {
             model.onEditConnection = { [weak self] in self?.editConnection?(id) }
+            model.onRenewedSharedFolders = { [weak self] renewals in self?.renewSharedFolders?(id, renewals) }
         }
         let controller = SessionWindowController(model: model)
         controller.onMainChange = { [weak self, weak model] isMain in

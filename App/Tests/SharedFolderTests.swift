@@ -52,6 +52,81 @@ struct SharedFolderTests {
     }
 
     @Test
+    func aFolderInItsPlaceKeepsItsBookmark() throws {
+        let shared = try SharedFolderAccess.sharedFolder(for: makeFolder("Transfer"))
+        let access = SharedFolderAccess([shared])
+        defer { access.stop() }
+        #expect(access.folders.count == 1)
+        #expect(access.renewed.isEmpty)
+    }
+
+    @Test
+    func aRenamedFolderIsSharedAndGetsAFreshBookmark() throws {
+        let url = try makeFolder("Transfer")
+        let shared = try SharedFolderAccess.sharedFolder(for: url, readOnly: true)
+        let moved = url.deletingLastPathComponent().appendingPathComponent("Renamed", isDirectory: true)
+        try FileManager.default.moveItem(at: url, to: moved)
+
+        let access = SharedFolderAccess([shared])
+        defer { access.stop() }
+        let folder = try #require(access.folders.first)
+        #expect(folder.name == "Renamed")
+        #expect(samePlace(folder.path, moved))
+
+        let renewal = try #require(access.renewed.first)
+        #expect(access.renewed.count == 1)
+        #expect(renewal.old == shared)
+        #expect(samePlace(renewal.new.path, moved))
+        #expect(renewal.new.isReadOnly)
+        #expect(renewal.new.bookmark != nil && renewal.new.bookmark != shared.bookmark)
+
+        // The fresh bookmark opens the folder in its new place, as it is.
+        let again = SharedFolderAccess([renewal.new])
+        defer { again.stop() }
+        #expect(again.folders.map(\.name) == ["Renamed"])
+        #expect(again.renewed.isEmpty)
+    }
+
+    @Test
+    func theLibrarySavesARenewedFolder() async throws {
+        let old = Connection.SharedFolder(path: "/Users/alice/Transfer", bookmark: Data([1]))
+        let other = Connection.SharedFolder(path: "/Users/alice/Photos", bookmark: Data([2]), isReadOnly: true)
+        let new = Connection.SharedFolder(path: "/Users/alice/Renamed", bookmark: Data([3]))
+        var connection = Connection(name: "Build Server", host: "build01")
+        connection.sharedFolders = [old, other]
+        var library = Library()
+        library.connections = [connection]
+        let (model, directory) = try await temporaryLibrary(library)
+
+        await model.renewSharedFolders(of: connection.id, [SharedFolderAccess.Renewal(old: old, new: new)])
+        // A folder no longer in the connection is not brought back.
+        let removed = Connection.SharedFolder(path: "/Users/alice/Old", bookmark: Data([4]))
+        await model.renewSharedFolders(of: connection.id, [SharedFolderAccess.Renewal(old: removed, new: new)])
+        #expect(model.library.connections.first?.sharedFolders == [new, other])
+
+        let reopened = LibraryModel(store: ConnectionStore(directory: directory))
+        await reopened.load()
+        #expect(reopened.library.connections.first?.sharedFolders == [new, other])
+    }
+
+    @Test
+    func aSessionUsesAndPassesOnRenewedFolders() throws {
+        let url = try makeFolder("Transfer")
+        var target = SessionTarget(name: "Build Server", host: "127.0.0.1", port: 1)
+        target.sharedFolders = [try SharedFolderAccess.sharedFolder(for: url)]
+        let moved = url.deletingLastPathComponent().appendingPathComponent("Renamed", isDirectory: true)
+        try FileManager.default.moveItem(at: url, to: moved)
+        let model = SessionModel(target: target, credentialStore: InMemoryCredentialStore())
+        var passedOn: [SharedFolderAccess.Renewal] = []
+        model.onRenewedSharedFolders = { passedOn = $0 }
+
+        model.connect()
+        model.abandonAttempt()
+        #expect(passedOn.count == 1)
+        #expect(model.target.sharedFolders == passedOn.map(\.new))
+    }
+
+    @Test
     func drivesWithTheSameFolderNameGetNumbers() throws {
         let first = try SharedFolderAccess.sharedFolder(for: makeFolder("Transfer"))
         let second = try SharedFolderAccess.sharedFolder(for: makeFolder("transfer"))
