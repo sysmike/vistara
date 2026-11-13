@@ -92,7 +92,7 @@ with redaction. Then open a pull request: CI builds both architectures and
 runs everything again.
 
 If a real Windows host is at hand, connect to it once with the new build
-(README, "Against a Windows host"). The test server is FreeRDP talking to
+([Developing Vistara](DEVELOPING.md#against-a-windows-host)). The test server is FreeRDP talking to
 FreeRDP and cannot catch everything.
 
 ## 5. Ship
