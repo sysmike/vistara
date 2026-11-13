@@ -43,12 +43,14 @@ enum Screenshots {
         let content = view
             .frame(width: size.width, height: size.height)
             .background(isPanel ? Color(nsColor: .windowBackgroundColor) : Color.clear)
-            // A panel has no title bar to make room for.
-            .ignoresSafeArea(edges: isPanel ? .all : [])
         let hosting = NSHostingView(rootView: content)
+        // A panel's content sits below an ordinary title bar, which the
+        // capture then cuts off: under a transparent one, scroll views still
+        // leave room for it.
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: isPanel
+                ? [.titled, .closable] : [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -58,23 +60,20 @@ enum Screenshots {
             window.toolbarStyle = .unified
             hosting.sceneBridgingOptions = [.toolbars, .title]
         case .panel:
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                window.standardWindowButton(button)?.isHidden = true
-            }
+            break
         }
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: appearance ?? (dark ? .darkAqua : .aqua))
         window.contentView = hosting
         window.setContentSize(size)
         defer { window.close() }
-        return try await write(window, name: name)
+        return try await write(window, name: name, contentOnly: isPanel)
     }
 
-    /// Captures a window that is set up but not yet shown.
+    /// Captures a window that is set up but not yet shown: all of it, or
+    /// only what is below its title bar.
     @discardableResult
-    static func write(_ window: NSWindow, name: String) async throws -> Int {
+    static func write(_ window: NSWindow, name: String, contentOnly: Bool = false) async throws -> Int {
         window.center()
         // Controls draw their key-window look only in the key window.
         NSApp.activate(ignoringOtherApps: true)
@@ -83,7 +82,8 @@ enum Screenshots {
         // Glass and other effects settle over a few frames.
         try await Task.sleep(for: .milliseconds(capturesWindows ? 600 : 200))
         let fits = window.screen.map { window.frame.height <= $0.visibleFrame.height } ?? false
-        if capturesWindows, fits, let bytes = try await capture(window, name: name) {
+        let titleBar = contentOnly ? window.frame.height - window.contentLayoutRect.height : 0
+        if capturesWindows, fits, let bytes = try await capture(window, name: name, cuttingOff: titleBar) {
             return bytes
         }
         guard let view = window.contentView else { throw CocoaError(.fileWriteUnknown) }
@@ -91,7 +91,7 @@ enum Screenshots {
     }
 
     /// Asks the CI helper for a picture of the window, and waits for it.
-    private static func capture(_ window: NSWindow, name: String) async throws -> Int? {
+    private static func capture(_ window: NSWindow, name: String, cuttingOff titleBar: CGFloat) async throws -> Int? {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: captureDirectory, withIntermediateDirectories: true)
         let picture = captureDirectory.appendingPathComponent("\(name).png")
@@ -100,13 +100,27 @@ enum Screenshots {
         let deadline = ContinuousClock.now + .seconds(10)
         while ContinuousClock.now < deadline {
             if let data = try? Data(contentsOf: picture), !data.isEmpty {
+                let png = try cut(titleBar, from: data, windowHeight: window.frame.height)
                 try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-                try data.write(to: directory.appendingPathComponent("\(name).png"))
-                return data.count
+                try png.write(to: directory.appendingPathComponent("\(name).png"))
+                return png.count
             }
             try await Task.sleep(for: .milliseconds(50))
         }
         return nil
+    }
+
+    /// The picture without the top `points` of a window that many points
+    /// high, at whatever scale the picture has.
+    private static func cut(_ points: CGFloat, from data: Data, windowHeight: CGFloat) throws -> Data {
+        guard points > 0 else { return data }
+        guard let image = NSBitmapImageRep(data: data)?.cgImage else { throw CocoaError(.fileReadCorruptFile) }
+        let pixels = Int((points * CGFloat(image.height) / windowHeight).rounded())
+        let rect = CGRect(x: 0, y: pixels, width: image.width, height: image.height - pixels)
+        guard let cropped = image.cropping(to: rect),
+            let png = NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])
+        else { throw CocoaError(.fileWriteUnknown) }
+        return png
     }
 
     /// Draws a view offscreen.
