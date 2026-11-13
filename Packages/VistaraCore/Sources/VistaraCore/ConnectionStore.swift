@@ -10,6 +10,11 @@ public actor ConnectionStore {
         /// Set when the file could not be read. The unreadable file was moved
         /// here and the library starts empty; tell the user.
         public var corruptFileBackup: URL?
+        /// Entries left out because they could not be read. The rest loaded.
+        public var skippedEntries: [LibraryCodec.SkippedEntry] = []
+        /// A copy of the file as it was, made when entries were left out, so
+        /// the next save loses nothing for good; tell the user.
+        public var originalFileCopy: URL?
     }
 
     public static let fileName = "connections.json"
@@ -41,8 +46,14 @@ public actor ConnectionStore {
         }
 
         do {
-            let library = try LibraryCodec.decode(Data(contentsOf: fileURL))
-            return LoadResult(library: library, corruptFileBackup: nil)
+            let read = try LibraryCodec.read(Data(contentsOf: fileURL))
+            guard !read.skipped.isEmpty else {
+                return LoadResult(library: read.library, corruptFileBackup: nil)
+            }
+            return LoadResult(
+                library: read.library, corruptFileBackup: nil, skippedEntries: read.skipped,
+                originalFileCopy: try copyAside(prefix: "connections.unreadable")
+            )
         } catch let error as LibraryCodec.CodecError {
             if case .newerSchema = error { throw error }
             return LoadResult(library: Library(), corruptFileBackup: try moveAsideCorruptFile())
@@ -63,16 +74,28 @@ public actor ConnectionStore {
     }
 
     private func moveAsideCorruptFile() throws -> URL {
+        let backup = asideURL(prefix: "connections.corrupt")
+        try FileManager.default.moveItem(at: fileURL, to: backup)
+        return backup
+    }
+
+    /// Copies the file, which stays in place, next to it.
+    private func copyAside(prefix: String) throws -> URL {
+        let copy = asideURL(prefix: prefix)
+        try FileManager.default.copyItem(at: fileURL, to: copy)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: copy.path)
+        return copy
+    }
+
+    /// A new file name next to the library, stamped with the time.
+    private func asideURL(prefix: String) -> URL {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         let stamp = formatter.string(from: Date())
 
-        var backup = directory.appendingPathComponent("connections.corrupt-\(stamp).json")
-        if FileManager.default.fileExists(atPath: backup.path) {
-            backup = directory.appendingPathComponent("connections.corrupt-\(stamp)-\(UUID().uuidString).json")
-        }
-        try FileManager.default.moveItem(at: fileURL, to: backup)
-        return backup
+        let url = directory.appendingPathComponent("\(prefix)-\(stamp).json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return url }
+        return directory.appendingPathComponent("\(prefix)-\(stamp)-\(UUID().uuidString).json")
     }
 }
