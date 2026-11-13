@@ -17,16 +17,16 @@ struct SessionVisibilityTests {
     }
 
     @Test
-    func aWindowOutOfSightIsNotVisible() async {
+    func aMinimizedWindowIsNotVisible() async {
         let session = controller("Build Server", host: "build01")
         defer { session.window.close() }
         NSApp.activate(ignoringOtherApps: true)
         session.show()
         await waitUntil("the window can be seen") { session.model.isVisible }
 
-        session.window.orderOut(nil)
-        await waitUntil("the window can no longer be seen") { !session.model.isVisible }
-        session.show()
+        session.window.miniaturize(nil)
+        await waitUntil("the minimized window can no longer be seen") { !session.model.isVisible }
+        session.window.deminiaturize(nil)
         await waitUntil("the window can be seen again") { session.model.isVisible }
     }
 

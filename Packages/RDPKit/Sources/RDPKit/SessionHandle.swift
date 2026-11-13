@@ -203,8 +203,7 @@ final class SessionHandle {
             vistara_session_request_size(session, UInt32(width), UInt32(height), UInt32(scalePercent))
         case .clipboardText(let text):
             offerClipboardText(text)
-        case .displayUpdates(let allowed):
-            vistara_session_set_display_updates(session, allowed)
+        case .displayUpdates(let allowed): vistara_session_set_display_updates(session, allowed)
         }
     }
 
