@@ -185,8 +185,29 @@ if [[ "$ARCH" != "$(uname -m)" ]]; then
   CROSS_FLAGS=(-DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR="$ARCH")
 fi
 
+# Runtime checks. Of the options FreeRDP calls runtime checks (rdp.c,
+# option_is_runtime_checks), 3.33.1 has one: WITH_VERBOSE_WINPR_ASSERT, on by
+# default (cmake/CommonConfigOptions.cmake). With it on, a failed WINPR_ASSERT
+# logs a backtrace and aborts, and every connection logs a warning that the
+# build "might slow down the application". With it off, WINPR_ASSERT is plain
+# assert(), which a Release build compiles out through NDEBUG: about 9,900
+# checks in the code that parses server data would go away silently.
+# Vistara turns the option off and keeps the asserts by leaving NDEBUG out of
+# the release flags, so a failed assert still stops the process (with the
+# condition, file, and line in the crash report) instead of running on in a
+# broken state. The checks cost the same either way; only the verbose logging
+# of a failure goes. CI and releases use this same build, so a failed assert
+# is loud in both, and the tested libraries are the shipped ones.
+# Nothing else in FreeRDP depends on NDEBUG (only uwac, which is not built).
+RUNTIME_CHECK_FLAGS=(
+  -DWITH_VERBOSE_WINPR_ASSERT=OFF
+  -DCMAKE_C_FLAGS_RELEASE=-O3
+  -DCMAKE_CXX_FLAGS_RELEASE=-O3
+)
+
 cmake -S "$WORK/src/freerdp" -B "$WORK/obj/freerdp" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DCMAKE_BUILD_TYPE=Release \
+  "${RUNTIME_CHECK_FLAGS[@]}" \
   -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
   -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
@@ -242,6 +263,14 @@ done < <(find "$PREFIX/lib" -maxdepth 1 -type f -name '*.dylib')
 [[ -f "$PREFIX/include/freerdp3/freerdp/freerdp.h" ]] || { echo "missing FreeRDP headers" >&2; status=1; }
 grep -q "FREERDP_VERSION_FULL \"$FREERDP_VERSION\"" "$PREFIX/include/freerdp3/freerdp/version.h" ||
   { echo "installed headers do not report version $FREERDP_VERSION" >&2; status=1; }
+# The runtime-check option is off, and the asserts are still compiled in:
+# assert() calls __assert_rtn, which NDEBUG would have removed.
+strings "$PREFIX/lib/libfreerdp3.3.dylib" | grep -q "WITH_VERBOSE_WINPR_ASSERT=OFF" ||
+  { echo "libfreerdp3 does not report WITH_VERBOSE_WINPR_ASSERT=OFF" >&2; status=1; }
+for name in freerdp3 winpr3; do
+  nm -u "$PREFIX/lib/lib$name.3.dylib" | grep -q "___assert_rtn" ||
+    { echo "lib$name: asserts are compiled out" >&2; status=1; }
+done
 [[ $status -eq 0 ]] || die "verification failed"
 
 echo "$BUILD_KEY" >"$STAMP"
