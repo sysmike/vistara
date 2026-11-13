@@ -48,6 +48,21 @@ void vistara_session_destroy(vistara_session *_Nullable session);
 
 /// The certificate a server presented. FreeRDP verifies nothing itself and
 /// keeps no certificate store of its own: every certificate comes here.
+/// One of the remote computer's monitors, in remote pixels relative to the
+/// primary monitor's top left, which is at the origin.
+typedef struct {
+    int32_t x;
+    int32_t y;
+    uint32_t width;
+    uint32_t height;
+    bool is_primary;
+    /// Desktop scale in percent, 100 to 500.
+    uint32_t scale_percent;
+} vistara_monitor;
+
+/// RDP's limit on monitors in one session.
+#define VISTARA_MAX_MONITORS 16
+
 typedef struct {
     const char *host;
     uint16_t port;
@@ -100,6 +115,12 @@ typedef struct {
     /// and not drives plugged in later.
     const vistara_shared_folder *_Nullable shared_folders;
     size_t shared_folder_count;
+    /// Several monitors, laid out as the remote computer should see them; the
+    /// desktop is then their bounding box and width, height, and
+    /// scale_percent are ignored. With fewer than two, one monitor of
+    /// width x height. At most VISTARA_MAX_MONITORS are used.
+    const vistara_monitor *_Nullable monitors;
+    size_t monitor_count;
     /// The keyboard to announce: a Windows keyboard layout identifier, or 0
     /// to leave the layout to the server. A type of 0 keeps FreeRDP's IBM
     /// enhanced keyboard; otherwise type, subtype, and function keys are sent.
@@ -253,6 +274,14 @@ bool vistara_session_send_lock_state(vistara_session *session, bool caps_lock, b
 /// false only when not connected.
 bool vistara_session_request_size(vistara_session *session, uint32_t width, uint32_t height,
                                   uint32_t scale_percent);
+
+/// Asks the server for a layout of several monitors, as
+/// vistara_session_request_size() asks for one size; the same waiting and
+/// replacing apply, and either replaces the other. The framebuffer becomes
+/// the monitors' bounding box. At most VISTARA_MAX_MONITORS are used, and
+/// exactly one should be primary, at the origin. Returns false only when not
+/// connected.
+bool vistara_session_request_layout(vistara_session *session, const vistara_monitor *monitors, size_t count);
 
 /// Whether the server sends the screen ([MS-RDPBCGR] 2.2.11.3, Suppress
 /// Output). False while nobody can see the session; true asks for the whole

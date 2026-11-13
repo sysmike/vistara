@@ -1,6 +1,7 @@
 #include "CFreeRDP.h"
 #include "audio.h"
 #include "drive.h"
+#include "monitors.h"
 #include "probe.h"
 
 #include <errno.h>
@@ -89,7 +90,9 @@ struct vistara_session {
     // Suppress Output waits until the connection is active; zero means none.
     bool has_pending_display_updates;
     bool pending_display_updates_allowed;
-    uint32_t pending_width, pending_height, pending_scale_percent;
+    // The layout of one or more monitors waiting with has_pending_size.
+    vistara_monitor pending_monitors[VISTARA_MAX_MONITORS];
+    size_t pending_monitor_count;
     // The cursor the server asked for last, as a copy this session owns.
     bool cursor_changed;
     vistara_cursor_kind cursor_kind;
@@ -711,32 +714,27 @@ static void send_pending_size(vistara_session *session) {
         return;
     }
     session->has_pending_size = false;
-
-    const uint32_t scale_percent = session->pending_scale_percent;
-    DISPLAY_CONTROL_MONITOR_LAYOUT layout = {0};
-    layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
-    layout.Width = session->pending_width;
-    layout.Height = session->pending_height;
-    // Millimetres, as if the desktop were shown at 96 points per inch.
-    layout.PhysicalWidth = (UINT32)((uint64_t)layout.Width * 2540 / ((uint64_t)96 * scale_percent));
-    layout.PhysicalHeight = (UINT32)((uint64_t)layout.Height * 2540 / ((uint64_t)96 * scale_percent));
-    layout.Orientation = ORIENTATION_LANDSCAPE;
-    layout.DesktopScaleFactor = scale_percent;
-    layout.DeviceScaleFactor = 100;
-    (void)display_control->SendMonitorLayout(display_control, 1, &layout);
+    DISPLAY_CONTROL_MONITOR_LAYOUT layout[VISTARA_MAX_MONITORS];
+    const size_t count = vistara_display_layout(session->pending_monitors, session->pending_monitor_count, layout);
+    (void)display_control->SendMonitorLayout(display_control, (UINT32)count, layout);
 }
 
 bool vistara_session_request_size(vistara_session *session, uint32_t width, uint32_t height,
                                   uint32_t scale_percent) {
-    if (!session->connected) {
+    const vistara_monitor monitor = {
+        .x = 0, .y = 0, .width = width, .height = height, .is_primary = true, .scale_percent = scale_percent,
+    };
+    return vistara_session_request_layout(session, &monitor, 1);
+}
+
+bool vistara_session_request_layout(vistara_session *session, const vistara_monitor *monitors, size_t count) {
+    if (!session->connected || count == 0) {
         return false;
     }
-    if (scale_percent < 100) scale_percent = 100;
-    if (scale_percent > 500) scale_percent = 500;
+    if (count > VISTARA_MAX_MONITORS) count = VISTARA_MAX_MONITORS;
+    memcpy(session->pending_monitors, monitors, count * sizeof(*monitors));
+    session->pending_monitor_count = count;
     session->has_pending_size = true;
-    session->pending_width = width;
-    session->pending_height = height;
-    session->pending_scale_percent = scale_percent;
     send_pending_size(session);
     return true;
 }
@@ -1025,6 +1023,7 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     session->decide_certificate_context = options->decide_certificate_context;
     if (!apply_options(session->instance->context->settings, options) ||
         !apply_keyboard(session->instance->context->settings, options) ||
+        !vistara_apply_monitors(session->instance->context->settings, options->monitors, options->monitor_count) ||
         !add_shared_folders(session, session->instance->context->settings, options)) {
         return VISTARA_CONNECT_FAILED;
     }

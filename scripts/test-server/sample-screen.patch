@@ -286,7 +286,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,493 @@
+@@ -37,6 +37,514 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -310,9 +310,30 @@
 +	(void)fprintf(stderr, "vistara-input layout width=0x%04x height=0x%04x scale=0x%04x\n",
 +	              (unsigned)monitor->Width, (unsigned)monitor->Height,
 +	              (unsigned)monitor->DesktopScaleFactor);
++	/* Several monitors: each one, and the screen becomes their bounding box. */
++	INT64 left = 0, top = 0, right = monitor->Width, bottom = monitor->Height;
++	for (UINT32 index = 0; (pdu->NumMonitors > 1) && (index < pdu->NumMonitors); index++)
++	{
++		const DISPLAY_CONTROL_MONITOR_LAYOUT* each = &pdu->Monitors[index];
++		(void)fprintf(stderr,
++		              "vistara-monitor via=display-control index=%u left=%d top=%d width=%u height=%u "
++		              "primary=%u scale=%u\n",
++		              (unsigned)index, (int)each->Left, (int)each->Top, (unsigned)each->Width,
++		              (unsigned)each->Height,
++		              (each->Flags & DISPLAY_CONTROL_MONITOR_PRIMARY) ? 1u : 0u,
++		              (unsigned)each->DesktopScaleFactor);
++		if ((INT64)each->Left < left)
++			left = each->Left;
++		if ((INT64)each->Top < top)
++			top = each->Top;
++		if ((INT64)each->Left + each->Width > right)
++			right = (INT64)each->Left + each->Width;
++		if ((INT64)each->Top + each->Height > bottom)
++			bottom = (INT64)each->Top + each->Height;
++	}
 +	(void)fflush(stderr);
-+	(void)InterlockedExchange(&vistara_resize_width, (LONG)monitor->Width);
-+	(void)InterlockedExchange(&vistara_resize_height, (LONG)monitor->Height);
++	(void)InterlockedExchange(&vistara_resize_width, (LONG)(right - left));
++	(void)InterlockedExchange(&vistara_resize_height, (LONG)(bottom - top));
 +	return CHANNEL_RC_OK;
 +}
 +
@@ -780,10 +801,29 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -574,6 +1061,13 @@
+@@ -574,6 +1082,32 @@
  	subsystem = server->subsystem;
  	WINPR_ASSERT(subsystem);
  
++	/* Vistara test server: the monitors the client announced when connecting. */
++	{
++		const UINT32 count = freerdp_settings_get_uint32(settings, FreeRDP_MonitorCount);
++		for (UINT32 index = 0; index < count; index++)
++		{
++			const rdpMonitor* each =
++			    freerdp_settings_get_pointer_array(settings, FreeRDP_MonitorDefArray, index);
++			if (!each)
++				break;
++			(void)fprintf(stderr,
++			              "vistara-monitor via=connect index=%u left=%d top=%d width=%d height=%d "
++			              "primary=%u scale=%u\n",
++			              (unsigned)index, (int)each->x, (int)each->y, (int)each->width,
++			              (int)each->height, each->is_primary ? 1u : 0u,
++			              (unsigned)each->attributes.desktopScaleFactor);
++		}
++		(void)fflush(stderr);
++	}
++
 +	/* Vistara test server: the keyboard the client says it has. */
 +	(void)fprintf(stderr, "vistara-keyboard layout=0x%08x type=%u subtype=%u\n",
 +	              (unsigned)freerdp_settings_get_uint32(settings, FreeRDP_KeyboardLayout),
@@ -794,7 +834,7 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -735,6 +1229,8 @@
+@@ -735,6 +1269,8 @@
  	WINPR_ASSERT(client);
  
  	client->suppressOutput = !(allow);
@@ -803,7 +843,7 @@
  
  	if (allow)
  	{
-@@ -2845,6 +3341,9 @@
+@@ -2845,6 +3381,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -813,7 +853,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3449,11 @@
+@@ -2950,6 +3489,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -825,7 +865,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3541,8 @@
+@@ -3037,6 +3581,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -834,7 +874,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3696,15 @@
+@@ -3190,6 +3736,15 @@
  
  fail:
  

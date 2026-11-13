@@ -80,13 +80,18 @@ public enum RDPInputEvent: Sendable, Hashable {
     /// A server that does not support this ([MS-RDPBCGR] 2.2.11.3, Suppress
     /// Output) is sent nothing.
     case displayUpdates(Bool)
+    /// Asks for a desktop across several monitors, as `desktopSize` asks for
+    /// one size; either replaces the other while they wait. The framebuffer
+    /// becomes the monitors' bounding box (`RDPMonitor.boundingBox`).
+    case monitorLayout([RDPMonitor])
 
     /// Whether a later event of the same kind makes this one pointless, so
     /// that only the latest needs sending.
     func isSuperseded(by later: RDPInputEvent) -> Bool {
         switch (self, later) {
         case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize), (.clipboardText, .clipboardText),
-            (.displayUpdates, .displayUpdates): true
+            (.displayUpdates, .displayUpdates), (.monitorLayout, .monitorLayout),
+            (.desktopSize, .monitorLayout), (.monitorLayout, .desktopSize): true
         default: false
         }
     }
