@@ -34,7 +34,7 @@ Consequences:
 | Window | Kind | Notes |
 | --- | --- | --- |
 | Connections | Primary, one per app | Sidebar, connection list, toolbar with search. Reopened with Window > Connections |
-| Session | One per connection in use | Title is the connection name, subtitle is the host. No toolbar: the desktop fills the window below the title bar |
+| Session | One per connection in use, alone or as a tab | Title is the connection name, subtitle is the host. No toolbar: the desktop fills the window below the title bar. See Session tabs |
 | Settings | Auxiliary | Fixed toolbar with panes General, Keyboard, Security |
 
 - Opening a connection opens a new window, because the point is to keep the
@@ -220,6 +220,47 @@ stop asking. *Judgment.*
   full screen. A session that ends any other way (dropped, refused, timed
   out) keeps its full-screen window and shows what happened there.
 
+### Session tabs
+
+Several sessions can share one window as tabs, with the system's own window
+tabbing (HIG The menu bar: Show Previous Tab, Show Next Tab, Move Tab to New
+Window, Merge All Windows, Show Tab Bar). Each tab is still a session window
+with everything above; tabbing only changes how they are grouped.
+
+- Only session windows group as tabs, never with the Connections window or
+  Settings.
+- Where a new session opens follows the system setting "Prefer tabs when
+  opening documents" (Desktop & Dock): Always opens it as a tab of the session
+  window in front; In Full Screen does so when that window is in full screen;
+  Never opens a window of its own. Holding Option while connecting does the
+  other: File > Connect becomes Connect in New Tab or Connect in New Window.
+  *Judgment: the system setting is the user's stated preference, and Option is
+  how Mac apps offer the alternate.*
+- The tab bar has no + button. A new tab needs a computer, and choosing one
+  is what the Connections window is for. *Judgment.*
+- Connecting to a computer whose session is a background tab selects that
+  tab, as it brings a window forward.
+- Closing a tab disconnects that session only, without asking, as closing a
+  window does. In a tabbed window File > Close becomes Close Tab
+  (Command-W), and Close Window (Shift-Command-W) closes all of its tabs (HIG
+  The menu bar, File menu). Quitting still asks once for all open sessions.
+- A tab group has one size. The tab in front follows it as a window does; a
+  background tab keeps its last picture, scaled, and asks for the new size
+  when it comes to the front.
+- A session that cannot be seen (a background tab, a minimized window, a
+  window entirely covered) stays connected but asks the server to stop
+  sending its screen, and asks for it again when it can be seen
+  ([MS-RDPBCGR] 2.2.11.3, Suppress Output). Sound keeps playing; only the tab
+  in front is offered the Mac's clipboard, as only the window in front is.
+- The tab's title is the connection's name. A session that is connecting or
+  reconnecting shows a small progress indicator on its tab; one that has
+  ended shows a symbol. Both have accessibility labels, and VoiceOver
+  announces a background tab's lost connection with the connection's name.
+- A tabbed window enters full screen as a whole; the tab bar appears with
+  the menu bar at the top edge.
+- Size and position are remembered per computer only for a session alone in
+  its window. A tab group keeps the frame it has.
+
 ## Keyboard
 
 ### Who gets a key press
@@ -245,6 +286,11 @@ key".
 
 With Full Keyboard Access on, Tab inside a session goes to the remote host;
 rule 2 is how focus leaves the session.
+
+Between session tabs, Shift-Command-] and Shift-Command-[ show the next and
+previous tab (rule 2). Control-Tab and Control-Shift-Tab, the Window menu's
+other shortcuts for that, go to the remote computer instead (rule 4), where
+Windows apps use them to switch their own tabs. *Judgment.*
 
 Keys are sent by position, not by character: the remote computer's keyboard
 layout decides what a key types. To make that layout match the key caps,
@@ -298,10 +344,11 @@ commands").
 | Vistara | Settings… | Command-Comma | Standard |
 | File | New Connection… | Command-N | Standard "new" |
 | File | New Folder | Shift-Command-N | As in Finder |
-| File | Connect | Command-O | Standard "open"; also Return and double-click |
+| File | Connect | Command-O | Standard "open"; also Return and double-click. With Option: Connect in New Tab or New Window (see Session tabs) |
 | File | Import… | | Also by opening or dropping a `.rdp` file |
 | File | Export… | | |
-| File | Close Window | Command-W | Standard |
+| File | Close Window | Command-W | Standard; Close Tab in a tabbed session window |
+| File | Close Window | Shift-Command-W | Standard; in a tabbed session window only, closes all its tabs |
 | Edit | Undo, Redo, Cut, Copy, Paste, Select All | Standard | Translated in a session (rule 3) |
 | Edit | Edit Connection… | Command-I | Standard "info" |
 | Edit | Duplicate | Command-D | Standard |
@@ -309,11 +356,14 @@ commands").
 | Edit | Find | Command-F | Focuses the search field; translated in a session |
 | View | Show/Hide Sidebar | Control-Command-S | Standard |
 | View | Enter/Exit Full Screen | Control-Command-F | Standard |
+| View | Show/Hide Tab Bar, Show All Tabs | Standard | Provided by the system for session windows |
 | Session | Reconnect | Command-R | Custom |
 | Session | Disconnect | | Same as closing the window |
 | Session | Send Ctrl+Alt+Del | Control-Option-Delete | Custom; see below |
 | Session | Send Windows Key | | |
 | Window | Minimize, Zoom | Standard | |
+| Window | Show Previous Tab, Show Next Tab | Shift-Command-[ and ] | Provided by the system; Control-Tab goes to a session (see Keyboard) |
+| Window | Move Tab to New Window, Merge All Windows | | Provided by the system, for session windows |
 | Window | Connections | Command-0 | As in Mail and Messages |
 | Window | *open sessions* | | Provided by the system |
 | Help | Vistara Help | Command-? | Standard; opens the user guide in the browser |

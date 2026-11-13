@@ -92,6 +92,7 @@ without the app.
 ## Scope
 
 Version 1 covers the connection library, per-connection settings, the session
-window, certificate trust on first use, and `.rdp` import and export. Tabs,
-multiple monitors, RD Gateway, smart cards, file clipboard, RemoteApp, printer
+window, certificate trust on first use, and `.rdp` import and export.
+Session tabs follow in milestone M4 (see Session tabs in DESIGN.md). Multiple
+monitors, RD Gateway, smart cards, file clipboard, RemoteApp, printer
 redirection, and sync are tracked as issues labeled `later`.
