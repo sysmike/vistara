@@ -73,6 +73,31 @@ public actor ConnectionStore {
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
+    /// Every identifier in the copies of the file kept next to it, upper case:
+    /// those of unreadable entries and of files that could not be read at
+    /// all. Their connections may still own passwords, which must stay as
+    /// long as a copy holds them (#84). The copies are searched as text, so a
+    /// file that is no longer valid JSON still counts; an identifier of
+    /// something other than a connection only keeps an item that is not there.
+    public func identifiersInKeptCopies() -> Set<String> {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        let identifier = #/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/#
+        var identifiers = Set<String>()
+        for name in names where Self.isKeptCopy(name) {
+            guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else { continue }
+            let text = String(decoding: data, as: UTF8.self)
+            for match in text.matches(of: identifier) {
+                identifiers.insert(String(match.output).uppercased())
+            }
+        }
+        return identifiers
+    }
+
+    static func isKeptCopy(_ name: String) -> Bool {
+        name.hasSuffix(".json")
+            && (name.hasPrefix("connections.unreadable-") || name.hasPrefix("connections.corrupt-"))
+    }
+
     private func moveAsideCorruptFile() throws -> URL {
         let backup = asideURL(prefix: "connections.corrupt")
         try FileManager.default.moveItem(at: fileURL, to: backup)
