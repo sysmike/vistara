@@ -85,6 +85,23 @@ jobs:
       - name: Build test server
         run: scripts/build-test-server.sh
 
+      - name: Compute test gateway key
+        id: gateway-key
+        run: echo "key=$(scripts/build-test-gateway.sh --print-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore test gateway
+        id: gateway-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/test-gateway/bin
+          key: test-gateway-${{ runner.os }}-${{ runner.arch }}-${{ steps.gateway-key.outputs.key }}
+
+      - name: Build test gateway
+        if: steps.gateway-cache.outputs.cache-hit != 'true'
+        run: |
+          command -v go >/dev/null || brew install go
+          scripts/build-test-gateway.sh
+
       - name: Install XcodeGen and SwiftLint
         run: brew install xcodegen swiftlint
 
@@ -128,6 +145,14 @@ jobs:
       - name: Start test server
         run: scripts/run-test-server.sh >> "$GITHUB_ENV"
 
+      - name: Start test gateway
+        run: scripts/run-test-gateway.sh >> "$GITHUB_ENV"
+
+      # FreeRDP's own client, so a fault in the gateway setup is not taken
+      # for a fault in Vistara.
+      - name: Check the test gateway with FreeRDP's client
+        run: scripts/check-test-gateway.sh
+
       - name: Test RDPKit against the test server
         env:
           # FreeRDP's redacted log lines also go to the CI log.
@@ -137,6 +162,10 @@ jobs:
       - name: Show test server log
         if: always()
         run: cat build/test-server/run/server.log || true
+
+      - name: Show test gateway log
+        if: always()
+        run: cat build/test-gateway/run/gateway.log || true
 
       # A test process that crashes leaves only its signal in the log; the
       # crashed thread's frames say where.
