@@ -293,7 +293,7 @@ the architecture document.
 
 Vistara is new. It does not yet support:
 
-- more than one monitor;
+- using only some of your displays (All Displays uses every one);
 - Remote Desktop Gateway, RemoteApp, smart cards, printers, or USB devices;
 - copying files or images through the clipboard (text only);
 - the microphone (by design for now);
