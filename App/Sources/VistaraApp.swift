@@ -33,6 +33,7 @@ struct VistaraApp: App {
             SidebarCommands()
             LibraryCommands()
             SessionCommands(coordinator: coordinator)
+            HelpCommands()
         }
 
         Settings {

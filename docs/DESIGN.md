@@ -308,14 +308,14 @@ commands").
 | Window | Minimize, Zoom | Standard | |
 | Window | Connections | Command-0 | As in Mail and Messages |
 | Window | *open sessions* | | Provided by the system |
-| Help | Vistara Help | Command-? | Standard |
+| Help | Vistara Help | Command-? | Standard; opens the user guide in the browser |
 
 Checked against the standard shortcuts in HIG Keyboards: no standard shortcut
 is given a different meaning. Control-Option-Delete is free on macOS; using it
 means Ctrl+Alt+Backspace cannot be typed directly, which we accept.
 
 The Dock menu lists open sessions, to bring forward, and favorites, to
-connect. Vistara Help arrives with the user guide (issue #36).
+connect.
 
 ### Importing and exporting
 

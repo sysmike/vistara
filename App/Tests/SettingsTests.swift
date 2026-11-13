@@ -99,3 +99,14 @@ struct DockMenuTests {
         #expect(chosen == ["show", "connect"])
     }
 }
+
+@Suite
+@MainActor
+struct HelpTests {
+    @Test
+    func vistaraHelpOpensTheUserGuide() throws {
+        let guide = try #require(HelpCommands.guide)
+        #expect(guide.scheme == "https")
+        #expect(guide.path.hasSuffix("/docs/USER-GUIDE.md"))
+    }
+}

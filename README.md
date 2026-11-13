@@ -1,152 +1,83 @@
 # Vistara
 
-A native macOS app for managing and connecting to RDP servers. FreeRDP does the
-protocol work; everything you see and touch is native macOS UI.
+A Mac app for connecting to Windows computers and other Remote Desktop (RDP)
+servers. FreeRDP does the protocol work; everything you see and touch is a
+native Mac app.
 
-Vistara is in early development and cannot connect to anything yet. Planned
-work is tracked in the [issues](https://github.com/sysmike/vistara/issues),
-grouped by milestone.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/library-dark.png">
+  <img alt="The Connections window, with four connections, folders, and tags" src="docs/images/library.png" width="780">
+</picture>
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Releasing](docs/RELEASING.md)
-- [Updating FreeRDP](docs/UPDATING-FREERDP.md)
-- [Interface specification](docs/DESIGN.md)
-- Requires macOS 14 or later
+Vistara keeps your connections in one window, with folders, tags, and
+favorites. Each session gets its own window that the remote desktop fills, at
+full Retina sharpness. It shares the clipboard, sound, and the folders you
+choose, and reconnects when your network drops. It follows the Mac's
+conventions: Command shortcuts stay with your Mac, and the keyboard is never
+trapped in a session.
 
-## Building the app
+Vistara is new and has not had a release yet. It has been tested against
+FreeRDP's own server; checking it against Windows hosts is still to come.
 
-Build FreeRDP first (see below); the app links and embeds it.
+## Install
 
-The Xcode project is generated from [`project.yml`](project.yml) and is not
-committed. Most code lives in local Swift packages under `Packages/`.
+Vistara needs macOS 14 or later, on Apple silicon or Intel.
 
-```bash
-brew install xcodegen swiftlint
-```
+Signed downloads will appear on the
+[Releases](https://github.com/sysmike/vistara/releases) page: open the DMG and
+drag Vistara to Applications. Until the first release, build it from source
+as described in [Developing Vistara](docs/DEVELOPING.md).
 
-```bash
-xcodegen generate
-```
+## Your first connection
 
-Then open `Vistara.xcodeproj`, or build and test from the command line:
+1. Open Vistara. Choose **File > New Connection…** (Command-N), type the
+   computer's name or address, and click **Add**.
+2. Double-click the connection. Enter your user name and password; turn on
+   *Remember this password in my keychain* if you want to skip this step next
+   time.
+3. Vistara shows the computer's certificate the first time. Compare its
+   fingerprint with the one on the computer, then click **Always Trust** or
+   **Trust Once**.
 
-```bash
-xcodebuild build -project Vistara.xcodeproj -scheme Vistara
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/certificate-dark.png">
+  <img alt="The certificate question, with the SHA-256 fingerprint and the buttons Always Trust, Trust Once, and Cancel" src="docs/images/certificate.png" width="520">
+</picture>
 
-```bash
-swift test --package-path Packages/VistaraCore && swift test --package-path Packages/RDPKit
-```
+The remote desktop opens in its own window and follows its size. Command
+shortcuts stay with your Mac; Command-C, V, X, Z and the other editing
+shortcuts reach the remote computer as their Control equivalents. Use
+**Session > Send Ctrl+Alt+Del** (Control-Option-Delete) to sign in or lock.
+Closing the window disconnects; your session keeps running on the computer,
+and **Session > Reconnect** (Command-R) brings you back.
 
-```bash
-swiftlint lint --strict
-```
+The [user guide](docs/USER-GUIDE.md) covers everything else: the keyboard,
+the clipboard, sound, shared folders, `.rdp` files, Settings, and known
+limits. In the app, it is under **Help > Vistara Help**.
 
-## Integration tests
+## Security
 
-Tests that need an RDP server run only when `VISTARA_TEST_RDP_HOST` is set.
-Also read: `VISTARA_TEST_RDP_PORT`, `VISTARA_TEST_RDP_USER`,
-`VISTARA_TEST_RDP_DOMAIN`, and `VISTARA_TEST_RDP_PASSWORD`.
+- Passwords are kept only in your login keychain, and only when you ask. They
+  never appear in Vistara's files, logs, or exported `.rdp` files.
+- Certificates are always checked. An unknown one is shown with its
+  fingerprint before you trust it; a changed one is a warning, never a silent
+  reconnect.
+- Network Level Authentication and TLS 1.2 or newer are the default.
+- Your Mac shares only what a connection allows: the clipboard while its
+  window is in front, sound, and the folders you chose, each one read-only if
+  you like.
+- Vistara runs in the App Sandbox with the hardened runtime. Its logs replace
+  host names, user names, and passwords with placeholders.
 
-CI runs them against FreeRDP's shadow server on localhost. To do the same
-locally, after building FreeRDP:
+The details are in [Security posture](docs/ARCHITECTURE.md#security-posture).
 
-```bash
-scripts/build-test-server.sh
-```
+## More
 
-```bash
-set -a && eval "$(scripts/run-test-server.sh)" && set +a && swift test --package-path Packages/RDPKit
-```
-
-The test server is a build of FreeRDP's own server with a 1024x768
-screen filled with one colour. It checks the protocol path (TLS, Network Level Authentication,
-graphics updates). It is not a substitute for testing against Windows.
-
-### Against a Windows host
-
-The same tests run against any RDP host. Use a computer you may test
-against, with Remote Desktop and Network Level Authentication turned on, and
-a dedicated test account:
-
-```bash
-export VISTARA_TEST_RDP_HOST=win11-test.example.com
-export VISTARA_TEST_RDP_USER=vistara-test
-export VISTARA_TEST_RDP_DOMAIN=EXAMPLE   # optional
-read -rs VISTARA_TEST_RDP_PASSWORD && export VISTARA_TEST_RDP_PASSWORD
-```
-
-```bash
-swift test --package-path Packages/RDPKit
-```
-
-The app's tests take the same values with a `TEST_RUNNER_` prefix, which
-`xcodebuild` passes on to the test process:
-
-```bash
-TEST_RUNNER_VISTARA_TEST_RDP_HOST="$VISTARA_TEST_RDP_HOST" \
-TEST_RUNNER_VISTARA_TEST_RDP_USER="$VISTARA_TEST_RDP_USER" \
-TEST_RUNNER_VISTARA_TEST_RDP_DOMAIN="${VISTARA_TEST_RDP_DOMAIN:-}" \
-TEST_RUNNER_VISTARA_TEST_RDP_PASSWORD="$VISTARA_TEST_RDP_PASSWORD" \
-xcodebuild test -project Vistara.xcodeproj -scheme Vistara -destination 'platform=macOS'
-```
-
-What changes against a real host:
-
-- **Failed logins are left out** unless `VISTARA_TEST_RDP_ALLOW_FAILED_LOGINS=1`
-  is set. A run signs in with a wrong password about five times, which can
-  lock the account under a typical lockout policy. Set it only for an account
-  without one.
-- Checks that need the test server are left out: its screen colour, its
-  cursor shape, and everything read from its log (keyboard, pointer, and
-  desktop-size requests as the server received them).
-- Connecting repeatedly runs five rounds instead of fifty.
-- The certificate tests expect a certificate the Mac does not trust, such as
-  the self-signed one Windows uses by default. A host with a publicly trusted
-  certificate connects without the question they wait for.
-- The tests ask for a 1024x768 desktop and expect to get it.
-
-Never put the password in a file in this repository or in your shell
-history; `read -rs` above keeps it out of both.
-
-## Logs
-
-Vistara writes to the unified log under the subsystem
-`io.github.sysmike.vistara`. To collect what it says while you reproduce a
-problem:
-
-```bash
-log stream --level debug --predicate 'subsystem == "io.github.sysmike.vistara"'
-```
-
-FreeRDP's own messages appear under the category `FreeRDP`. Before they are
-logged, the hosts, user names, domains, and passwords of your sessions, and
-anything that looks like an IP address, are replaced with `<host>`, `<user>`,
-`<redacted>`, or `<address>`, so the output is meant to be safe to paste into
-a bug report. Read it before you post it anyway. FreeRDP logs warnings and
-errors only; set `WLOG_LEVEL=DEBUG` in the environment for more.
-
-## Building FreeRDP
-
-Vistara embeds FreeRDP as libraries built from a pinned release.
-
-```bash
-scripts/build-freerdp.sh
-```
-
-Needs macOS with the Xcode command line tools and CMake (Ninja is used when
-present). Nothing from Homebrew or MacPorts is linked.
-
-| | |
-| --- | --- |
-| Input | [`FREERDP_VERSION`](FREERDP_VERSION): FreeRDP version and the SHA-256 of its release tarball, on one line |
-| Input | [`scripts/OPENSSL_VERSION`](scripts/OPENSSL_VERSION): the same for OpenSSL, FreeRDP's one external dependency |
-| Output | `build/freerdp/prefix/include` and `build/freerdp/prefix/lib`: headers and relocatable (`@rpath`) libraries for libfreerdp, libfreerdp-client, WinPR, libssl, and libcrypto |
-| Options | `--force` rebuilds even when the prefix is current. `VISTARA_ARCHS` (default `arm64 x86_64`) and `VISTARA_BUILD_DIR` (default `build/freerdp`) change the targets and location. With two architectures each is built on its own and the libraries are joined with `lipo` |
-
-To move to a new FreeRDP release, replace the line in `FREERDP_VERSION` with
-the new version and the checksum from the release's `.sha256` file, then run
-the script again. A checksum mismatch stops the build.
+- [User guide](docs/USER-GUIDE.md)
+- [Developing Vistara](docs/DEVELOPING.md): building, tests, logs
+- [Architecture](docs/ARCHITECTURE.md) and [interface specification](docs/DESIGN.md)
+- [Releasing](docs/RELEASING.md) and [updating FreeRDP](docs/UPDATING-FREERDP.md)
+- [Issues](https://github.com/sysmike/vistara/issues), grouped by milestone
 
 ## License
 
