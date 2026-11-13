@@ -79,9 +79,12 @@ if [[ ${#ARCH_LIST[@]} -gt 1 ]]; then
   log "Joining ${ARCH_LIST[*]} into $PREFIX"
   first="$WORK/${ARCH_LIST[0]}/prefix"
   # The shim compiles against one set of headers for every slice, so the
-  # headers must not differ between architectures.
+  # headers must not differ between architectures. Only these may: each
+  # build's own install paths, and the architecture's name, which FreeRDP
+  # uses for its build information only. None changes a type or a layout.
+  same_except=(-I 'INSTALL_PREFIX' -I 'DATA_PATH' -I 'INSTALL_SYSCONFDIR' -I 'INSTALL_LOCALEDIR' -I 'TARGET_ARCH')
   for arch in "${ARCH_LIST[@]:1}"; do
-    diff -r "$first/include" "$WORK/$arch/prefix/include" ||
+    diff -r "${same_except[@]}" "$first/include" "$WORK/$arch/prefix/include" ||
       die "the installed headers differ between ${ARCH_LIST[0]} and $arch"
   done
   rm -rf "$PREFIX"
