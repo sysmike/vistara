@@ -176,3 +176,34 @@ struct ReconnectionFlowTests {
         #expect(failure.kind == .networkLost)
     }
 }
+
+/// Closing a window as its connection drops: the loss, arriving just after
+/// the user's disconnect, must not bring the session back (#103).
+@Suite
+@MainActor
+struct ReconnectionAfterDisconnectTests {
+    private let lost = RDPDisconnectReason.connectionLost(RDPFailure(kind: .networkLost))
+
+    private func connectedModel() -> SessionModel {
+        SessionModel(
+            target: SessionTarget(name: "Build Server", host: "127.0.0.1", port: 1),
+            credentialStore: InMemoryCredentialStore(), phase: .connected
+        )
+    }
+
+    @Test
+    func aLossAfterTheUsersDisconnectDoesNotReconnect() {
+        let model = connectedModel()
+        model.disconnect()
+        #expect(!model.continueReconnecting(after: lost, wasConnected: true))
+        #expect(!model.phase.isReconnecting)
+    }
+
+    @Test
+    func aLossOtherwiseReconnects() {
+        let model = connectedModel()
+        #expect(model.continueReconnecting(after: lost, wasConnected: true))
+        #expect(model.phase.isReconnecting)
+        model.cancelReconnecting()
+    }
+}

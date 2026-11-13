@@ -166,10 +166,50 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // too, without having entered it itself.
         model.isFullScreen = window.styleMask.contains(.fullScreen)
         onMainChange?(true)
+        // Every tab of the window, also one that was never in front.
+        for tab in window.tabbedWindows ?? [window] {
+            (tab.delegate as? SessionWindowController)?.updateVisibility()
+        }
     }
 
+    /// Also when another tab of the same window is chosen.
     func windowDidResignMain(_ notification: Notification) {
         onMainChange?(false)
+        updateVisibility()
+    }
+
+    /// A background tab, a minimized window, or one entirely covered: nobody
+    /// sees the session, so the server need not send its screen. AppKit says
+    /// so in several ways and orders a tab out only after another is chosen,
+    /// so the answer is read once things have settled.
+    func updateVisibility() {
+        Task { @MainActor [weak self] in self?.readVisibility() }
+    }
+
+    private func readVisibility() {
+        let isSelectedTab = (window.tabGroup?.selectedWindow ?? window) === window
+        let isVisible = window.isVisible && isSelectedTab && !window.isMiniaturized
+            && window.occlusionState.contains(.visible)
+        // The model sends only when this changes.
+        if model.isVisible != isVisible { model.isVisible = isVisible }
+    }
+
+    /// The one event a tab hears when Merge All Windows or a new tab puts it
+    /// in the background without its ever having been in front.
+    func windowDidUpdate(_ notification: Notification) {
+        readVisibility()
+    }
+
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        updateVisibility()
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        updateVisibility()
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        updateVisibility()
     }
 
     /// Enters or leaves the system's full screen.

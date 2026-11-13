@@ -794,7 +794,16 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -2845,6 +3339,9 @@
+@@ -735,6 +1229,8 @@
+ 	WINPR_ASSERT(client);
+ 
+ 	client->suppressOutput = !(allow);
++	/* Vistara's tests: which Suppress Output PDUs arrived. */
++	(void)fprintf(stderr, "vistara-suppress allow=%u\n", (unsigned)allow);
+ 
+ 	if (allow)
+ 	{
+@@ -2845,6 +3341,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -804,7 +813,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3447,11 @@
+@@ -2950,6 +3449,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -816,7 +825,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3539,8 @@
+@@ -3037,6 +3541,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -825,7 +834,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3694,15 @@
+@@ -3190,6 +3696,15 @@
  
  fail:
  

@@ -74,12 +74,19 @@ public enum RDPInputEvent: Sendable, Hashable {
     /// for it when someone pastes. Dropped when the clipboard is not shared.
     /// Never logged.
     case clipboardText(String)
+    /// Whether the remote computer sends its screen. False while nobody can
+    /// see the session (a background tab, a minimized or covered window): it
+    /// stays connected but stops drawing. True draws the whole desktop again.
+    /// A server that does not support this ([MS-RDPBCGR] 2.2.11.3, Suppress
+    /// Output) is sent nothing.
+    case displayUpdates(Bool)
 
     /// Whether a later event of the same kind makes this one pointless, so
     /// that only the latest needs sending.
     func isSuperseded(by later: RDPInputEvent) -> Bool {
         switch (self, later) {
-        case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize), (.clipboardText, .clipboardText): true
+        case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize), (.clipboardText, .clipboardText),
+            (.displayUpdates, .displayUpdates): true
         default: false
         }
     }

@@ -36,6 +36,13 @@ final class SessionModel {
 
     /// Whether the session window is in full screen. Set by the window.
     var isFullScreen = false
+    /// Whether anyone can see the session. Set by the window; while false the
+    /// server stops sending the screen (docs/DESIGN.md, Session tabs).
+    /// The user ended the session; set by disconnect(), read when it ends.
+    @ObservationIgnored var endedByUser = false
+    @ObservationIgnored var isVisible = true {
+        didSet { if isVisible != oldValue, isConnected { send([.displayUpdates(isVisible)]) } }
+    }
 
     /// The last session ended because the connection accepts only trusted
     /// certificates and this one was not.
@@ -122,6 +129,7 @@ final class SessionModel {
     /// Starts a session unless one is running.
     func connect() {
         guard session == nil else { return }
+        endedByUser = false
         // A reconnection attempt keeps showing the reconnecting state.
         if !phase.isReconnecting {
             phase = .connecting
@@ -173,6 +181,8 @@ final class SessionModel {
             cancelReconnecting()
             return
         }
+        // A loss that was already on its way does not start reconnecting.
+        endedByUser = true
         session?.disconnect()
     }
 
@@ -251,6 +261,8 @@ final class SessionModel {
             keepOrForgetEnteredCredentials()
             wasRefused = false
             phase = .connected
+            // A session that connects where nobody can see it.
+            if !isVisible { send([.displayUpdates(false)]) }
         case .disconnected(let reason):
             let wasConnected = phase == .connected
             clipboard?.stop()
@@ -376,17 +388,5 @@ extension SessionModel {
         }
         self.target = target
         onRenewedSharedFolders?(renewals)
-    }
-}
-
-extension SessionModel {
-    /// What the window says about a session that ended.
-    func disconnectMessage(for reason: RDPDisconnectReason) -> DisconnectMessage {
-        DisconnectMessage(
-            reason: reason, name: target.name, host: target.host,
-            canEditConnection: onEditConnection != nil,
-            refusedByPolicy: refusedCertificateByPolicy,
-            gaveUpReconnecting: didGiveUpReconnecting
-        )
     }
 }

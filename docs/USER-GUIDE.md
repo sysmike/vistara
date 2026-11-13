@@ -142,6 +142,11 @@ out, or choose Window > Move Tab to New Window, to give it a window of its
 own again. Connecting to a computer whose session is in a tab brings that
 tab to the front.
 
+A session nobody can see, in a background tab, a minimized window, or a
+window entirely covered, stays connected but asks the remote computer to stop
+sending its screen, which saves network and processor time on both ends. Its
+picture is complete again as soon as you look at it. Sound keeps playing.
+
 A tab shows how its session is doing without your selecting it: a spinner
 while it connects or reconnects, and a symbol once it has ended; point at the
 symbol to see why. VoiceOver announces a background tab's news with the

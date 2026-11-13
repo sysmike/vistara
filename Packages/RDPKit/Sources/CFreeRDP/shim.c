@@ -86,6 +86,9 @@ struct vistara_session {
     // round trips after connecting, and a request made before that must not
     // be lost. Session thread only.
     bool has_pending_size;
+    // Suppress Output waits until the connection is active; zero means none.
+    bool has_pending_display_updates;
+    bool pending_display_updates_allowed;
     uint32_t pending_width, pending_height, pending_scale_percent;
     // The cursor the server asked for last, as a copy this session owns.
     bool cursor_changed;
@@ -738,6 +741,42 @@ bool vistara_session_request_size(vistara_session *session, uint32_t width, uint
     return true;
 }
 
+static bool supports_display_updates(rdpContext *context) {
+    // The server's General Capability Set said whether it supports this.
+    return freerdp_settings_get_bool(context->settings, FreeRDP_SuppressOutput) && context->update->SuppressOutput;
+}
+
+/// Sends a waiting Suppress Output once the connection is active: sent during
+/// the connection's finalization, it can make a server drop the connection.
+static void send_pending_display_updates(vistara_session *session) {
+    rdpContext *context = session->instance->context;
+    if (!session->has_pending_display_updates || !session->connected ||
+        freerdp_get_state(context) != CONNECTION_STATE_ACTIVE) {
+        return;
+    }
+    session->has_pending_display_updates = false;
+    const bool allowed = session->pending_display_updates_allowed;
+    const uint32_t width = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopWidth);
+    const uint32_t height = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopHeight);
+    const RECTANGLE_16 desktop = {
+        .left = 0,
+        .top = 0,
+        .right = (UINT16)(width > UINT16_MAX ? UINT16_MAX : width),
+        .bottom = (UINT16)(height > UINT16_MAX ? UINT16_MAX : height),
+    };
+    (void)context->update->SuppressOutput(context, allowed ? 1 : 0, allowed ? &desktop : NULL);
+}
+
+bool vistara_session_set_display_updates(vistara_session *session, bool allowed) {
+    if (!session->connected || !supports_display_updates(session->instance->context)) {
+        return false;
+    }
+    session->has_pending_display_updates = true;
+    session->pending_display_updates_allowed = allowed;
+    send_pending_display_updates(session);
+    return true;
+}
+
 // MARK: Connection callbacks
 
 static BOOL pre_connect(freerdp *instance) {
@@ -1038,6 +1077,7 @@ bool vistara_session_poll(vistara_session *session, uint32_t timeout_ms) {
         return false;
     }
     send_pending_size(session);
+    send_pending_display_updates(session);
     return !freerdp_shall_disconnect_context(context);
 }
 

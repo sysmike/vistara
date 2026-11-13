@@ -23,7 +23,9 @@ extension SessionModel {
             scheduleAttempt(reconnection.attempts)
             return true
         }
-        guard wasConnected, target.reconnectsAutomatically, ReconnectionPolicy.reconnects(after: reason) else {
+        guard wasConnected, !endedByUser, target.reconnectsAutomatically,
+            ReconnectionPolicy.reconnects(after: reason)
+        else {
             return false
         }
         lastFrame = framebuffer?.snapshot().flatMap(Self.image)
