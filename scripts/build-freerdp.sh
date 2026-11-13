@@ -264,11 +264,12 @@ done < <(find "$PREFIX/lib" -maxdepth 1 -type f -name '*.dylib')
 grep -q "FREERDP_VERSION_FULL \"$FREERDP_VERSION\"" "$PREFIX/include/freerdp3/freerdp/version.h" ||
   { echo "installed headers do not report version $FREERDP_VERSION" >&2; status=1; }
 # The runtime-check option is off, and the asserts are still compiled in:
-# assert() calls __assert_rtn, which NDEBUG would have removed.
-strings "$PREFIX/lib/libfreerdp3.3.dylib" | grep -q "WITH_VERBOSE_WINPR_ASSERT=OFF" ||
+# assert() calls __assert_rtn, which NDEBUG would have removed. (Not grep -q:
+# under pipefail, a grep that stops reading early can fail the pipeline.)
+strings "$PREFIX/lib/libfreerdp3.3.dylib" | grep "WITH_VERBOSE_WINPR_ASSERT=OFF" >/dev/null ||
   { echo "libfreerdp3 does not report WITH_VERBOSE_WINPR_ASSERT=OFF" >&2; status=1; }
 for name in freerdp3 winpr3; do
-  nm -u "$PREFIX/lib/lib$name.3.dylib" | grep -q "___assert_rtn" ||
+  nm -u "$PREFIX/lib/lib$name.3.dylib" | grep "___assert_rtn" >/dev/null ||
     { echo "lib$name: asserts are compiled out" >&2; status=1; }
 done
 [[ $status -eq 0 ]] || die "verification failed"
