@@ -126,6 +126,19 @@ with sessions open asks once.
 Open sessions are listed in the Window menu and in Vistara's Dock menu, which
 also lists your favorites.
 
+### Tabs
+
+Several sessions can share one window as tabs. Window > Merge All Windows
+puts every session window into one; drag a tab out, or choose Window > Move
+Tab to New Window, to give it a window of its own again. Window > Show Next
+Tab and Show Previous Tab switch between them.
+
+Each tab is a session of its own: closing a tab (Command-W) disconnects only
+that session, and File > Close Window (Shift-Command-W) closes the window with
+all its tabs. The tabs share the window's size, and a tab you bring to the
+front asks its computer for that size. Only the tab in front gets your
+keyboard and is offered your Mac's clipboard.
+
 ## Keyboard
 
 While a session window is in front:
@@ -242,7 +255,7 @@ the architecture document.
 
 Vistara is new. It does not yet support:
 
-- more than one monitor, or session tabs;
+- more than one monitor;
 - Remote Desktop Gateway, RemoteApp, smart cards, printers, or USB devices;
 - copying files or images through the clipboard (text only);
 - the microphone (by design for now);

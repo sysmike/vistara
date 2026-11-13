@@ -348,7 +348,7 @@ commands").
 | File | Import… | | Also by opening or dropping a `.rdp` file |
 | File | Export… | | |
 | File | Close Window | Command-W | Standard; Close Tab in a tabbed session window |
-| File | Close Window | Shift-Command-W | Standard; in a tabbed session window only, closes all its tabs |
+| File | Close Window | Shift-Command-W | Standard; closes the session window in front with all its tabs |
 | Edit | Undo, Redo, Cut, Copy, Paste, Select All | Standard | Translated in a session (rule 3) |
 | Edit | Edit Connection… | Command-I | Standard "info" |
 | Edit | Duplicate | Command-D | Standard |

@@ -85,6 +85,15 @@ final class SessionCoordinator {
         controllers.first { $0.model === model }?.window.close()
     }
 
+    /// Closes the session's window with every tab in it, which disconnects
+    /// each of their sessions. This is what File > Close Window does.
+    func closeWindow(of model: SessionModel) {
+        guard let window = controllers.first(where: { $0.model === model })?.window else { return }
+        for tab in window.tabbedWindows ?? [window] {
+            tab.close()
+        }
+    }
+
     /// A saved connection changed: its window, if one is open, uses the new
     /// settings from the next connection on. A live session carries on as it is.
     func connectionChanged(_ target: SessionTarget) {

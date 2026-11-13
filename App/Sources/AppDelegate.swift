@@ -10,6 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])
     }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        SessionWindow.keepOtherWindowsFromTabbing()
+    }
+
     /// Quitting ends every chance to undo a deletion, so the Keychain items
     /// of deleted connections go now.
     func applicationWillTerminate(_ notification: Notification) {
