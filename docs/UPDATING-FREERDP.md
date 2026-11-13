@@ -81,7 +81,7 @@ diff -ru build/freerdp-old/prefix/include build/freerdp/prefix/include
 
 ```
 swift test --package-path Packages/VistaraCore
-scripts/run-test-server.sh > build/test-server.env && set -a && . build/test-server.env && set +a
+set -a; eval "$(scripts/run-test-server.sh)"; set +a   # exports the test server's settings
 swift test --package-path Packages/RDPKit
 xcodegen generate && xcodebuild test -project Vistara.xcodeproj -scheme Vistara
 ```
