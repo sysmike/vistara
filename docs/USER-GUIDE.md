@@ -52,6 +52,8 @@ Settings > General.
   *Keep Size, Scale to Fit* keeps the desktop's size and scales it; *Fixed
   Size* asks for a size you choose. *Optimize for Retina displays* gives the
   desktop every pixel and tells Windows to scale it up, so text stays sharp.
+  *Displays: All Displays* spreads the remote desktop across every display of
+  your Mac; see below.
 - **Devices and Audio**: whether to share the clipboard, and where sound
   plays.
 - **Shared Folders**: Mac folders the remote computer may use. See below.
@@ -125,6 +127,20 @@ with sessions open asks once.
 
 Open sessions are listed in the Window menu and in Vistara's Dock menu, which
 also lists your favorites.
+
+### All displays
+
+A connection set to *All Displays* (in the editor's Display section) opens
+in full screen on every display of your Mac, as one remote desktop: Windows
+sees a monitor for each display, arranged as they are in System Settings >
+Displays, with its taskbar on the display that has the menu bar. The pointer
+moves across them freely.
+
+It is still one session: closing any of its windows, or Session >
+Disconnect, ends it. Leaving full screen on any display brings the session
+back into one window. All Displays needs *Displays have separate Spaces* in
+System Settings > Desktop & Dock; while that is off, the session uses one
+display. New connections start with the choice in Settings > General.
 
 ### Tabs
 
@@ -277,7 +293,7 @@ the architecture document.
 
 Vistara is new. It does not yet support:
 
-- more than one monitor;
+- using only some of your displays (All Displays uses every one);
 - Remote Desktop Gateway, RemoteApp, smart cards, printers, or USB devices;
 - copying files or images through the clipboard (text only);
 - the microphone (by design for now);

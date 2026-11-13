@@ -41,6 +41,10 @@ struct GeneralSettingsView: View {
                     Text("Keep Size, Scale to Fit").tag(Connection.ResolutionMode.scaleToFit)
                 }
                 Toggle("Optimize for Retina displays", isOn: $defaults.usesHiDPI)
+                Picker("Displays", selection: $defaults.usesAllDisplays) {
+                    Text("This Display").tag(false)
+                    Text("All Displays").tag(true)
+                }
                 Toggle("Share clipboard", isOn: $defaults.sharesClipboard)
                 Picker("Sound", selection: $defaults.audioMode) {
                     Text("Play on This Mac").tag(Connection.AudioMode.playOnThisMac)

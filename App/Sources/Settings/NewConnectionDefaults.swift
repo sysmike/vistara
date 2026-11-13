@@ -11,11 +11,31 @@ struct NewConnectionDefaults: Codable, Equatable {
     /// computer, so it is not offered as a default.
     var resolutionMode = Connection.ResolutionMode.matchWindow
     var usesHiDPI = true
+    var usesAllDisplays = false
     var sharesClipboard = true
     var audioMode = Connection.AudioMode.playOnThisMac
     var reconnectsAutomatically = true
     var requiresNLA = true
     var certificatePolicy = Connection.CertificatePolicy.askOnFirstUse
+
+    init() {}
+
+    /// Each setting that is missing keeps its default, so defaults saved
+    /// before a setting existed still load.
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        resolutionMode = try values.decodeIfPresent(Connection.ResolutionMode.self, forKey: .resolutionMode)
+            ?? resolutionMode
+        usesHiDPI = try values.decodeIfPresent(Bool.self, forKey: .usesHiDPI) ?? usesHiDPI
+        usesAllDisplays = try values.decodeIfPresent(Bool.self, forKey: .usesAllDisplays) ?? usesAllDisplays
+        sharesClipboard = try values.decodeIfPresent(Bool.self, forKey: .sharesClipboard) ?? sharesClipboard
+        audioMode = try values.decodeIfPresent(Connection.AudioMode.self, forKey: .audioMode) ?? audioMode
+        reconnectsAutomatically =
+            try values.decodeIfPresent(Bool.self, forKey: .reconnectsAutomatically) ?? reconnectsAutomatically
+        requiresNLA = try values.decodeIfPresent(Bool.self, forKey: .requiresNLA) ?? requiresNLA
+        certificatePolicy = try values.decodeIfPresent(Connection.CertificatePolicy.self, forKey: .certificatePolicy)
+            ?? certificatePolicy
+    }
 
     /// What is saved, or the built-in defaults when nothing is or it cannot
     /// be read.
@@ -38,6 +58,7 @@ extension ConnectionDraft {
         self.init()
         resolutionMode = defaults.resolutionMode == .fixed ? .matchWindow : defaults.resolutionMode
         usesHiDPI = defaults.usesHiDPI
+        usesAllDisplays = defaults.usesAllDisplays
         sharesClipboard = defaults.sharesClipboard
         audioMode = defaults.audioMode
         reconnectsAutomatically = defaults.reconnectsAutomatically

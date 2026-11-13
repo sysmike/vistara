@@ -20,12 +20,28 @@ struct NewConnectionDefaultsTests {
         #expect(draft.requiresNLA)
     }
 
+    /// Defaults saved before a setting existed keep what they had; the new
+    /// setting takes its default (#113).
+    @Test
+    func defaultsSavedBeforeASettingExistedStillLoad() throws {
+        let store = try temporaryDefaults()
+        let older = #"{"resolutionMode":"scaleToFit","usesHiDPI":false,"sharesClipboard":false}"#
+        store.set(Data(older.utf8), forKey: NewConnectionDefaults.key)
+        let loaded = NewConnectionDefaults.load(from: store)
+        #expect(loaded.resolutionMode == .scaleToFit)
+        #expect(!loaded.usesHiDPI)
+        #expect(!loaded.sharesClipboard)
+        #expect(!loaded.usesAllDisplays)
+        #expect(loaded.requiresNLA)
+    }
+
     @Test
     func savedDefaultsShapeEveryNewConnection() throws {
         let store = try temporaryDefaults()
         var defaults = NewConnectionDefaults()
         defaults.resolutionMode = .scaleToFit
         defaults.usesHiDPI = false
+        defaults.usesAllDisplays = true
         defaults.sharesClipboard = false
         defaults.audioMode = .off
         defaults.reconnectsAutomatically = false
@@ -38,6 +54,7 @@ struct NewConnectionDefaultsTests {
         let connection = try #require(draft.connection())
         #expect(connection.resolutionMode == .scaleToFit)
         #expect(!connection.usesHiDPI)
+        #expect(connection.usesAllDisplays)
         #expect(!connection.sharesClipboard)
         #expect(connection.audioMode == .off)
         #expect(!connection.reconnectsAutomatically)
