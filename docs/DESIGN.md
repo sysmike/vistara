@@ -417,6 +417,13 @@ scrolling direction (HIG Settings: "Respect people's systemwide settings").
 - **Controls**: standard sizes. Custom hit areas are at least 20 by 20 pt, 28
   by 28 pt by default (HIG Accessibility).
 - **Motion**: system transitions only. Nothing animates on its own.
+- **App icon**: the same screen again and again, each further away, converging
+  on one point: a remote desktop is a screen seen from a distance, the vista
+  in the name. A white near frame, an amber and a pale teal frame, and an
+  amber screen on a deep indigo to teal gradient. No text, no screenshot, no
+  hardware (HIG App icons). The layers in `Design/AppIcon` are the one
+  source; `render.py` draws every size in the macOS 11–15 shape. A layered
+  Icon Composer icon with dark and tinted variants needs Xcode 26 (issue #87).
 
 ## Accessibility
 
