@@ -9,6 +9,8 @@ import SwiftUI
 final class SessionWindowController: NSObject, NSWindowDelegate {
     static let defaultContentSize = NSSize(width: 1280, height: 800)
     static let minimumContentSize = NSSize(width: 480, height: 320)
+    /// Shared by every session window and no other.
+    static let tabbingIdentifier = "io.github.sysmike.vistara.session"
 
     let model: SessionModel
     let window: NSWindow
@@ -18,7 +20,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
 
     init(model: SessionModel) {
         self.model = model
-        window = NSWindow(
+        window = SessionWindow(
             contentRect: NSRect(origin: .zero, size: Self.defaultContentSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -28,8 +30,10 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
 
         let target = model.target
         window.isReleasedWhenClosed = false
-        // Session tabs are a later feature (issue #37).
-        window.tabbingMode = .disallowed
+        // Session windows group as tabs with each other, and only with each
+        // other (docs/DESIGN.md, Session tabs).
+        window.tabbingIdentifier = Self.tabbingIdentifier
+        window.tabbingMode = .automatic
         // The system's own full screen: the green button, View > Enter Full
         // Screen, and its shortcut. The window gets a Space of its own, the
         // menu bar appears at the top edge, and the system keeps clear of a
@@ -117,6 +121,9 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     // MARK: NSWindowDelegate
 
     func windowDidBecomeMain(_ notification: Notification) {
+        // A tab brought to the front of a full-screen window is full screen
+        // too, without having entered it itself.
+        model.isFullScreen = window.styleMask.contains(.fullScreen)
         onMainChange?(true)
     }
 
@@ -151,5 +158,43 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         model.disconnect()
         onClose?()
+    }
+}
+
+/// A session window. It remembers its size and position for its computer
+/// only while it is alone: a tab group's frame belongs to the group, not to
+/// any one computer (docs/DESIGN.md, Session tabs).
+final class SessionWindow: NSWindow {
+    var isTabbed: Bool {
+        (tabbedWindows?.count ?? 1) > 1
+    }
+
+    override func saveFrame(usingName name: NSWindow.PersistableFrameDescriptor) {
+        guard !isTabbed else { return }
+        super.saveFrame(usingName: name)
+    }
+
+    /// The Connections window, Settings, and any other window never become a
+    /// tab: each is set so as it first becomes key, before anyone can merge
+    /// or drag it. SwiftUI makes those windows, so this is where Vistara
+    /// meets them.
+    @MainActor
+    static func keepOtherWindowsFromTabbing() {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { notification in
+            MainActor.assumeIsolated {
+                refuseTabbing(notification.object as? NSWindow)
+            }
+        }
+        for window in NSApp.windows {
+            refuseTabbing(window)
+        }
+    }
+
+    @MainActor
+    static func refuseTabbing(_ window: NSWindow?) {
+        guard let window, !(window is SessionWindow), window.tabbingMode != .disallowed else { return }
+        window.tabbingMode = .disallowed
     }
 }

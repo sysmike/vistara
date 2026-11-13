@@ -14,6 +14,25 @@ struct SessionCommands: Commands {
         CommandMenu("Session") {
             SessionMenuItems(coordinator: coordinator)
         }
+        // Right after File > Close, which AppKit names Close Tab in a tabbed
+        // window (HIG The menu bar, File menu).
+        CommandGroup(after: .saveItem) {
+            CloseWindowMenuItem(coordinator: coordinator)
+        }
+    }
+}
+
+/// File > Close Window: the session window in front with all its tabs.
+private struct CloseWindowMenuItem: View {
+    let coordinator: SessionCoordinator
+
+    var body: some View {
+        let model = coordinator.activeModel
+        Button("Close Window") {
+            if let model { coordinator.closeWindow(of: model) }
+        }
+        .keyboardShortcut("w", modifiers: [.shift, .command])
+        .disabled(model == nil)
     }
 }
 
