@@ -105,28 +105,7 @@ final class SessionHandle {
 
         let decider = decideCertificate.map(CertificateDecider.init)
         let folders = SharedFolderList(target.sharedFolders)
-        var options = vistara_connect_options(
-            host: host,
-            port: target.port,
-            username: username,
-            domain: domain,
-            password: password,
-            width: target.width,
-            height: target.height,
-            scale_percent: target.scalePercent,
-            require_nla: target.requiresNLA,
-            play_audio_on_remote: target.audio == .remote,
-            play_audio_here: target.audio == .thisMac,
-            share_clipboard: target.sharesClipboard,
-            shared_folders: nil,
-            shared_folder_count: 0,
-            keyboard_layout: target.keyboard?.layout ?? 0,
-            keyboard_type: target.keyboard?.type ?? 0,
-            keyboard_subtype: target.keyboard?.subtype ?? 0,
-            keyboard_function_keys: target.keyboard?.functionKeys ?? 0,
-            decide_certificate: nil,
-            decide_certificate_context: nil
-        )
+        var options = target.options(host: host, username: username, domain: domain, password: password)
         if let decider {
             options.decide_certificate = Self.askDecider
             options.decide_certificate_context = Unmanaged.passUnretained(decider).toOpaque()
@@ -384,5 +363,37 @@ private final class SharedFolderList {
     deinit {
         pointer?.deallocate()
         strings.forEach { free($0) }
+    }
+}
+
+extension SessionHandle.Target {
+    /// The C options for these settings, pointing at the given strings. Shared
+    /// folders and the certificate question are filled in by the caller.
+    fileprivate func options(
+        host: UnsafePointer<CChar>, username: UnsafePointer<CChar>, domain: UnsafePointer<CChar>?,
+        password: UnsafePointer<CChar>
+    ) -> vistara_connect_options {
+        vistara_connect_options(
+            host: host,
+            port: port,
+            username: username,
+            domain: domain,
+            password: password,
+            width: width,
+            height: height,
+            scale_percent: scalePercent,
+            require_nla: requiresNLA,
+            play_audio_on_remote: audio == .remote,
+            play_audio_here: audio == .thisMac,
+            share_clipboard: sharesClipboard,
+            shared_folders: nil,
+            shared_folder_count: 0,
+            keyboard_layout: keyboard?.layout ?? 0,
+            keyboard_type: keyboard?.type ?? 0,
+            keyboard_subtype: keyboard?.subtype ?? 0,
+            keyboard_function_keys: keyboard?.functionKeys ?? 0,
+            decide_certificate: nil,
+            decide_certificate_context: nil
+        )
     }
 }
