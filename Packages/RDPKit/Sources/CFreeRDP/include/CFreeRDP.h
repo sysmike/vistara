@@ -100,6 +100,13 @@ typedef struct {
     /// and not drives plugged in later.
     const vistara_shared_folder *_Nullable shared_folders;
     size_t shared_folder_count;
+    /// The keyboard to announce: a Windows keyboard layout identifier, or 0
+    /// to leave the layout to the server. A type of 0 keeps FreeRDP's IBM
+    /// enhanced keyboard; otherwise type, subtype, and function keys are sent.
+    uint32_t keyboard_layout;
+    uint32_t keyboard_type;
+    uint32_t keyboard_subtype;
+    uint32_t keyboard_function_keys;
     /// Asked about every server certificate. With NULL, every certificate is
     /// rejected: nothing is ever accepted silently.
     vistara_certificate_decider _Nullable decide_certificate;
@@ -187,6 +194,8 @@ typedef struct {
     bool remote_console_audio;
     bool audio_playback;
     uint32_t desktop_scale_factor;
+    uint32_t keyboard_layout;
+    uint32_t keyboard_type;
 } vistara_security_settings;
 
 void vistara_session_read_settings(const vistara_session *session, vistara_security_settings *settings);

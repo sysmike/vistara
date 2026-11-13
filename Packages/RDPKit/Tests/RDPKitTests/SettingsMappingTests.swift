@@ -52,6 +52,21 @@ struct SettingsMappingTests {
         }
     }
 
+    @Test func theKeyboardIsAnnouncedOnlyWhenKnown() throws {
+        // FreeRDP's own defaults: no layout, IBM enhanced keyboard (type 4).
+        let unknown = try settings()
+        #expect(unknown.keyboardLayout == 0)
+        #expect(unknown.keyboardType == 4)
+
+        let german = try settings { $0.keyboard = RDPKeyboard(layout: 0x0407) }
+        #expect(german.keyboardLayout == 0x0407)
+        #expect(german.keyboardType == 4)
+
+        let japanese = try settings { $0.keyboard = RDPKeyboard(layout: 0x0411, type: 7, subtype: 2, functionKeys: 12) }
+        #expect(japanese.keyboardLayout == 0x0411)
+        #expect(japanese.keyboardType == 7)
+    }
+
     @Test func theDesktopScaleIsPassedOn() throws {
         try #expect(settings { $0.scalePercent = 200 }.desktopScaleFactor == 200)
     }

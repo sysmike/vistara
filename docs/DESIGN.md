@@ -239,7 +239,12 @@ With Full Keyboard Access on, Tab inside a session goes to the remote host;
 rule 2 is how focus leaves the session.
 
 Keys are sent by position, not by character: the remote computer's keyboard
-layout decides what a key types, so the Mac input source does not matter.
+layout decides what a key types. To make that layout match the key caps,
+Vistara tells the server which layout the Mac's input source is when it
+connects (German, French, Japanese, and the other common ones). A server may
+start a new session with it; Windows keeps an account's own layout once it
+has one. An input source without a clear Windows match leaves the choice to
+the server.
 A few keys have no exact counterpart. *Judgment:*
 
 - Delete is Backspace, Forward Delete is Delete, and Help is Insert.

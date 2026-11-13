@@ -139,6 +139,8 @@ final class SessionModel {
         let access = SharedFolderAccess(target.sharedFolders)
         folderAccess = access
         configuration.sharedFolders = access.folders
+        // The Mac's input source, as the layout a new remote session starts with.
+        configuration.keyboard = MacKeyboardLayout.current
         let session = RDPSession(configuration: configuration, delegate: delegate)
         self.session = session
         framebuffer = session.framebuffer

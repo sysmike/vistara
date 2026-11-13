@@ -21,6 +21,7 @@ final class SessionHandle {
         var audio: RDPAudioMode = .off
         var sharesClipboard = false
         var sharedFolders: [RDPSharedFolder] = []
+        var keyboard: RDPKeyboard?
     }
 
     enum ConnectResult: Equatable {
@@ -104,24 +105,7 @@ final class SessionHandle {
 
         let decider = decideCertificate.map(CertificateDecider.init)
         let folders = SharedFolderList(target.sharedFolders)
-        var options = vistara_connect_options(
-            host: host,
-            port: target.port,
-            username: username,
-            domain: domain,
-            password: password,
-            width: target.width,
-            height: target.height,
-            scale_percent: target.scalePercent,
-            require_nla: target.requiresNLA,
-            play_audio_on_remote: target.audio == .remote,
-            play_audio_here: target.audio == .thisMac,
-            share_clipboard: target.sharesClipboard,
-            shared_folders: nil,
-            shared_folder_count: 0,
-            decide_certificate: nil,
-            decide_certificate_context: nil
-        )
+        var options = target.options(host: host, username: username, domain: domain, password: password)
         if let decider {
             options.decide_certificate = Self.askDecider
             options.decide_certificate_context = Unmanaged.passUnretained(decider).toOpaque()
@@ -153,6 +137,8 @@ final class SessionHandle {
         var remoteConsoleAudio: Bool
         var audioPlayback: Bool
         var desktopScaleFactor: UInt32
+        var keyboardLayout: UInt32
+        var keyboardType: UInt32
     }
 
     /// What FreeRDP was told, read back. For tests.
@@ -162,7 +148,8 @@ final class SessionHandle {
         return GivenSettings(
             nla: given.nla, tls: given.tls, rdp: given.rdp, tlsMinimumVersion: given.tls_min_version,
             tlsSecurityLevel: given.tls_security_level, remoteConsoleAudio: given.remote_console_audio,
-            audioPlayback: given.audio_playback, desktopScaleFactor: given.desktop_scale_factor
+            audioPlayback: given.audio_playback, desktopScaleFactor: given.desktop_scale_factor,
+            keyboardLayout: given.keyboard_layout, keyboardType: given.keyboard_type
         )
     }
 
@@ -376,5 +363,37 @@ private final class SharedFolderList {
     deinit {
         pointer?.deallocate()
         strings.forEach { free($0) }
+    }
+}
+
+extension SessionHandle.Target {
+    /// The C options for these settings, pointing at the given strings. Shared
+    /// folders and the certificate question are filled in by the caller.
+    fileprivate func options(
+        host: UnsafePointer<CChar>, username: UnsafePointer<CChar>, domain: UnsafePointer<CChar>?,
+        password: UnsafePointer<CChar>
+    ) -> vistara_connect_options {
+        vistara_connect_options(
+            host: host,
+            port: port,
+            username: username,
+            domain: domain,
+            password: password,
+            width: width,
+            height: height,
+            scale_percent: scalePercent,
+            require_nla: requiresNLA,
+            play_audio_on_remote: audio == .remote,
+            play_audio_here: audio == .thisMac,
+            share_clipboard: sharesClipboard,
+            shared_folders: nil,
+            shared_folder_count: 0,
+            keyboard_layout: keyboard?.layout ?? 0,
+            keyboard_type: keyboard?.type ?? 0,
+            keyboard_subtype: keyboard?.subtype ?? 0,
+            keyboard_function_keys: keyboard?.functionKeys ?? 0,
+            decide_certificate: nil,
+            decide_certificate_context: nil
+        )
     }
 }

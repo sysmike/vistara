@@ -10,6 +10,25 @@ public enum RDPAudioMode: Sendable, Hashable {
     case off
 }
 
+/// The keyboard the client announces when connecting, which a server may use
+/// as the session's starting layout ([MS-RDPBCGR] 2.2.1.3.2).
+public struct RDPKeyboard: Sendable, Equatable {
+    /// A Windows keyboard layout identifier, such as 0x0407 for German.
+    public var layout: UInt32
+    /// Keyboard type, subtype, and number of function keys. Zero keeps
+    /// FreeRDP's IBM enhanced (101 or 102 keys) keyboard.
+    public var type: UInt32
+    public var subtype: UInt32
+    public var functionKeys: UInt32
+
+    public init(layout: UInt32, type: UInt32 = 0, subtype: UInt32 = 0, functionKeys: UInt32 = 0) {
+        self.layout = layout
+        self.type = type
+        self.subtype = subtype
+        self.functionKeys = functionKeys
+    }
+}
+
 /// A Mac folder shared with the remote computer, which sees it as a drive.
 public struct RDPSharedFolder: Sendable, Equatable {
     /// The drive's name on the remote computer.
@@ -48,6 +67,8 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     /// The only folders the remote computer sees. Empty: none, and the device
     /// redirection channel is not loaded.
     public var sharedFolders: [RDPSharedFolder]
+    /// The keyboard to announce. Nil leaves the layout to the server.
+    public var keyboard: RDPKeyboard?
     /// Applied by reconnection (issue #28).
     public var reconnectsAutomatically: Bool
 
@@ -63,6 +84,7 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         audio: RDPAudioMode = .thisMac,
         sharesClipboard: Bool = true,
         sharedFolders: [RDPSharedFolder] = [],
+        keyboard: RDPKeyboard? = nil,
         reconnectsAutomatically: Bool = true
     ) {
         self.host = host
@@ -76,6 +98,7 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         self.audio = audio
         self.sharesClipboard = sharesClipboard
         self.sharedFolders = sharedFolders
+        self.keyboard = keyboard
         self.reconnectsAutomatically = reconnectsAutomatically
     }
 }
