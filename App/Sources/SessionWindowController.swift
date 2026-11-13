@@ -166,7 +166,10 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // too, without having entered it itself.
         model.isFullScreen = window.styleMask.contains(.fullScreen)
         onMainChange?(true)
-        updateVisibility()
+        // Every tab of the window, also one that was never in front.
+        for tab in window.tabbedWindows ?? [window] {
+            (tab.delegate as? SessionWindowController)?.updateVisibility()
+        }
     }
 
     /// Also when another tab of the same window is chosen.
@@ -179,10 +182,12 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     /// sees the session, so the server need not send its screen. AppKit says
     /// so in several ways and orders a tab out only after another is chosen,
     /// so the answer is read once things have settled.
-    private func updateVisibility() {
+    func updateVisibility() {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            model.isVisible = window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible)
+            let isSelectedTab = (window.tabGroup?.selectedWindow ?? window) === window
+            model.isVisible = window.isVisible && isSelectedTab && !window.isMiniaturized
+                && window.occlusionState.contains(.visible)
         }
     }
 
