@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import VistaraCore
@@ -106,5 +107,20 @@ struct ImportExportTests {
         #expect(model.library.connections.isEmpty)
         await model.load()
         #expect(model.library.connections.map(\.name) == ["Lab"])
+    }
+
+    /// After an import that dropped a password, skipped lines, and missed a file.
+    @Test(arguments: [false, true])
+    func importNotice(dark: Bool) async throws {
+        let report = ImportReport(
+            imported: ["Build Server"], droppedPasswords: ["Build Server"], skippedLines: 2,
+            failures: ["“Notes.rdp” names no computer and wasn’t imported."]
+        )
+        let (model, _) = try await temporaryLibrary(SampleLibrary.library)
+        model.importReport = report
+        let view = ConnectionsView(model: model) { _ in }
+        let name = dark ? "import-notice-dark" : "import-notice"
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 780, height: 420), name: name, dark: dark)
+        #expect(bytes > 0)
     }
 }

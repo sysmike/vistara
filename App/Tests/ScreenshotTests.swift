@@ -127,21 +127,6 @@ struct ScreenshotTests {
         #expect(bytes > 0)
     }
 
-    /// After an import that dropped a password, skipped lines, and missed a file.
-    @Test(arguments: [false, true])
-    func importNotice(dark: Bool) async throws {
-        let report = ImportReport(
-            imported: ["Build Server"], droppedPasswords: ["Build Server"], skippedLines: 2,
-            failures: ["“Notes.rdp” names no computer and wasn’t imported."]
-        )
-        let (model, _) = try await temporaryLibrary(SampleLibrary.library)
-        model.importReport = report
-        let view = ConnectionsView(model: model) { _ in }
-        let name = dark ? "import-notice-dark" : "import-notice"
-        let bytes = try await Screenshots.write(view, size: Self.librarySize, name: name, dark: dark)
-        #expect(bytes > 0)
-    }
-
     /// The lost session's last picture, dimmed, while Vistara reconnects.
     @Test(arguments: [false, true])
     func reconnecting(dark: Bool) async throws {
