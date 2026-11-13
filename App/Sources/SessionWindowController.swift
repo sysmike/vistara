@@ -172,6 +172,12 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         onMainChange?(false)
     }
 
+    /// A background tab, a minimized window, or one entirely covered: nobody
+    /// sees the session, so the server need not send its screen.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        model.isVisible = window.occlusionState.contains(.visible)
+    }
+
     /// Enters or leaves the system's full screen.
     func toggleFullScreen() {
         window.toggleFullScreen(nil)

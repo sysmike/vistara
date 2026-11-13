@@ -738,6 +738,27 @@ bool vistara_session_request_size(vistara_session *session, uint32_t width, uint
     return true;
 }
 
+bool vistara_session_set_display_updates(vistara_session *session, bool allowed) {
+    if (!session->connected) {
+        return false;
+    }
+    rdpContext *context = session->instance->context;
+    rdpSettings *settings = context->settings;
+    // The server's General Capability Set said whether it supports this.
+    if (!freerdp_settings_get_bool(settings, FreeRDP_SuppressOutput) || !context->update->SuppressOutput) {
+        return false;
+    }
+    const uint32_t width = freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth);
+    const uint32_t height = freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight);
+    const RECTANGLE_16 desktop = {
+        .left = 0,
+        .top = 0,
+        .right = (UINT16)(width > UINT16_MAX ? UINT16_MAX : width),
+        .bottom = (UINT16)(height > UINT16_MAX ? UINT16_MAX : height),
+    };
+    return context->update->SuppressOutput(context, allowed ? 1 : 0, allowed ? &desktop : NULL);
+}
+
 // MARK: Connection callbacks
 
 static BOOL pre_connect(freerdp *instance) {

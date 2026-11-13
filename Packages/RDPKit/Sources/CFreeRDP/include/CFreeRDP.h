@@ -254,6 +254,12 @@ bool vistara_session_send_lock_state(vistara_session *session, bool caps_lock, b
 bool vistara_session_request_size(vistara_session *session, uint32_t width, uint32_t height,
                                   uint32_t scale_percent);
 
+/// Whether the server sends the screen ([MS-RDPBCGR] 2.2.11.3, Suppress
+/// Output). False while nobody can see the session; true asks for the whole
+/// desktop again. Returns false, sending nothing, when the server did not say
+/// it supports this, or the session is not connected.
+bool vistara_session_set_display_updates(vistara_session *session, bool allowed);
+
 /// Moves the pointer to a position in framebuffer pixels.
 bool vistara_session_send_pointer_move(vistara_session *session, uint16_t x, uint16_t y);
 

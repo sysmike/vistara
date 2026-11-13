@@ -36,6 +36,11 @@ final class SessionModel {
 
     /// Whether the session window is in full screen. Set by the window.
     var isFullScreen = false
+    /// Whether anyone can see the session. Set by the window; while false the
+    /// server stops sending the screen (docs/DESIGN.md, Session tabs).
+    @ObservationIgnored var isVisible = true {
+        didSet { if isVisible != oldValue, isConnected { send([.displayUpdates(isVisible)]) } }
+    }
 
     /// The last session ended because the connection accepts only trusted
     /// certificates and this one was not.
@@ -251,6 +256,8 @@ final class SessionModel {
             keepOrForgetEnteredCredentials()
             wasRefused = false
             phase = .connected
+            // A session that connects where nobody can see it.
+            if !isVisible { send([.displayUpdates(false)]) }
         case .disconnected(let reason):
             let wasConnected = phase == .connected
             clipboard?.stop()
