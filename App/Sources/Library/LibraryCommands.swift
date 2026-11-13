@@ -9,6 +9,8 @@ struct LibraryCommands: Commands {
             NewConnectionMenuItem()
             NewFolderMenuItem()
             ConnectMenuItem()
+            Divider()
+            ImportExportMenuItems()
         }
         CommandGroup(after: .pasteboard) {
             ConnectionEditingMenuItems()
@@ -100,6 +102,25 @@ private struct ConnectionEditingMenuItems: View {
         } else {
             actions?.delete?()
         }
+    }
+}
+
+/// File > Import and Export. Import also opens the connections window.
+private struct ImportExportMenuItems: View {
+    @FocusedValue(\.libraryActions) private var actions
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Import…") {
+            if let importFiles = actions?.importFiles {
+                importFiles()
+            } else {
+                openWindow(id: "connections")
+                LibraryModel.shared.isImporting = true
+            }
+        }
+        Button("Export…") { actions?.export?() }
+            .disabled(actions?.export == nil)
     }
 }
 

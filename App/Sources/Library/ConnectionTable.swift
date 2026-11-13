@@ -9,29 +9,36 @@ struct ConnectionTable: View {
     let commands: ConnectionCommands
 
     var body: some View {
-        let rows = model.visibleConnections
-        Group {
-            if case .unreadable(let reason) = model.loadState {
-                ContentUnavailableView("Connections Unavailable", systemImage: "exclamationmark.triangle",
-                                       description: Text(reason))
-            } else if model.loadState == .loading {
-                ProgressView()
-            } else if model.library.connections.isEmpty {
-                emptyLibrary
-            } else if rows.isEmpty {
-                emptySelection
-            } else {
-                table(rows)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        // Notices sit above the list in a plain stack: inset into the table's
+        // safe area, they threw off the layout of the whole window.
+        VStack(spacing: 0) {
             if model.showsSkippedNotice {
                 SkippedEntriesNotice(
                     skipped: model.skippedEntries, copy: model.originalFileCopy,
                     dismiss: { model.showsSkippedNotice = false }
                 )
             }
+            if let report = model.importReport {
+                ImportNotice(report: report) { model.importReport = nil }
+            }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        let rows = model.visibleConnections
+        if case .unreadable(let reason) = model.loadState {
+            ContentUnavailableView("Connections Unavailable", systemImage: "exclamationmark.triangle",
+                                   description: Text(reason))
+        } else if model.loadState == .loading {
+            ProgressView()
+        } else if model.library.connections.isEmpty {
+            emptyLibrary
+        } else if rows.isEmpty {
+            emptySelection
+        } else {
+            table(rows)
         }
     }
 
@@ -164,6 +171,7 @@ struct ConnectionTable: View {
                 .disabled(ids.count != 1 || !commands.canChange)
             Button("Duplicate") { commands.duplicate(ids) }
                 .disabled(!commands.canChange)
+            Button("Export…") { commands.export(ids) }
             Divider()
             Button(model.wouldFavorite(ids) ? "Add to Favorites" : "Remove from Favorites") {
                 model.toggleFavorite(ids)

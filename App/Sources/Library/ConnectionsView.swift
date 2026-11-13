@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import VistaraCore
 
 /// The primary window: a sidebar of sections and a table of connections.
@@ -36,6 +37,19 @@ struct ConnectionsView: View {
                 }
             }
         }
+        .fileImporter(isPresented: $model.isImporting, allowedContentTypes: [.rdp], allowsMultipleSelection: true) {
+            if case .success(let urls) = $0 { Task { await model.importRDPFiles(urls) } }
+        }
+        .fileExporter(
+            isPresented: $model.isExporting, documents: model.selectedDocuments, contentType: .rdp
+        ) { _ in }
+        // Dropping .rdp files from the Finder imports them.
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter { $0.pathExtension.lowercased() == "rdp" }
+            guard !files.isEmpty, model.canChange else { return false }
+            Task { await model.importRDPFiles(files) }
+            return true
+        }
         .focusedSceneValue(\.libraryActions, actions)
         .frame(minWidth: 560, minHeight: 320)
     }
@@ -60,6 +74,10 @@ struct ConnectionsView: View {
             delete: { ids in model.delete(ids, undoManager: undoManager) },
             move: { ids, folderID in model.move(ids, to: folderID, undoManager: undoManager) },
             new: { model.editorRequest = .new },
+            export: { ids in
+                model.selectedIDs = ids
+                model.isExporting = true
+            },
             canChange: model.canChange
         )
     }
@@ -72,6 +90,8 @@ struct ConnectionsView: View {
         return LibraryActions(
             newConnection: model.canChange ? commands.new : nil,
             find: ConnectionsView.focusSearchField,
+            importFiles: model.canChange ? { model.isImporting = true } : nil,
+            export: ids.isEmpty ? nil : { commands.export(ids) },
             connect: ids.isEmpty ? nil : { commands.connect(ids) },
             edit: ids.count == 1 && model.canChange ? { if let id = ids.first { commands.edit(id) } } : nil,
             duplicate: canChange ? { commands.duplicate(ids) } : nil,
@@ -116,6 +136,7 @@ struct ConnectionCommands {
     var delete: (Set<Connection.ID>) -> Void
     var move: (Set<Connection.ID>, Folder.ID?) -> Void
     var new: () -> Void
+    var export: (Set<Connection.ID>) -> Void
     var canChange: Bool
 }
 
@@ -123,6 +144,8 @@ struct ConnectionCommands {
 struct LibraryActions {
     var newConnection: (() -> Void)?
     var find: () -> Void
+    var importFiles: (() -> Void)?
+    var export: (() -> Void)?
     var connect: (() -> Void)?
     var edit: (() -> Void)?
     var duplicate: (() -> Void)?

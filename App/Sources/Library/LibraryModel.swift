@@ -34,6 +34,14 @@ final class LibraryModel {
     private(set) var originalFileCopy: URL?
     /// Whether the notice about left-out entries still shows.
     var showsSkippedNotice = false
+    /// What the last import did, shown until closed.
+    var importReport: ImportReport?
+    /// Set to show the open panel for File > Import.
+    var isImporting = false
+    /// Set to show the save panel for File > Export.
+    var isExporting = false
+    /// Files opened from the Finder before the library had loaded.
+    @ObservationIgnored var pendingImports: [URL] = []
     /// Set when the last change could not be saved.
     private(set) var saveFailed = false
 
@@ -96,6 +104,11 @@ final class LibraryModel {
             originalFileCopy = result.originalFileCopy
             showsSkippedNotice = !result.skippedEntries.isEmpty
             loadState = .loaded
+            if !pendingImports.isEmpty {
+                let urls = pendingImports
+                pendingImports = []
+                await importRDPFiles(urls)
+            }
         } catch LibraryCodec.CodecError.newerSchema {
             loadState = .unreadable(
                 "Your connections were saved by a newer version of Vistara. Update Vistara to use them."

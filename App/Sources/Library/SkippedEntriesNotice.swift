@@ -21,8 +21,7 @@ struct SkippedEntriesNotice: View {
                     Text("The original file was kept as “\(copy.lastPathComponent)”.")
                 }
             }
-            .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             if let copy {
                 Button("Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([copy])
