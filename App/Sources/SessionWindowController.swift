@@ -183,12 +183,21 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     /// so in several ways and orders a tab out only after another is chosen,
     /// so the answer is read once things have settled.
     func updateVisibility() {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let isSelectedTab = (window.tabGroup?.selectedWindow ?? window) === window
-            model.isVisible = window.isVisible && isSelectedTab && !window.isMiniaturized
-                && window.occlusionState.contains(.visible)
-        }
+        Task { @MainActor [weak self] in self?.readVisibility() }
+    }
+
+    private func readVisibility() {
+        let isSelectedTab = (window.tabGroup?.selectedWindow ?? window) === window
+        let isVisible = window.isVisible && isSelectedTab && !window.isMiniaturized
+            && window.occlusionState.contains(.visible)
+        // The model sends only when this changes.
+        if model.isVisible != isVisible { model.isVisible = isVisible }
+    }
+
+    /// The one event a tab hears when Merge All Windows or a new tab puts it
+    /// in the background without its ever having been in front.
+    func windowDidUpdate(_ notification: Notification) {
+        readVisibility()
     }
 
     func windowDidChangeOcclusionState(_ notification: Notification) {
