@@ -174,6 +174,18 @@ final class SessionWindow: NSWindow {
         super.saveFrame(usingName: name)
     }
 
+    /// File > Close is Close Tab in a tabbed window (HIG The menu bar, File
+    /// menu). AppKit leaves the title as it is, so the window sets it as the
+    /// menu is validated.
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(performClose(_:)) {
+            menuItem.title = isTabbed ? "Close Tab" : Self.closeTitle
+        }
+        return super.validateMenuItem(menuItem)
+    }
+
+    static let closeTitle = "Close"
+
     /// The Connections window, Settings, and any other window never become a
     /// tab: each is set so as it first becomes key, before anyone can merge
     /// or drag it. SwiftUI makes those windows, so this is where Vistara
@@ -187,10 +199,21 @@ final class SessionWindow: NSWindow {
             nonisolated(unsafe) let window = notification.object as? NSWindow
             MainActor.assumeIsolated {
                 refuseTabbing(window)
+                restoreCloseTitle(for: window)
             }
         }
         for window in NSApp.windows {
             refuseTabbing(window)
+        }
+    }
+
+    /// Any other window in front: File > Close is Close again.
+    @MainActor
+    static func restoreCloseTitle(for window: NSWindow?) {
+        guard let window, !(window is SessionWindow) else { return }
+        let items = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items) ?? []
+        for item in items where item.action == #selector(NSWindow.performClose(_:)) && item.title != closeTitle {
+            item.title = closeTitle
         }
     }
 

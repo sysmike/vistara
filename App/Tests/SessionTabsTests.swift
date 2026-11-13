@@ -136,6 +136,16 @@ struct SessionTabsTests {
         file.update()
         let close = file.items.first { $0.action == #selector(NSWindow.performClose(_:)) }
         #expect(close?.title == "Close Tab", "File menu: \(file.items.map(\.title))")
+        // Another window in front: Close again.
+        let other = NSWindow(contentRect: .init(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled],
+                             backing: .buffered, defer: false)
+        other.isReleasedWhenClosed = false
+        defer { other.close() }
+        other.makeKeyAndOrderFront(nil)
+        await waitUntil("the other window is key") { other.isKeyWindow }
+        file.update()
+        #expect(close?.title == "Close")
+
         let closeWindow = file.items.first {
             $0.title == "Close Window" && $0.keyEquivalentModifierMask.contains(.shift)
         }
