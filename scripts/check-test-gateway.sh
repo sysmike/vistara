@@ -74,11 +74,12 @@ refused="$VISTARA_TEST_GATEWAY_REFUSED_HOST:3389"
 
 # 1. Through the gateway to the test server.
 connected_before="$(count "Establishing connection to RDP server: $allowed" "$GATEWAY_LOG")"
-activated_before="$(count "is activated" "$SERVER_LOG")"
+# The server opens its display channel once the session is up.
+session_before="$(count "vistara-disp caps sent" "$SERVER_LOG")"
 start_client allowed "$allowed" "$VISTARA_TEST_GATEWAY_PASSWORD"
 passed=0
 if wait_for_line "Establishing connection to RDP server: $allowed" "$GATEWAY_LOG" 30 "$connected_before" &&
-  wait_for_line "is activated" "$SERVER_LOG" 30 "$activated_before"; then
+  wait_for_line "vistara-disp caps sent" "$SERVER_LOG" 30 "$session_before"; then
   passed=1
 fi
 stop_client
