@@ -39,6 +39,11 @@ public struct Library: Equatable, Sendable {
     }
 }
 
+/// What an entry of the library file is.
+public enum LibraryEntryKind: Sendable, Equatable {
+    case connection, folder
+}
+
 /// Reads and writes the versioned JSON form of a `Library`.
 public enum LibraryCodec {
     public static let currentSchemaVersion = 1
@@ -56,11 +61,7 @@ public enum LibraryCodec {
     /// A connection or folder in the file that could not be read. The others
     /// are read anyway.
     public struct SkippedEntry: Sendable, Equatable {
-        public enum Kind: Sendable, Equatable {
-            case connection, folder
-        }
-
-        public var kind: Kind
+        public var kind: LibraryEntryKind
         /// The entry's identifier, if that much could be read.
         public var id: String?
     }
