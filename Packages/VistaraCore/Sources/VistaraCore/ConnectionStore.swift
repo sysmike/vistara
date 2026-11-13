@@ -85,7 +85,9 @@ public actor ConnectionStore {
         var identifiers = Set<String>()
         for name in names where Self.isKeptCopy(name) {
             guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else { continue }
-            let text = String(decoding: data, as: UTF8.self)
+            // A damaged copy may not be UTF-8; as Latin-1 every byte decodes,
+            // and the identifiers, plain ASCII, read the same.
+            let text = String(bytes: data, encoding: .utf8) ?? String(bytes: data, encoding: .isoLatin1) ?? ""
             for match in text.matches(of: identifier) {
                 identifiers.insert(String(match.output).uppercased())
             }
