@@ -906,6 +906,8 @@ void vistara_session_read_settings(const vistara_session *session, vistara_secur
     out->remote_console_audio = freerdp_settings_get_bool(settings, FreeRDP_RemoteConsoleAudio);
     out->audio_playback = freerdp_settings_get_bool(settings, FreeRDP_AudioPlayback);
     out->desktop_scale_factor = freerdp_settings_get_uint32(settings, FreeRDP_DesktopScaleFactor);
+    out->keyboard_layout = freerdp_settings_get_uint32(settings, FreeRDP_KeyboardLayout);
+    out->keyboard_type = freerdp_settings_get_uint32(settings, FreeRDP_KeyboardType);
 }
 
 static bool apply_options(rdpSettings *settings, const vistara_connect_options *options) {
@@ -951,6 +953,23 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            freerdp_settings_set_bool(settings, FreeRDP_HasExtendedMouseEvent, TRUE);
 }
 
+/// The keyboard announced in the client core data, which FreeRDP writes from
+/// these settings. Nothing is changed for a layout of 0.
+static bool apply_keyboard(rdpSettings *settings, const vistara_connect_options *options) {
+    if (options->keyboard_layout == 0) {
+        return true;
+    }
+    if (!freerdp_settings_set_uint32(settings, FreeRDP_KeyboardLayout, options->keyboard_layout)) {
+        return false;
+    }
+    if (options->keyboard_type == 0) {
+        return true;
+    }
+    return freerdp_settings_set_uint32(settings, FreeRDP_KeyboardType, options->keyboard_type) &&
+           freerdp_settings_set_uint32(settings, FreeRDP_KeyboardSubType, options->keyboard_subtype) &&
+           freerdp_settings_set_uint32(settings, FreeRDP_KeyboardFunctionKey, options->keyboard_function_keys);
+}
+
 vistara_connect_result vistara_session_connect(vistara_session *session,
                                                const vistara_connect_options *options) {
     if (session->connect_attempted) {
@@ -966,6 +985,7 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     session->decide_certificate = options->decide_certificate;
     session->decide_certificate_context = options->decide_certificate_context;
     if (!apply_options(session->instance->context->settings, options) ||
+        !apply_keyboard(session->instance->context->settings, options) ||
         !add_shared_folders(session, session->instance->context->settings, options)) {
         return VISTARA_CONNECT_FAILED;
     }

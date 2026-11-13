@@ -780,7 +780,21 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -2845,6 +3332,9 @@
+@@ -574,6 +1061,13 @@
+ 	subsystem = server->subsystem;
+ 	WINPR_ASSERT(subsystem);
+ 
++	/* Vistara test server: the keyboard the client says it has. */
++	(void)fprintf(stderr, "vistara-keyboard layout=0x%08x type=%u subtype=%u\n",
++	              (unsigned)freerdp_settings_get_uint32(settings, FreeRDP_KeyboardLayout),
++	              (unsigned)freerdp_settings_get_uint32(settings, FreeRDP_KeyboardType),
++	              (unsigned)freerdp_settings_get_uint32(settings, FreeRDP_KeyboardSubType));
++	(void)fflush(stderr);
++
+ 	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
+ 	{
+ 		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
+@@ -2845,6 +3339,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -790,7 +804,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3440,11 @@
+@@ -2950,6 +3447,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -802,7 +816,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3532,8 @@
+@@ -3037,6 +3539,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -811,7 +825,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3687,15 @@
+@@ -3190,6 +3694,15 @@
  
  fail:
  

@@ -21,6 +21,7 @@ final class SessionHandle {
         var audio: RDPAudioMode = .off
         var sharesClipboard = false
         var sharedFolders: [RDPSharedFolder] = []
+        var keyboard: RDPKeyboard?
     }
 
     enum ConnectResult: Equatable {
@@ -119,6 +120,10 @@ final class SessionHandle {
             share_clipboard: target.sharesClipboard,
             shared_folders: nil,
             shared_folder_count: 0,
+            keyboard_layout: target.keyboard?.layout ?? 0,
+            keyboard_type: target.keyboard?.type ?? 0,
+            keyboard_subtype: target.keyboard?.subtype ?? 0,
+            keyboard_function_keys: target.keyboard?.functionKeys ?? 0,
             decide_certificate: nil,
             decide_certificate_context: nil
         )
@@ -153,6 +158,8 @@ final class SessionHandle {
         var remoteConsoleAudio: Bool
         var audioPlayback: Bool
         var desktopScaleFactor: UInt32
+        var keyboardLayout: UInt32
+        var keyboardType: UInt32
     }
 
     /// What FreeRDP was told, read back. For tests.
@@ -162,7 +169,8 @@ final class SessionHandle {
         return GivenSettings(
             nla: given.nla, tls: given.tls, rdp: given.rdp, tlsMinimumVersion: given.tls_min_version,
             tlsSecurityLevel: given.tls_security_level, remoteConsoleAudio: given.remote_console_audio,
-            audioPlayback: given.audio_playback, desktopScaleFactor: given.desktop_scale_factor
+            audioPlayback: given.audio_playback, desktopScaleFactor: given.desktop_scale_factor,
+            keyboardLayout: given.keyboard_layout, keyboardType: given.keyboard_type
         )
     }
 
