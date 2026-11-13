@@ -43,6 +43,8 @@ enum Screenshots {
         let content = view
             .frame(width: size.width, height: size.height)
             .background(isPanel ? Color(nsColor: .windowBackgroundColor) : Color.clear)
+            // A panel has no title bar to make room for.
+            .ignoresSafeArea(edges: isPanel ? .all : [])
         let hosting = NSHostingView(rootView: content)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),

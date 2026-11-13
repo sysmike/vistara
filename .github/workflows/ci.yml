@@ -144,7 +144,7 @@ jobs:
           for report in $reports; do
             echo "== $report"
             python3 - "$report" <<'PY'
-          import json, subprocess, sys
+          import glob, json, os, subprocess, sys
           lines = open(sys.argv[1]).read().split("\n", 1)
           try:
               body = json.loads(lines[1])
@@ -156,6 +156,10 @@ jobs:
           def nearest(path, offset):
               # The closest symbol at or before the offset, from nm, for a
               # bundle whose text starts at 0 or at the usual 4 GB.
+              if not os.path.exists(path):
+                  # Reports hide the user's folder; find the binary by name.
+                  found = glob.glob(f"Packages/*/.build/*/debug/*/Contents/MacOS/{os.path.basename(path)}")
+                  path = found[0] if found else path
               if path not in tables:
                   out = subprocess.run(["nm", "-n", "--defined-only", path], capture_output=True, text=True).stdout
                   tables[path] = [(int(a, 16), n) for a, _, n in (l.split(" ", 2) for l in out.splitlines() if l.count(" ") >= 2)]
@@ -173,31 +177,32 @@ jobs:
               if not thread.get("triggered"):
                   continue
               frames = thread.get("frames", [])
+              print("thread:", thread.get("name"), thread.get("queue"), "sp:", thread.get("threadState", {}).get("sp"))
               print(f"{len(frames)} frames; the first 30 and the last 15:")
               for frame in frames[:30] + frames[-15:]:
                   used = images[frame["imageIndex"]] if frame.get("imageIndex") is not None else {}
                   symbol = frame.get("symbol")
-                  if symbol is None and used.get("path") and "base" in used:
+                  if symbol is None and used.get("name"):
                       # Frames without a symbol: ask atos, with the image's load address.
-                      address = used["base"] + frame.get("imageOffset", 0)
-                      result = subprocess.run(
-                          ["atos", "-o", used["path"], "-l", hex(used["base"]), hex(address)],
-                          capture_output=True, text=True)
-                      symbol = result.stdout.strip() or nearest(used["path"], frame.get("imageOffset", 0))
+                      symbol = nearest(used.get("path", used["name"]), frame.get("imageOffset", 0))
                   print(f'{used.get("name", "?"):24} {symbol} +{frame.get("symbolLocation", 0)}'
                         f' {frame.get("sourceFile", "")}:{frame.get("sourceLine", "")}')
           PY
           done
 
       - name: Generate project
+        # Also after a failed package test, so one run reports both.
+        if: ${{ !cancelled() }}
         run: xcodegen generate
 
       - name: Build app
+        if: ${{ !cancelled() }}
         run: |
           xcodebuild build -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData
 
       - name: Check hardened runtime and sandbox
+        if: ${{ !cancelled() }}
         run: |
           app=build/DerivedData/Build/Products/Debug/Vistara.app
           codesign --verify --strict "$app"
@@ -220,6 +225,7 @@ jobs:
 
       # The tests run inside the sandboxed app and connect to the test server.
       - name: Test app
+        if: ${{ !cancelled() }}
         env:
           TEST_RUNNER_VISTARA_TEST_RDP_HOST: ${{ env.VISTARA_TEST_RDP_HOST }}
           TEST_RUNNER_VISTARA_TEST_RDP_PORT: ${{ env.VISTARA_TEST_RDP_PORT }}

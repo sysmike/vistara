@@ -11,6 +11,10 @@ and how to use it, see the [README](../README.md) and the
 
 Build FreeRDP first (see below); the app links and embeds it.
 
+Vistara builds with Xcode 26 (CI and releases pin 26.6; see `XCODE_VERSION`
+in the workflows) and runs on macOS 14 and later. Built against the macOS 26
+SDK, its standard controls take on Liquid Glass on macOS 26.
+
 The Xcode project is generated from [`project.yml`](../project.yml) and is not
 committed. Most code lives in local Swift packages under `Packages/`.
 
@@ -35,6 +39,16 @@ swift test --package-path Packages/VistaraCore && swift test --package-path Pack
 ```bash
 swiftlint lint --strict
 ```
+
+### Screenshots
+
+`ScreenshotTests` and a few other tests write a PNG of every state of the
+interface, which CI uploads as the `screenshots` artifact of each run. Liquid
+Glass is drawn by the window server, so a view drawn offscreen lacks it. In CI
+the tests therefore ask a helper in the test step for a real `screencapture`
+of their window (`VISTARA_SCREEN_CAPTURE=1`; see `App/Tests/Screenshots.swift`).
+Locally, and for a window taller than the runner's screen, they draw offscreen.
+The images in `docs/images` come from that artifact.
 
 ## Integration tests
 

@@ -36,9 +36,7 @@ struct SkippedEntriesNotice: View {
             .help("Close")
             .accessibilityLabel("Close")
         }
-        .padding(12)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
+        .noticeBackground()
     }
 
     /// "2 connections and 1 folder couldn’t be read and were left out."
