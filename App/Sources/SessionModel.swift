@@ -39,6 +39,8 @@ final class SessionModel {
     /// The remote monitors when the session spans several displays; empty
     /// otherwise. Set by the window. See SessionModel+Displays.swift.
     var displayMonitors: [DisplayLayout.Monitor] = []
+    /// The monitor layout last asked of the server, so none is sent twice.
+    @ObservationIgnored var requestedLayout: [RDPMonitor] = []
     /// Whether anyone can see the session. Set by the window; while false the
     /// server stops sending the screen (docs/DESIGN.md, Session tabs).
     /// The user ended the session; set by disconnect(), read when it ends.

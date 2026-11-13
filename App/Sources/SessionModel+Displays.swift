@@ -26,6 +26,7 @@ extension SessionModel {
         let monitors = remoteMonitors
         let box = RDPMonitor.boundingBox(of: monitors)
         configuration.monitors = monitors
+        requestedLayout = monitors
         configuration.desktopWidth = UInt32(box.width)
         configuration.desktopHeight = UInt32(box.height)
         configuration.scalePercent = monitors.first?.scalePercent ?? configuration.scalePercent
@@ -38,5 +39,15 @@ extension SessionModel {
         let monitors = remoteMonitors
         let rect = monitors[index].framebufferRect(in: RDPMonitor.boundingBox(of: monitors))
         return CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
+    }
+
+    /// Asks the server for the displays' layout after they changed, unless
+    /// that is what it was last asked for. Without a span, the window's own
+    /// size takes over, as for any session.
+    func requestDisplayLayout() {
+        let monitors = spansDisplays ? remoteMonitors : []
+        guard isConnected, monitors != requestedLayout else { return }
+        requestedLayout = monitors
+        if !monitors.isEmpty { send([.monitorLayout(monitors)]) }
     }
 }
