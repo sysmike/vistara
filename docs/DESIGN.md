@@ -310,8 +310,20 @@ is given a different meaning. Control-Option-Delete is free on macOS; using it
 means Ctrl+Alt+Backspace cannot be typed directly, which we accept.
 
 The Dock menu lists open sessions, to bring forward, and favorites, to
-connect. Import and Export arrive with issue #52, and Vistara Help with the
-user guide (issue #36).
+connect. Vistara Help arrives with the user guide (issue #36).
+
+### Importing and exporting
+
+- File > Import… adds a connection for each chosen `.rdp` file, named after
+  the file, and selects them. Opening an `.rdp` file from the Finder or
+  dropping one on the Connections window does the same. Vistara opens `.rdp`
+  files as an alternative, never taking them over from the Microsoft client.
+- A password in a file is never imported (passwords live only in the
+  Keychain). That, lines that aren't settings, and files without a computer
+  address are said in a notice above the list, not in an alert.
+- File > Export… (also in a connection's context menu) writes the selected
+  connections as `.rdp` files the way the Microsoft client writes them,
+  never with a password.
 
 ### Clipboard
 

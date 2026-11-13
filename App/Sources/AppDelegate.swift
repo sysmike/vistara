@@ -16,6 +16,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LibraryModel.shared.removeOrphanedCredentials(from: SessionCoordinator.shared.credentialStore)
     }
 
+    /// Opening an .rdp file from the Finder, or dropping one on the Dock
+    /// icon, imports it into the connections window.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let files = urls.filter { $0.pathExtension.lowercased() == "rdp" }
+        guard !files.isEmpty else { return }
+        SessionCoordinator.shared.showConnections?()
+        Task { await LibraryModel.shared.importWhenLoaded(files) }
+    }
+
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         DockMenu.current()
     }

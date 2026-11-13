@@ -14,6 +14,8 @@ final class SessionCoordinator {
     @ObservationIgnored let credentialStore: any CredentialStore
     /// Opens the editor for a saved connection. Set by the Connections window.
     @ObservationIgnored var editConnection: ((UUID) -> Void)?
+    /// Opens the Connections window or brings it forward. Set by the app.
+    @ObservationIgnored var showConnections: (() -> Void)?
     @ObservationIgnored let trustStore: CertificateTrustStore
 
     /// Passwords go to the Keychain and trusted certificates to Application

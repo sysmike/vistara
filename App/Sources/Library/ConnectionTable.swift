@@ -26,11 +26,16 @@ struct ConnectionTable: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .top, spacing: 0) {
-            if model.showsSkippedNotice {
-                SkippedEntriesNotice(
-                    skipped: model.skippedEntries, copy: model.originalFileCopy,
-                    dismiss: { model.showsSkippedNotice = false }
-                )
+            VStack(spacing: 0) {
+                if model.showsSkippedNotice {
+                    SkippedEntriesNotice(
+                        skipped: model.skippedEntries, copy: model.originalFileCopy,
+                        dismiss: { model.showsSkippedNotice = false }
+                    )
+                }
+                if let report = model.importReport {
+                    ImportNotice(report: report) { model.importReport = nil }
+                }
             }
         }
     }
@@ -164,6 +169,7 @@ struct ConnectionTable: View {
                 .disabled(ids.count != 1 || !commands.canChange)
             Button("Duplicate") { commands.duplicate(ids) }
                 .disabled(!commands.canChange)
+            Button("Export…") { commands.export(ids) }
             Divider()
             Button(model.wouldFavorite(ids) ? "Add to Favorites" : "Remove from Favorites") {
                 model.toggleFavorite(ids)

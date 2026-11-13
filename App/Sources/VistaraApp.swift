@@ -25,6 +25,7 @@ struct VistaraApp: App {
                     openWindow(id: "connections")
                     library.editorRequest = .edit(id)
                 }
+                coordinator.showConnections = { openWindow(id: "connections") }
             }
         }
         .defaultSize(width: 780, height: 480)
