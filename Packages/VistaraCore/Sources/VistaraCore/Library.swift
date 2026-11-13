@@ -64,6 +64,11 @@ public enum LibraryCodec {
         public var kind: LibraryEntryKind
         /// The entry's identifier, if that much could be read.
         public var id: String?
+
+        public init(kind: LibraryEntryKind, id: String?) {
+            self.kind = kind
+            self.id = id
+        }
     }
 
     /// A library together with the entries that could not be read.
