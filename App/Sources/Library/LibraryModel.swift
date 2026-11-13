@@ -32,6 +32,9 @@ final class LibraryModel {
     private(set) var skippedEntries: [LibraryCodec.SkippedEntry] = []
     /// The file as it was, copied before the next save leaves those entries out.
     private(set) var originalFileCopy: URL?
+    /// Identifiers in the copies of the file kept next to it, whose
+    /// passwords stay while a copy holds them (#84).
+    @ObservationIgnored private(set) var identifiersInKeptCopies: Set<String> = []
     /// Whether the notice about left-out entries still shows.
     var showsSkippedNotice = false
     /// What the last import did, shown until closed.
@@ -102,6 +105,7 @@ final class LibraryModel {
             corruptFileBackup = result.corruptFileBackup
             skippedEntries = result.skippedEntries
             originalFileCopy = result.originalFileCopy
+            identifiersInKeptCopies = await store.identifiersInKeptCopies()
             showsSkippedNotice = !result.skippedEntries.isEmpty
             loadState = .loaded
             if !pendingImports.isEmpty {
@@ -225,8 +229,11 @@ final class LibraryModel {
         // ones whose identifier is known; without one, keep everything.
         let skipped = skippedEntries.filter { $0.kind == .connection }
         guard skipped.allSatisfy({ $0.id != nil }) else { return }
-        let kept = Set(library.connections.map(\.id.uuidString)).union(skipped.compactMap(\.id))
-        for key in keys where !kept.contains(key) {
+        // A copy of the file kept next to it holds its connections too.
+        let kept = Set(library.connections.map(\.id.uuidString))
+            .union(skipped.compactMap { $0.id?.uppercased() })
+            .union(identifiersInKeptCopies)
+        for key in keys where !kept.contains(key.uppercased()) {
             try? store.remove(for: key)
         }
     }

@@ -90,7 +90,8 @@ Consequences:
   file was copied, with Show in Finder and Close. It is not an alert, because
   nothing is lost and the app is starting. A file that cannot be read at all
   is moved aside and the list starts empty, as before. The passwords of
-  connections left out stay in the Keychain.
+  connections left out, or in a file moved aside, stay in the Keychain as
+  long as the copy is kept; once it is deleted, they go with the next cleanup.
 
 ### Connection editor
 

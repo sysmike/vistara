@@ -138,3 +138,40 @@ private struct TemporaryStore {
     let leftovers = try FileManager.default.contentsOfDirectory(atPath: temporary.directory.path)
     #expect(leftovers == [ConnectionStore.fileName])
 }
+
+@Test func theKeptCopiesNameTheirConnections() async throws {
+    let temporary = TemporaryStore()
+    defer { temporary.cleanUp() }
+    let unreadable = "6C1F6E2A-6B1D-4A63-9C3B-1F0C2D3E4F50"
+    let corrupt = "0b9e8d7c-6b5a-4f3e-8d2c-1b0a99887766"
+    let current = "11111111-2222-3333-4444-555555555555"
+    try temporary.write("""
+        {"schemaVersion": 1, "connections": [
+            {"id": "\(current)", "name": "Build Server", "host": "build01"},
+            {"id": "\(unreadable)", "name": "No Host"}
+        ]}
+        """)
+    let result = try await temporary.store.load()
+    #expect(result.originalFileCopy != nil)
+    try await temporary.store.save(result.library)
+
+    // A copy that is no longer JSON at all still counts, and so does one in
+    // lower case. Other files in the folder do not.
+    let directory = temporary.directory
+    try Data(#"{"schemaVersion": 1, "connections": [{"id": "\#(corrupt)", "#.utf8)
+        .write(to: directory.appendingPathComponent("connections.corrupt-20261113-090000.json"))
+    try Data(#"{"id": "22222222-3333-4444-5555-666666666666"}"#.utf8)
+        .write(to: directory.appendingPathComponent("connections.unreadable-notes.txt"))
+
+    let identifiers = await temporary.store.identifiersInKeptCopies()
+    // The copy also holds the readable connection, which is still in the file.
+    #expect(identifiers == [unreadable, corrupt.uppercased(), current])
+}
+
+@Test func withoutKeptCopiesThereAreNoIdentifiers() async throws {
+    let temporary = TemporaryStore()
+    defer { temporary.cleanUp() }
+    #expect(await temporary.store.identifiersInKeptCopies().isEmpty)
+    try temporary.write(#"{"schemaVersion": 1, "connections": [{"id": "\#(UUID().uuidString)", "host": "h"}]}"#)
+    #expect(await temporary.store.identifiersInKeptCopies().isEmpty)
+}
