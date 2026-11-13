@@ -43,9 +43,6 @@ struct LoggingIntegrationTests {
             if case .connected = state { session.disconnect() }
         }
 
-        // The checks run in functions of their own: in a Debug build each
-        // #expect keeps its temporaries in the frame it is written in, and
-        // this async test runs on a thread with a small stack (#96).
         let lines = capture.all
         let password = TestHost.credentials().password
         let forbidden = [TestHost.configuration.host, TestHost.configuration.username, password, "not the password"]
@@ -54,6 +51,23 @@ struct LoggingIntegrationTests {
         #expect(RDPLogging.redactor.redactionCount > redactionsBefore)
         Self.expectNoRuntimeCheckWarning(in: lines)
         Self.printDefaultLevelOutput(lines)
+    }
+
+    /// Many lines through the observer and then letting it go, on the
+    /// cooperative pool's small stack. Each line used to wrap the stored
+    /// closure once more, and releasing it overflowed the stack (#96). In
+    /// this suite because the observer is shared and the suite is serialized.
+    @Test func anObserverSurvivesManyLines() async {
+        let count = await Task.detached {
+            let capture = LogCapture()
+            RDPLogging.observeFreeRDP { level, line in capture.append(level, line) }
+            for index in 0..<20_000 {
+                RDPLogging.deliverToObserver(.debug, "line \(index)")
+            }
+            RDPLogging.stopObservingFreeRDP()
+            return capture.all.count
+        }.value
+        #expect(count == 20_000)
     }
 
     private static func expectNoneContain(_ forbidden: [String], in lines: [(RDPLogging.FreeRDPLevel, String)]) {
