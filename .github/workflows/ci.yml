@@ -161,7 +161,9 @@ jobs:
 
       - name: Show test server log
         if: always()
-        run: cat build/test-server/run/server.log || true
+        run: |
+          cat build/test-server/run/server.log || true
+          echo "VISTARA_SERVER_LOG_LINES=$(wc -l < build/test-server/run/server.log 2>/dev/null || echo 0)" >> "$GITHUB_ENV"
 
       - name: Show test gateway log
         if: always()
@@ -297,6 +299,14 @@ jobs:
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData || status=$?
           kill "$capturer"
           exit "$status"
+
+      - name: Show test server log after the app tests
+        if: always()
+        run: |
+          log=build/test-server/run/server.log
+          [[ -f "$log" ]] || exit 0
+          # Only what the app tests added; the earlier part is shown above.
+          tail -n +"$(( ${VISTARA_SERVER_LOG_LINES:-0} + 1 ))" "$log"
 
       - name: Collect screenshots
         if: always()
