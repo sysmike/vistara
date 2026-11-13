@@ -91,6 +91,17 @@ jobs:
       - name: Lint
         run: swiftlint lint --strict
 
+      # How the system draws the icon in each appearance, for the pull request:
+      # Icon Composer's ictool renders the .icon as macOS does.
+      - name: Draw the app icon in each appearance
+        run: |
+          ictool="$DEVELOPER_DIR/../Applications/Icon Composer.app/Contents/Executables/ictool"
+          mkdir -p build/screenshots
+          for rendition in Default Dark TintedLight TintedDark ClearLight ClearDark; do
+            "$ictool" App/Resources/AppIcon.icon --export-image --output-file "build/screenshots/app-icon-$rendition.png" \
+              --platform macOS --rendition "$rendition" --width 512 --height 512 --scale 1 >/dev/null
+          done
+
       - name: Check that the lint forbids print
         run: |
           probe=App/Sources/LintProbe.swift

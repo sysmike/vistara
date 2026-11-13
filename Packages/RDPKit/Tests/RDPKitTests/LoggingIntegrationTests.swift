@@ -62,10 +62,11 @@ struct LoggingIntegrationTests {
             let capture = LogCapture()
             RDPLogging.observeFreeRDP { level, line in capture.append(level, line) }
             for index in 0..<20_000 {
-                RDPLogging.deliverToObserver(.debug, "line \(index)")
+                RDPLogging.deliverToObserver(.debug, "observer test line \(index)")
             }
             RDPLogging.stopObservingFreeRDP()
-            return capture.all.count
+            // A late line from an earlier session may arrive too.
+            return capture.all.filter { $0.1.hasPrefix("observer test line ") }.count
         }.value
         #expect(count == 20_000)
     }

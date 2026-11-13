@@ -429,9 +429,12 @@ scrolling direction (HIG Settings: "Respect people's systemwide settings").
   on one point: a remote desktop is a screen seen from a distance, the vista
   in the name. A white near frame, an amber and a pale teal frame, and an
   amber screen on a deep indigo to teal gradient. No text, no screenshot, no
-  hardware (HIG App icons). The layers in `Design/AppIcon` are the one
-  source; `render.py` draws every size in the macOS 11–15 shape. A layered
-  Icon Composer icon with dark and tinted variants follows (issue #87).
+  hardware (HIG App icons). `App/Resources/AppIcon.icon`, an Icon Composer
+  file, is the one source: three SVG layers (the gradient, the distant
+  screens, the frame), with the frame and the distant screens as Liquid Glass.
+  In the dark and tinted appearances the gradient gives way to the system's
+  background and the screens keep their shapes and colours (HIG App icons,
+  Appearances). Xcode makes the icon for macOS 14 and 15 from the same file.
 
 ## Accessibility
 

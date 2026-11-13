@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Front layer: the nearest screen, a thick plain frame in a screen's
+       proportions, so it still reads at 16 points. Drawn as an outline, not a
+       stroke: the dark and tinted renditions fill a layer's whole shape. -->
+  <path fill="#FFFFFF" fill-rule="evenodd" d="M240 268H784A100 100 0 0 1 884 368V657A100 100 0 0 1 784 757H240A100 100 0 0 1 140 657V368A100 100 0 0 1 240 268ZM240 332H784A36 36 0 0 1 820 368V657A36 36 0 0 1 784 693H240A36 36 0 0 1 204 657V368A36 36 0 0 1 240 332Z"/>
+</svg>

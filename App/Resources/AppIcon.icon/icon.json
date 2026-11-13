@@ -1,0 +1,114 @@
+{
+  "fill": {
+    "solid": "srgb:0.13333,0.18824,0.43529,1.00000"
+  },
+  "fill-specializations": [
+    {
+      "appearance": "dark",
+      "value": "system-dark"
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            }
+          ],
+          "glass": true,
+          "image-name": "frame.svg",
+          "name": "frame"
+        }
+      ],
+      "name": "Frame",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.3
+      }
+    },
+    {
+      "layers": [
+        {
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:0.74118,0.91765,0.95294,1.00000"
+              }
+            }
+          ],
+          "glass": true,
+          "image-name": "distance-teal.svg",
+          "name": "distance-teal"
+        },
+        {
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:1.00000,0.70980,0.27843,1.00000"
+              }
+            }
+          ],
+          "glass": true,
+          "image-name": "distance-amber.svg",
+          "name": "distance-amber"
+        }
+      ],
+      "name": "Distance",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.2
+      }
+    },
+    {
+      "layers": [
+        {
+          "glass": false,
+          "hidden-specializations": [
+            {
+              "appearance": "dark",
+              "value": true
+            },
+            {
+              "appearance": "tinted",
+              "value": true
+            }
+          ],
+          "image-name": "background.svg",
+          "name": "background"
+        }
+      ],
+      "name": "Background",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}
