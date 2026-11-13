@@ -91,6 +91,14 @@ jobs:
       - name: Lint
         run: swiftlint lint --strict
 
+      # The Icon Composer file carries copies of the icon's layers, which
+      # Design/AppIcon/render.py writes; they must not drift apart.
+      - name: Check the icon's layers
+        run: |
+          for layer in background distance frame; do
+            cmp "Design/AppIcon/$layer.svg" "App/Resources/AppIcon.icon/Assets/$layer.svg"
+          done
+
       - name: Check that the lint forbids print
         run: |
           probe=App/Sources/LintProbe.swift

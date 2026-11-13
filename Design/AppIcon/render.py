@@ -4,7 +4,9 @@
 The layers (background, distance, frame) are the one source. They are full bleed
 and unmasked, ready for Icon Composer. This script composes them in the
 macOS 11-15 shape: a rounded square of 824 by 824 on a 1024 canvas, with the
-standard drop shadow, and writes every size the asset catalog needs.
+standard drop shadow, and writes every size the asset catalog needs. It also
+copies the layers into App/Resources/AppIcon.icon, the Icon Composer file
+macOS 26 uses; its icon.json sets the glass and the dark and tinted variants.
 
 Needs the librsvg and cairo libraries, and Pillow:
     python3 Design/AppIcon/render.py
@@ -20,6 +22,8 @@ from PIL import Image, ImageDraw, ImageFilter
 
 HERE = pathlib.Path(__file__).resolve().parent
 OUTPUT = HERE.parent.parent / "App" / "Resources" / "Assets.xcassets" / "AppIcon.appiconset"
+# The Icon Composer file for macOS 26 and later, built from the same layers.
+ICON_ASSETS = HERE.parent.parent / "App" / "Resources" / "AppIcon.icon" / "Assets"
 LAYERS = ["background.svg", "distance.svg", "frame.svg"]
 
 # Apple's macOS icon template, in points on a 1024 canvas.
@@ -121,6 +125,10 @@ def main() -> None:
     catalog = OUTPUT.parent / "Contents.json"
     catalog.write_text(json.dumps({"info": {"author": "xcode", "version": 1}}, indent=2) + "\n")
     print(f"Wrote {len(images)} images to {OUTPUT}")
+    ICON_ASSETS.mkdir(parents=True, exist_ok=True)
+    for layer in LAYERS:
+        (ICON_ASSETS / layer).write_bytes((HERE / layer).read_bytes())
+    print(f"Copied {len(LAYERS)} layers to {ICON_ASSETS}")
 
 
 if __name__ == "__main__":
