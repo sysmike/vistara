@@ -54,6 +54,11 @@ struct LoggingIntegrationTests {
         }
         // Something was caught, so the test is not passing by accident.
         #expect(RDPLogging.redactor.redactionCount > redactionsBefore)
+        // FreeRDP warns on every connection when built with runtime checks;
+        // the bundled build has none (#70).
+        for (level, line) in lines {
+            #expect(!line.contains("[runtime-check]"), "\(level): \(line)")
+        }
 
         // For the pull request: what default-level output looks like.
         let shown = lines.filter { $0.0.rawValue >= RDPLogging.FreeRDPLevel.warning.rawValue }
