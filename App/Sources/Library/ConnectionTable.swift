@@ -9,34 +9,36 @@ struct ConnectionTable: View {
     let commands: ConnectionCommands
 
     var body: some View {
-        let rows = model.visibleConnections
-        Group {
-            if case .unreadable(let reason) = model.loadState {
-                ContentUnavailableView("Connections Unavailable", systemImage: "exclamationmark.triangle",
-                                       description: Text(reason))
-            } else if model.loadState == .loading {
-                ProgressView()
-            } else if model.library.connections.isEmpty {
-                emptyLibrary
-            } else if rows.isEmpty {
-                emptySelection
-            } else {
-                table(rows)
+        // Notices sit above the list in a plain stack: inset into the table's
+        // safe area, they threw off the layout of the whole window.
+        VStack(spacing: 0) {
+            if model.showsSkippedNotice {
+                SkippedEntriesNotice(
+                    skipped: model.skippedEntries, copy: model.originalFileCopy,
+                    dismiss: { model.showsSkippedNotice = false }
+                )
             }
+            if let report = model.importReport {
+                ImportNotice(report: report) { model.importReport = nil }
+            }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                if model.showsSkippedNotice {
-                    SkippedEntriesNotice(
-                        skipped: model.skippedEntries, copy: model.originalFileCopy,
-                        dismiss: { model.showsSkippedNotice = false }
-                    )
-                }
-                if let report = model.importReport {
-                    ImportNotice(report: report) { model.importReport = nil }
-                }
-            }
+    }
+
+    @ViewBuilder private var content: some View {
+        let rows = model.visibleConnections
+        if case .unreadable(let reason) = model.loadState {
+            ContentUnavailableView("Connections Unavailable", systemImage: "exclamationmark.triangle",
+                                   description: Text(reason))
+        } else if model.loadState == .loading {
+            ProgressView()
+        } else if model.library.connections.isEmpty {
+            emptyLibrary
+        } else if rows.isEmpty {
+            emptySelection
+        } else {
+            table(rows)
         }
     }
 

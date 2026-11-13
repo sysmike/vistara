@@ -123,4 +123,24 @@ struct ImportExportTests {
         let bytes = try await Screenshots.write(view, size: NSSize(width: 780, height: 420), name: name, dark: dark)
         #expect(bytes > 0)
     }
+
+    /// After a load that left out an unreadable connection (issue #51).
+    @Test
+    func skippedEntriesNotice() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vistara-library-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let contents = """
+            {"schemaVersion": 1, "connections": [
+                {"id": "\(UUID().uuidString)", "name": "Build Server", "host": "build01.example.com"},
+                {"name": "Broken"}
+            ]}
+            """
+        try Data(contents.utf8).write(to: directory.appendingPathComponent(ConnectionStore.fileName))
+        let model = LibraryModel(store: ConnectionStore(directory: directory))
+        await model.load()
+        let view = ConnectionsView(model: model) { _ in }
+        let bytes = try await Screenshots.write(view, size: NSSize(width: 780, height: 420), name: "skipped-notice")
+        #expect(bytes > 0)
+    }
 }
