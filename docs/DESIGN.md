@@ -300,6 +300,47 @@ Mac does; *monitors* is the remote computer's word.
   it. Choosing some displays but not others (`selectedmonitors`) is a later
   step.
 
+### RD Gateway
+
+A connection can go through a Remote Desktop Gateway: the session travels
+as HTTPS to the gateway, which passes it on to the computer inside its
+network.
+
+- The connection editor has a **Gateway** section: *Use a gateway: Never /
+  Always*, the gateway's address (a port other than 443 after a colon), and
+  *Sign in to the gateway as: Same as the Computer / Another Account*, with a
+  user name and domain for another account. Never is the default and hides
+  the rest.
+- Only Never and Always. Microsoft's "only when the computer cannot be
+  reached directly" and "not for local addresses" are later steps; an
+  imported file that asks for them uses the gateway always, and the import
+  notice says so. *Judgment: one rule people can predict.*
+- Passwords: with Same as the Computer, one password signs in to both and
+  one sheet asks for it. With another account, the gateway is asked for
+  first, in a sheet of its own that names the gateway and the connection.
+  A remembered gateway password is a Keychain item for that gateway and user
+  name, so connections through the same gateway share it.
+- The gateway's certificate is checked like a computer's (Certificates
+  above): one the Mac trusts, as public gateways usually have, connects
+  without a question; otherwise the same sheet asks, naming the gateway, and
+  Always Trust remembers it for the gateway's address. A changed gateway
+  certificate is the same alert. Settings > Security lists gateways beside
+  computers, marked as gateways.
+- A gateway may show a message before connecting: a notice, or terms the
+  user must accept. It appears as a sheet with the gateway's name; consent
+  has Accept and Cancel, and Cancel does not connect.
+- What goes wrong says which of the two it was: the gateway cannot be
+  found, did not accept the user name or password (with Use Another Account
+  for the gateway), or does not allow a connection to this computer (its
+  resource authorization policy; ask whoever runs it).
+- Vistara speaks the gateway's HTTP transport, over WebSocket where the
+  gateway offers it. The older RPC-over-HTTP transport (Windows Server 2008)
+  and the UDP side channel are not offered.
+- Logs replace the gateway's address and user name with placeholders, as
+  they do the computer's. Reconnecting goes through the gateway again.
+- Not in this step: Azure Virtual Desktop and Microsoft Entra sign-in to the
+  gateway, smart cards, and gateway settings shared outside a connection.
+
 ## Keyboard
 
 ### Who gets a key press
