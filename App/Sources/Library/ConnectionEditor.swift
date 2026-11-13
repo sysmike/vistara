@@ -112,7 +112,27 @@ struct ConnectionEditor: View {
                 problem(draft.sizeProblem)
             }
             Toggle("Optimize for Retina displays", isOn: $draft.usesHiDPI)
+            Picker("Displays", selection: $draft.usesAllDisplays) {
+                Text("This Display").tag(false)
+                Text("All Displays").tag(true)
+            }
+            if let explanation = Self.displaysExplanation(
+                allDisplays: draft.usesAllDisplays, separateSpaces: NSScreen.screensHaveSeparateSpaces
+            ) {
+                Text(explanation)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    /// What All Displays does, said beneath it (docs/DESIGN.md, Multiple displays).
+    static func displaysExplanation(allDisplays: Bool, separateSpaces: Bool) -> String? {
+        guard allDisplays else { return nil }
+        let what = "The session fills every display in full screen, as one remote desktop."
+        guard !separateSpaces else { return what }
+        return what + " While “Displays have separate Spaces” is off in Desktop & Dock settings, "
+            + "it uses only the display in front."
     }
 
     private var devices: some View {

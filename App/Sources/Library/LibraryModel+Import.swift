@@ -12,6 +12,9 @@ struct ImportReport: Equatable {
     var skippedLines = 0
     /// Files that could not be imported, with why.
     var failures: [String] = []
+    /// Files that use only some displays, which Vistara does not yet do: it
+    /// uses all of them (docs/DESIGN.md, Multiple displays).
+    var chosenDisplays: [String] = []
 
     var isEmpty: Bool { imported.isEmpty && failures.isEmpty }
 
@@ -31,6 +34,11 @@ struct ImportReport: Equatable {
             sentences.append("1 line that isn’t a setting was skipped.")
         } else if skippedLines > 1 {
             sentences.append("\(skippedLines) lines that aren’t settings were skipped.")
+        }
+        if !chosenDisplays.isEmpty {
+            let which = chosenDisplays.count == 1
+                ? "“\(chosenDisplays[0])” names" : "\(chosenDisplays.count) files name"
+            sentences.append("\(which) particular displays; Vistara uses all of them.")
         }
         return sentences + failures
     }
@@ -56,6 +64,9 @@ extension LibraryModel {
                 report.imported.append(name)
                 if file.droppedPassword { report.droppedPasswords.append(name) }
                 report.skippedLines += file.skippedLines.count
+                if connection.usesAllDisplays, file.string("selectedmonitors") != nil {
+                    report.chosenDisplays.append(name)
+                }
             } catch RDPFileMapping.ImportError.missingAddress {
                 report.failures.append("“\(url.lastPathComponent)” names no computer and wasn’t imported.")
             } catch {

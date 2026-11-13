@@ -97,8 +97,9 @@ private let sampleText = """
     #expect(connection.reconnectsAutomatically)
     #expect(connection.requiresNLA)
     #expect(connection.certificatePolicy == .askOnFirstUse)
+    #expect(!connection.usesAllDisplays)
     #expect(connection.additionalRDPSettings == [
-        "screen mode id:i:2", "use multimon:i:0", "session bpp:i:32", "drivestoredirect:s:C:\\;D:\\"
+        "screen mode id:i:2", "session bpp:i:32", "drivestoredirect:s:C:\\;D:\\"
     ])
 }
 
@@ -146,7 +147,8 @@ private let sampleText = """
     connection.reconnectsAutomatically = false
     connection.requiresNLA = false
     connection.certificatePolicy = .requireTrusted
-    connection.additionalRDPSettings = ["use multimon:i:0"]
+    connection.usesAllDisplays = true
+    connection.additionalRDPSettings = ["session bpp:i:32"]
 
     let file = try RDPFile(data: RDPFileMapping.file(from: connection).data)
     var imported = try RDPFileMapping.connection(from: file, name: "Lab")
@@ -156,10 +158,23 @@ private let sampleText = """
 
 @Test func exportNeverContainsAPassword() {
     var connection = Connection(name: "A", host: "host")
-    connection.additionalRDPSettings = ["password 51:b:DEADBEEF", "gatewaypassword:s:hunter2", "use multimon:i:0"]
+    connection.additionalRDPSettings = ["password 51:b:DEADBEEF", "gatewaypassword:s:hunter2", "session bpp:i:32"]
 
     let file = RDPFileMapping.file(from: connection)
     #expect(!file.text.lowercased().contains("password"))
     #expect(!file.text.contains("hunter2"))
-    #expect(file.integer("use multimon") == 0)
+    #expect(file.integer("session bpp") == 32)
+}
+
+/// All Displays is the Microsoft client's "use multimon" (#113).
+@Test func allDisplaysIsUseMultimon() throws {
+    let file = RDPFile(text: "full address:s:host\nuse multimon:i:1\nselectedmonitors:s:0,1")
+    let connection = try RDPFileMapping.connection(from: file, name: "A")
+    #expect(connection.usesAllDisplays)
+    // Which displays is not Vistara's to choose yet; the line is kept.
+    #expect(connection.additionalRDPSettings == ["selectedmonitors:s:0,1"])
+    #expect(RDPFileMapping.file(from: connection).integer("use multimon") == 1)
+    var single = connection
+    single.usesAllDisplays = false
+    #expect(RDPFileMapping.file(from: single).integer("use multimon") == 0)
 }

@@ -16,6 +16,7 @@ struct ConnectionDraft: Equatable {
     var fixedWidth = "1920"
     var fixedHeight = "1080"
     var usesHiDPI = true
+    var usesAllDisplays = false
 
     var sharesClipboard = true
     var audioMode = Connection.AudioMode.playOnThisMac
@@ -45,6 +46,7 @@ struct ConnectionDraft: Equatable {
         fixedWidth = String(connection.fixedWidth)
         fixedHeight = String(connection.fixedHeight)
         usesHiDPI = connection.usesHiDPI
+        usesAllDisplays = connection.usesAllDisplays
         sharesClipboard = connection.sharesClipboard
         audioMode = connection.audioMode
         sharedFolders = connection.sharedFolders
@@ -152,6 +154,7 @@ struct ConnectionDraft: Equatable {
             connection.fixedHeight = height
         }
         connection.usesHiDPI = usesHiDPI
+        connection.usesAllDisplays = usesAllDisplays
         connection.sharesClipboard = sharesClipboard
         connection.audioMode = audioMode
         connection.sharedFolders = sharedFolders

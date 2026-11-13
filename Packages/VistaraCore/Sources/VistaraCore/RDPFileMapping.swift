@@ -11,7 +11,7 @@ public enum RDPFileMapping {
     /// `Connection.additionalRDPSettings`.
     static let mappedKeys: Set<String> = [
         "full address", "server port", "username", "domain",
-        "desktopwidth", "desktopheight", "smart sizing", "dynamic resolution", "desktopscalefactor",
+        "desktopwidth", "desktopheight", "smart sizing", "dynamic resolution", "desktopscalefactor", "use multimon",
         "redirectclipboard", "audiomode", "autoreconnection enabled",
         "enablecredsspsupport", "authentication level"
     ]
@@ -46,6 +46,7 @@ public enum RDPFileMapping {
         if file.integer("smart sizing") == 1 { connection.resolutionMode = .scaleToFit }
         if file.integer("dynamic resolution") == 1 { connection.resolutionMode = .matchWindow }
         if let scale = file.integer("desktopscalefactor") { connection.usesHiDPI = scale > 100 }
+        if let multimon = file.integer("use multimon") { connection.usesAllDisplays = multimon != 0 }
     }
 
     private static func applyDeviceAndSecuritySettings(of file: RDPFile, to connection: inout Connection) {
@@ -84,6 +85,7 @@ public enum RDPFileMapping {
         add("smart sizing", flag(connection.resolutionMode == .scaleToFit))
         add("dynamic resolution", flag(connection.resolutionMode == .matchWindow))
         add("desktopscalefactor", .integer(connection.usesHiDPI ? 200 : 100))
+        add("use multimon", flag(connection.usesAllDisplays))
 
         add("redirectclipboard", flag(connection.sharesClipboard))
         switch connection.audioMode {
