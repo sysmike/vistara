@@ -120,6 +120,19 @@ scripts/check-test-gateway.sh
 CI runs this before the tests, so a broken gateway setup is not taken for a
 fault in Vistara.
 
+Two files beside the pin keep the build reproducible on macOS:
+
+- `scripts/test-gateway/go.sum`: rdpgw's release has none, so this one pins
+  every Go module it uses.
+- `scripts/test-gateway/no-pam.patch`: rdpgw's authentication helper also
+  checks passwords with PAM, which does not build against macOS's PAM. The
+  patch takes that mode out; the gateway tests use NTLM only.
+
+To move to a newer rdpgw, change `scripts/RDPGW_VERSION`, check that the patch
+still applies, and delete the `go.sum`. The next build resolves the modules
+with `go mod tidy`, which checks them against Go's checksum database, prints
+the new `go.sum`, and stops. Review it, commit it, and build again.
+
 ### Against a Windows host
 
 The same tests run against any RDP host. Use a computer you may test
