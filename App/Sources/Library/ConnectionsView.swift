@@ -6,7 +6,12 @@ import VistaraCore
 /// The primary window: a sidebar of sections and a table of connections.
 struct ConnectionsView: View {
     @Bindable var model: LibraryModel
-    let connect: (Connection) -> Void
+    /// Where Option-connecting opens a session: the other place from the
+    /// system's setting (docs/DESIGN.md, Session tabs).
+    var alternatePlacement = SessionPlacement.tab
+    /// Opens a session, where the placement says or, given none, where the
+    /// system's setting does.
+    let connect: (Connection, SessionPlacement?) -> Void
     /// Called after a connection was saved from the editor.
     var saved: (Connection) -> Void = { _ in }
 
@@ -64,9 +69,12 @@ struct ConnectionsView: View {
     /// What the table's context menu and primary action do.
     private var commands: ConnectionCommands {
         ConnectionCommands(
-            connect: { ids in
-                for connection in model.library.connections where ids.contains(connection.id) { connect(connection) }
+            connect: { ids, placement in
+                for connection in model.library.connections where ids.contains(connection.id) {
+                    connect(connection, placement)
+                }
             },
+            alternatePlacement: alternatePlacement,
             edit: { id in model.editorRequest = .edit(id) },
             duplicate: { ids in
                 Task { model.selectedIDs = Set(await model.duplicate(ids)) }
@@ -92,7 +100,9 @@ struct ConnectionsView: View {
             find: ConnectionsView.focusSearchField,
             importFiles: model.canChange ? { model.isImporting = true } : nil,
             export: ids.isEmpty ? nil : { commands.export(ids) },
-            connect: ids.isEmpty ? nil : { commands.connect(ids) },
+            connect: ids.isEmpty ? nil : { commands.connect(ids, nil) },
+            connectElsewhere: ids.isEmpty ? nil : { commands.connect(ids, alternatePlacement) },
+            alternatePlacement: alternatePlacement,
             edit: ids.count == 1 && model.canChange ? { if let id = ids.first { commands.edit(id) } } : nil,
             duplicate: canChange ? { commands.duplicate(ids) } : nil,
             delete: canChange ? { commands.delete(ids) } : nil,
@@ -130,7 +140,10 @@ struct ConnectionsView: View {
 
 /// What can be done with connections in the table.
 struct ConnectionCommands {
-    var connect: (Set<Connection.ID>) -> Void
+    /// Opens the connections' sessions, where the placement says or, given
+    /// none, where the system's setting does.
+    var connect: (Set<Connection.ID>, SessionPlacement?) -> Void
+    var alternatePlacement: SessionPlacement
     var edit: (Connection.ID) -> Void
     var duplicate: (Set<Connection.ID>) -> Void
     var delete: (Set<Connection.ID>) -> Void
@@ -147,6 +160,9 @@ struct LibraryActions {
     var importFiles: (() -> Void)?
     var export: (() -> Void)?
     var connect: (() -> Void)?
+    /// Connect with Option: in a new tab or a new window, the other place.
+    var connectElsewhere: (() -> Void)?
+    var alternatePlacement = SessionPlacement.tab
     var edit: (() -> Void)?
     var duplicate: (() -> Void)?
     var delete: (() -> Void)?

@@ -11,8 +11,10 @@ struct VistaraApp: App {
         // The primary window, one per app. Window > Connections (Command-0)
         // brings it back; see LibraryCommands.
         Window("Connections", id: "connections") {
-            ConnectionsView(model: library) { connection in
-                coordinator.open(SessionTarget(connection: connection))
+            ConnectionsView(
+                model: library, alternatePlacement: coordinator.defaultPlacement.other
+            ) { connection, placement in
+                coordinator.open(SessionTarget(connection: connection), placement: placement)
                 Task { await library.recordConnection(connection.id) }
             } saved: { connection in
                 coordinator.connectionChanged(SessionTarget(connection: connection))

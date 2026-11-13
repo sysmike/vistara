@@ -56,9 +56,10 @@ private struct ConnectMenuItem: View {
     @FocusedValue(\.libraryActions) private var actions
 
     var body: some View {
-        Button("Connect") { actions?.connect?() }
-            .keyboardShortcut("o")
-            .disabled(actions?.connect == nil)
+        ConnectButtons(alternate: actions?.alternatePlacement ?? .tab, hasShortcuts: true) { placement in
+            if placement == nil { actions?.connect?() } else { actions?.connectElsewhere?() }
+        }
+        .disabled(actions?.connect == nil)
     }
 }
 

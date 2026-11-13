@@ -44,14 +44,32 @@ final class SessionCoordinator {
         controllers.filter { $0.model.isLive }.count
     }
 
-    /// Opens a window and connects. A computer that already has a window gets
-    /// that window brought forward instead of a second one.
+    /// The session window that was in front last, which a new session joins
+    /// as a tab. It stays while the Connections window is in front.
+    private(set) var frontSession: SessionWindowController?
+
+    /// The system's "Prefer tabs when opening documents" setting. Tests set
+    /// their own, so they never touch the user's.
+    @ObservationIgnored var tabbingPreference: () -> NSWindow.UserTabbingPreference = {
+        NSWindow.userTabbingPreference
+    }
+
+    /// Where a new session opens unless Option says otherwise.
+    var defaultPlacement: SessionPlacement {
+        SessionPlacement.preferred(by: tabbingPreference(), frontIsFullScreen: frontSession?.model.isFullScreen)
+    }
+
+    /// Opens a window or a tab and connects: where `placement` says, or else
+    /// where the system's setting does. A computer that already has a session
+    /// gets its window or tab brought forward instead of a second one.
     @discardableResult
-    func open(_ target: SessionTarget) -> SessionWindowController {
+    func open(_ target: SessionTarget, placement: SessionPlacement? = nil) -> SessionWindowController {
         if let existing = controllers.first(where: { $0.model.target.credentialKey == target.credentialKey }) {
             existing.show()
             return existing
         }
+        let host = frontSession
+        let placement = placement ?? defaultPlacement
 
         let model = SessionModel(target: target, credentialStore: credentialStore, trustStore: trustStore)
         if let id = target.connectionID {
@@ -59,11 +77,12 @@ final class SessionCoordinator {
             model.onRenewedSharedFolders = { [weak self] renewals in self?.renewSharedFolders?(id, renewals) }
         }
         let controller = SessionWindowController(model: model)
-        controller.onMainChange = { [weak self, weak model] isMain in
-            guard let self, let model else { return }
+        controller.onMainChange = { [weak self, weak controller] isMain in
+            guard let self, let controller else { return }
             if isMain {
-                activeModel = model
-            } else if activeModel === model {
+                activeModel = controller.model
+                frontSession = controller
+            } else if activeModel === controller.model {
                 activeModel = nil
             }
         }
@@ -71,11 +90,21 @@ final class SessionCoordinator {
             guard let self, let controller else { return }
             if activeModel === controller.model { activeModel = nil }
             controllers.removeAll { $0 === controller }
+            if frontSession === controller { frontSession = controllers.last }
         }
         controllers.append(controller)
         controller.observeCertificates()
         model.connect()
-        controller.show()
+        if placement == .tab, let host, host.window.isVisible {
+            host.window.addTabbedWindow(controller.window, ordered: .above)
+            controller.show()
+        } else {
+            // A window of its own, even where AppKit would make it a tab.
+            controller.window.tabbingMode = .disallowed
+            controller.show()
+            controller.window.tabbingMode = .automatic
+        }
+        frontSession = controller
         return controller
     }
 

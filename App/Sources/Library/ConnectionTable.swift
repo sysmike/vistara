@@ -109,7 +109,9 @@ struct ConnectionTable: View {
             .contextMenu(forSelectionType: Connection.ID.self) { ids in
                 contextMenu(for: ids)
             } primaryAction: { ids in
-                commands.connect(ids)
+                // Double-click or Return; with Option, in the other place.
+                let elsewhere = NSEvent.modifierFlags.contains(.option)
+                commands.connect(ids, elsewhere ? commands.alternatePlacement : nil)
             }
         }
     }
@@ -165,7 +167,9 @@ struct ConnectionTable: View {
             Button("New Connection…", action: commands.new)
                 .disabled(!commands.canChange)
         } else {
-            Button("Connect") { commands.connect(ids) }
+            ConnectButtons(alternate: commands.alternatePlacement) { placement in
+                commands.connect(ids, placement)
+            }
             Divider()
             Button("Edit Connection…") { if let id = ids.first { commands.edit(id) } }
                 .disabled(ids.count != 1 || !commands.canChange)
