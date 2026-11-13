@@ -16,7 +16,8 @@ jobs:
   freerdp:
     name: Build FreeRDP
     runs-on: macos-15
-    timeout-minutes: 45
+    # Two architectures, built one after the other, when nothing is cached.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,6 +41,7 @@ jobs:
         run: |
           ls -l build/freerdp/prefix/lib
           for lib in build/freerdp/prefix/lib/lib{freerdp3,freerdp-client3,winpr3,ssl,crypto}.dylib; do
+            lipo -info "$lib"
             otool -L "$lib"
           done
 
@@ -47,7 +49,7 @@ jobs:
     name: Build, test, and lint
     needs: freerdp
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -176,6 +178,35 @@ jobs:
           name: screenshots
           path: build/screenshots
           if-no-files-found: warn
+
+      # What ships: a Release build with an arm64 and an x86_64 slice in the
+      # app and in every library it embeds.
+      - name: Build universal release
+        run: |
+          xcodebuild build -project Vistara.xcodeproj -scheme Vistara -configuration Release \
+            -destination 'generic/platform=macOS' ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            -derivedDataPath build/DerivedDataRelease
+          app=build/DerivedDataRelease/Build/Products/Release/Vistara.app
+          status=0
+          for binary in "$app/Contents/MacOS/Vistara" "$app"/Contents/Frameworks/*.dylib; do
+            archs="$(lipo -archs "$binary")"
+            echo "$(basename "$binary"): $archs"
+            [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]] || status=1
+          done
+          du -sh "$app"
+          exit $status
+
+      - name: Launch the x86_64 slice
+        run: |
+          app=build/DerivedDataRelease/Build/Products/Release/Vistara.app
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "Rosetta is not installed on this runner; the x86_64 slice was built but not launched."
+            exit 0
+          fi
+          arch -x86_64 "$app/Contents/MacOS/Vistara" &
+          sleep 8
+          pgrep -x Vistara
+          pkill -x Vistara
 
       - name: Launch app
         run: |

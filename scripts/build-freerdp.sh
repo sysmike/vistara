@@ -11,7 +11,10 @@
 # Usage: scripts/build-freerdp.sh [--force] [--print-key]
 #
 # Environment:
-#   VISTARA_ARCH        target architecture (default: arm64)
+#   VISTARA_ARCHS       target architectures (default: "arm64 x86_64"). With
+#                       more than one, each is built in a work directory of
+#                       its own and the libraries are joined with lipo.
+#   VISTARA_ARCH        one architecture, as VISTARA_ARCHS with one entry
 #   VISTARA_BUILD_DIR   work directory (default: <repo>/build/freerdp)
 #
 # Output: $VISTARA_BUILD_DIR/prefix/{include,lib}
@@ -19,7 +22,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ARCH="${VISTARA_ARCH:-arm64}"
+ARCHS="${VISTARA_ARCHS:-${VISTARA_ARCH:-arm64 x86_64}}"
+read -r -a ARCH_LIST <<<"$ARCHS"
+ARCH="${ARCH_LIST[0]}"
 DEPLOYMENT_TARGET="14.0"
 WORK="${VISTARA_BUILD_DIR:-$ROOT/build/freerdp}"
 PREFIX="$WORK/prefix"
@@ -33,9 +38,9 @@ OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-$OPENS
 
 sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
-# Everything that changes the result: both pins, the architecture, this script.
+# Everything that changes the result: both pins, the architectures, this script.
 BUILD_KEY="$(printf '%s\n' "$FREERDP_VERSION" "$FREERDP_SHA256" "$OPENSSL_VERSION" "$OPENSSL_SHA256" \
-  "$ARCH" "$(sha256 "${BASH_SOURCE[0]}")" | shasum -a 256 | cut -d' ' -f1)"
+  "${ARCH_LIST[*]}" "$(sha256 "${BASH_SOURCE[0]}")" | shasum -a 256 | cut -d' ' -f1)"
 
 FORCE=0
 for arg in "$@"; do
@@ -55,7 +60,58 @@ for tool in cmake curl shasum tar make install_name_tool otool lipo xcrun; do
 done
 
 if [[ $FORCE -eq 0 && -f "$STAMP" && "$(cat "$STAMP")" == "$BUILD_KEY" ]]; then
-  echo "FreeRDP $FREERDP_VERSION ($ARCH) is up to date in $PREFIX"
+  echo "FreeRDP $FREERDP_VERSION (${ARCH_LIST[*]}) is up to date in $PREFIX"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Several architectures: build each on its own, then join the libraries.
+if [[ ${#ARCH_LIST[@]} -gt 1 ]]; then
+  sub_args=()
+  [[ $FORCE -eq 1 ]] && sub_args+=(--force)
+  for arch in "${ARCH_LIST[@]}"; do
+    log "Building for $arch"
+    start=$SECONDS
+    VISTARA_ARCHS="$arch" VISTARA_BUILD_DIR="$WORK/$arch" "${BASH_SOURCE[0]}" ${sub_args[@]+"${sub_args[@]}"}
+    echo "Built $arch in $((SECONDS - start)) s"
+  done
+
+  log "Joining ${ARCH_LIST[*]} into $PREFIX"
+  first="$WORK/${ARCH_LIST[0]}/prefix"
+  # The shim compiles against one set of headers for every slice, so the
+  # headers must not differ between architectures. Only these may: each
+  # build's own install paths, and the architecture's name, which FreeRDP
+  # uses for its build information only. None changes a type or a layout.
+  same_except=(-I 'INSTALL_PREFIX' -I 'DATA_PATH' -I 'INSTALL_SYSCONFDIR' -I 'INSTALL_LOCALEDIR' -I 'TARGET_ARCH')
+  for arch in "${ARCH_LIST[@]:1}"; do
+    diff -r "${same_except[@]}" "$first/include" "$WORK/$arch/prefix/include" ||
+      die "the installed headers differ between ${ARCH_LIST[0]} and $arch"
+  done
+  rm -rf "$PREFIX"
+  cp -R "$first" "$PREFIX"
+  rm -f "$PREFIX/.vistara-build-key"
+  while IFS= read -r lib; do
+    name="${lib#"$first/"}"
+    slices=()
+    for arch in "${ARCH_LIST[@]}"; do slices+=("$WORK/$arch/prefix/$name"); done
+    lipo -create "${slices[@]}" -output "$PREFIX/$name"
+  done < <(find "$first/lib" -maxdepth 1 -type f -name '*.dylib')
+
+  status=0
+  while IFS= read -r lib; do
+    archs="$(lipo -archs "$lib")"
+    for arch in "${ARCH_LIST[@]}"; do
+      [[ " $archs " == *" $arch "* ]] || { echo "$lib: expected $arch, found $archs" >&2; status=1; }
+    done
+  done < <(find "$PREFIX/lib" -maxdepth 1 -type f -name '*.dylib')
+  [[ $status -eq 0 ]] || die "verification failed"
+  for arch in "${ARCH_LIST[@]}"; do
+    echo "$arch slice: $(du -sk "$WORK/$arch/prefix/lib" | cut -f1) KiB of libraries"
+  done
+  echo "universal: $(du -sk "$PREFIX/lib" | cut -f1) KiB of libraries"
+
+  echo "$BUILD_KEY" >"$STAMP"
+  log "Done: FreeRDP $FREERDP_VERSION with OpenSSL $OPENSSL_VERSION (${ARCH_LIST[*]}) in $PREFIX"
   exit 0
 fi
 
@@ -122,6 +178,13 @@ DISABLED_CHANNELS=(AUDIN LOCATION PARALLEL PRINTER RDP2TCP RDPEAR RDPECAM REMDES
 CHANNEL_FLAGS=()
 for channel in "${DISABLED_CHANNELS[@]}"; do CHANNEL_FLAGS+=("-DCHANNEL_$channel=OFF"); done
 
+# FreeRDP picks its target from CMAKE_SYSTEM_PROCESSOR, which is the host's
+# unless cross compiling: building x86_64 on Apple silicon must say so.
+CROSS_FLAGS=()
+if [[ "$ARCH" != "$(uname -m)" ]]; then
+  CROSS_FLAGS=(-DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_SYSTEM_PROCESSOR="$ARCH")
+fi
+
 cmake -S "$WORK/src/freerdp" -B "$WORK/obj/freerdp" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
@@ -155,7 +218,7 @@ cmake -S "$WORK/src/freerdp" -B "$WORK/obj/freerdp" ${GENERATOR[@]+"${GENERATOR[
   -DWITH_INTERNAL_MD4=ON \
   -DWITH_INTERNAL_MD5=ON \
   -DWITH_INTERNAL_RC4=ON \
-  "${CHANNEL_FLAGS[@]}"
+  "${CHANNEL_FLAGS[@]}" ${CROSS_FLAGS[@]+"${CROSS_FLAGS[@]}"}
 cmake --build "$WORK/obj/freerdp" --parallel "$JOBS"
 cmake --install "$WORK/obj/freerdp"
 

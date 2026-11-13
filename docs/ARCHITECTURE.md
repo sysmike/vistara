@@ -6,7 +6,12 @@ macOS UI. Changes to anything on this page need an issue labeled `decision`.
 
 ## Platform
 
-- macOS 14 or later. Apple Silicon first; universal if it costs little (#33).
+- macOS 14 or later, as a universal app: arm64 and x86_64 (#33). Measured in
+  CI on macos-15: an x86_64 build of OpenSSL and FreeRDP takes 154 s next to
+  156 s for arm64, and only when the pins change, since the result is
+  cached. The libraries grow from 20.1 MB (arm64) to 30.8 MB universal, and
+  the Release app is 27 MB. The x86_64 slice is cross-built on Apple silicon
+  and launched under Rosetta in CI; it has not run on an Intel Mac.
 - Swift 6 with SwiftUI for the app chrome. AppKit where SwiftUI falls short,
   which includes the session view and raw keyboard handling.
 - The Xcode project is generated from `project.yml` with XcodeGen and is not
