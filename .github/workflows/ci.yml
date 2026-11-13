@@ -127,6 +127,29 @@ jobs:
         if: always()
         run: cat build/test-server/run/server.log || true
 
+      # A test process that crashes leaves only its signal in the log; the
+      # crashed thread's frames say where.
+      - name: Show crash reports
+        if: failure()
+        run: |
+          for report in $(ls -t "$HOME"/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+            echo "== $report"
+            python3 - "$report" <<'PY'
+          import json, sys
+          lines = open(sys.argv[1]).read().split("\n", 1)
+          body = json.loads(lines[1])
+          images = body.get("usedImages", [])
+          print(body.get("exception"), body.get("termination", {}).get("indicator"))
+          for thread in body.get("threads", []):
+              if not thread.get("triggered"):
+                  continue
+              for frame in thread.get("frames", [])[:40]:
+                  image = images[frame["imageIndex"]].get("name", "?") if frame.get("imageIndex") is not None else "?"
+                  print(f'{image:32} {frame.get("symbol", hex(frame.get("imageOffset", 0)))} +{frame.get("symbolLocation", 0)}'
+                        f' {frame.get("sourceFile", "")}:{frame.get("sourceLine", "")}')
+          PY
+          done
+
       - name: Generate project
         run: xcodegen generate
 
