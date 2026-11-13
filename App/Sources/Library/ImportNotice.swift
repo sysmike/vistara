@@ -12,11 +12,12 @@ struct ImportNotice: View {
                 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(report.failures.isEmpty && report.droppedPasswords.isEmpty ? .green : .orange)
                 .accessibilityHidden(true)
+            // Wraps within the width the window gives it. Asked for its own
+            // height, it was measured at no width and stretched the window.
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(report.sentences, id: \.self) { Text($0) }
             }
-            .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: dismiss) {
                 Image(systemName: "xmark")
                     .frame(width: 20, height: 20)
