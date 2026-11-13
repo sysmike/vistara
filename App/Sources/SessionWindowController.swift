@@ -183,8 +183,10 @@ final class SessionWindow: NSWindow {
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
         ) { notification in
+            // Delivered on the main queue, where the window lives.
+            nonisolated(unsafe) let window = notification.object as? NSWindow
             MainActor.assumeIsolated {
-                refuseTabbing(notification.object as? NSWindow)
+                refuseTabbing(window)
             }
         }
         for window in NSApp.windows {
