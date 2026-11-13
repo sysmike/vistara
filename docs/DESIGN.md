@@ -261,6 +261,45 @@ with everything above; tabbing only changes how they are grouped.
 - Size and position are remembered per computer only for a session alone in
   its window. A tab group keeps the frame it has.
 
+### Multiple displays
+
+A session can use every display of the Mac, as one remote desktop that spans
+them, the way Windows uses several monitors. Vistara says *displays*, as the
+Mac does; *monitors* is the remote computer's word.
+
+- The Display section of the connection editor has **Displays: This Display**
+  (the default) or **All Displays**. All Displays shows beneath it that the
+  session then always fills the displays in full screen.
+- A session on all displays opens in full screen at once, with one window on
+  each display, each showing its part of the remote desktop. It is still one
+  session: one title in the Window menu and the Dock menu, one Session menu,
+  one connection to close. Closing any of its windows, or Session >
+  Disconnect, ends it; leaving full screen on any display ends the full screen
+  of all of them and the session goes on in one window on the display in
+  front, at that window's size. *Judgment: a multi-display desktop in
+  windows would be a desktop nobody can see whole.*
+- The remote desktop follows the Mac's arrangement in System Settings >
+  Displays: the same order and alignment, the Mac's main display (the one
+  with the menu bar) as the remote primary monitor, and each display at its
+  own pixel density, so a Retina display and a standard one side by side both
+  look sharp. Where the Mac's arrangement cannot be copied exactly in whole
+  pixels, displays keep touching and their order is kept.
+- When a display is added, removed, or rearranged during the session, the
+  remote desktop follows, as it follows a window's size. A session left with
+  one display goes on in full screen on it.
+- Mission Control's "Displays have separate Spaces" must be on, as the
+  system's full screen on several displays needs it. When it is off, All
+  Displays connects on the display in front only, and the editor says why
+  beneath the choice.
+- A multi-display session's windows are never tabs, and Option-connecting does
+  not change that.
+- The keyboard goes to the session while any of its windows is key; the
+  pointer moves freely between the displays and the remote computer sees one
+  desktop.
+- `.rdp` files: `use multimon:i:1` imports as All Displays and exports from
+  it. Choosing some displays but not others (`selectedmonitors`) is a later
+  step.
+
 ## Keyboard
 
 ### Who gets a key press
@@ -448,7 +487,7 @@ the title follows the pane, and the window reopens on the last pane.
 
 | Pane | Contents |
 | --- | --- |
-| General | Defaults for new connections (resolution, Retina, clipboard, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
+| General | Defaults for new connections (resolution, Retina, displays, clipboard, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
 | Keyboard | Translate editing shortcuts; Right Command as the Windows key |
 | Security | Trusted certificates: host, fingerprint, date trusted, Remove |
 
