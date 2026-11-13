@@ -49,6 +49,26 @@ public enum LibraryCodec {
         /// The file was written by a newer Vistara. It must not be overwritten.
         case newerSchema(found: Int, supported: Int)
         case noMigration(from: Int)
+        /// A top-level list is something other than a list.
+        case notAList(String)
+    }
+
+    /// A connection or folder in the file that could not be read. The others
+    /// are read anyway.
+    public struct SkippedEntry: Sendable, Equatable {
+        public enum Kind: Sendable, Equatable {
+            case connection, folder
+        }
+
+        public var kind: Kind
+        /// The entry's identifier, if that much could be read.
+        public var id: String?
+    }
+
+    /// A library together with the entries that could not be read.
+    public struct ReadResult: Sendable {
+        public var library: Library
+        public var skipped: [SkippedEntry]
     }
 
     /// Rewrites the file's top-level object from one schema version to the next.
@@ -60,11 +80,22 @@ public enum LibraryCodec {
 
     private static let rootKeys: Set<String> = ["schemaVersion", "connections", "folders"]
 
+    /// The library, leaving out entries that cannot be read.
     public static func decode(_ data: Data) throws -> Library {
-        try decode(data, migrations: migrations, currentVersion: currentSchemaVersion)
+        try read(data).library
+    }
+
+    /// The library and the entries left out. Throws only when the file as a
+    /// whole cannot be read.
+    public static func read(_ data: Data) throws -> ReadResult {
+        try read(data, migrations: migrations, currentVersion: currentSchemaVersion)
     }
 
     static func decode(_ data: Data, migrations: [Int: Migration], currentVersion: Int) throws -> Library {
+        try read(data, migrations: migrations, currentVersion: currentVersion).library
+    }
+
+    static func read(_ data: Data, migrations: [Int: Migration], currentVersion: Int) throws -> ReadResult {
         guard case .object(var root) = try JSONDecoder().decode(JSONValue.self, from: data) else {
             throw CodecError.notAnObject
         }
@@ -85,10 +116,14 @@ public enum LibraryCodec {
         }
 
         var library = Library()
-        library.connections = try models(Connection.self, in: root["connections"])
-        library.folders = try models(Folder.self, in: root["folders"])
+        let connections = try models(Connection.self, in: root["connections"], key: "connections")
+        let folders = try models(Folder.self, in: root["folders"], key: "folders")
+        library.connections = connections.read
+        library.folders = folders.read
         library.unknownFields = root.filter { !rootKeys.contains($0.key) && !isSecretLike($0.key) }
-        return library
+        let skipped = connections.skippedIDs.map { SkippedEntry(kind: .connection, id: $0) }
+            + folders.skippedIDs.map { SkippedEntry(kind: .folder, id: $0) }
+        return ReadResult(library: library, skipped: skipped)
     }
 
     public static func encode(_ library: Library) throws -> Data {
@@ -122,18 +157,33 @@ public enum LibraryCodec {
         return encoder
     }
 
+    /// Reads each entry on its own, so one that cannot be read costs only
+    /// itself. `skippedIDs` holds an entry's "id" where it could be read.
     private static func models<Model: UnknownFieldPreserving>(
         _ type: Model.Type,
-        in value: JSONValue?
-    ) throws -> [Model] {
-        guard case .array(let items)? = value else { return [] }
-        return try items.map { item in
-            var model = try modelDecoder().decode(Model.self, from: JSONEncoder().encode(item))
-            if case .object(let fields) = item {
-                model.unknownFields = fields.filter { !Model.knownKeys.contains($0.key) && !isSecretLike($0.key) }
+        in value: JSONValue?,
+        key: String
+    ) throws -> (read: [Model], skippedIDs: [String?]) {
+        guard let value else { return ([], []) }
+        guard case .array(let items) = value else { throw CodecError.notAList(key) }
+        var read: [Model] = []
+        var skippedIDs: [String?] = []
+        for item in items {
+            do {
+                var model = try modelDecoder().decode(Model.self, from: JSONEncoder().encode(item))
+                if case .object(let fields) = item {
+                    model.unknownFields = fields.filter { !Model.knownKeys.contains($0.key) && !isSecretLike($0.key) }
+                }
+                read.append(model)
+            } catch {
+                if case .object(let fields) = item, case .string(let id)? = fields["id"] {
+                    skippedIDs.append(id)
+                } else {
+                    skippedIDs.append(nil)
+                }
             }
-            return model
         }
+        return (read, skippedIDs)
     }
 
     private static func value<Model: UnknownFieldPreserving>(of model: Model) throws -> JSONValue {

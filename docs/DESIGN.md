@@ -85,6 +85,12 @@ Consequences:
   name, host, user, and tags.
 - Double-click or Return connects. Empty states say what to do next: "No
   Connections" with a New Connection button; "No Results for “query”".
+- When some saved connections or folders cannot be read, the rest load and a
+  notice above the list says how many were left out and where the original
+  file was copied, with Show in Finder and Close. It is not an alert, because
+  nothing is lost and the app is starting. A file that cannot be read at all
+  is moved aside and the list starts empty, as before. The passwords of
+  connections left out stay in the Keychain.
 
 ### Connection editor
 

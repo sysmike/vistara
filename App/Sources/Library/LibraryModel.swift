@@ -28,6 +28,12 @@ final class LibraryModel {
     private(set) var loadState = LoadState.loading
     /// Where an unreadable file was moved before starting a new library.
     private(set) var corruptFileBackup: URL?
+    /// Entries of the file that could not be read and were left out.
+    private(set) var skippedEntries: [LibraryCodec.SkippedEntry] = []
+    /// The file as it was, copied before the next save leaves those entries out.
+    private(set) var originalFileCopy: URL?
+    /// Whether the notice about left-out entries still shows.
+    var showsSkippedNotice = false
     /// Set when the last change could not be saved.
     private(set) var saveFailed = false
 
@@ -86,6 +92,9 @@ final class LibraryModel {
             let result = try await store.load()
             library = result.library
             corruptFileBackup = result.corruptFileBackup
+            skippedEntries = result.skippedEntries
+            originalFileCopy = result.originalFileCopy
+            showsSkippedNotice = !result.skippedEntries.isEmpty
             loadState = .loaded
         } catch LibraryCodec.CodecError.newerSchema {
             loadState = .unreadable(
@@ -199,7 +208,11 @@ final class LibraryModel {
     /// or unsaved, so a missing connection always really is gone.
     func removeOrphanedCredentials(from store: any CredentialStore) {
         guard loadState == .loaded, !saveFailed, let keys = try? store.keys() else { return }
-        let kept = Set(library.connections.map(\.id.uuidString))
+        // An entry that could not be read may still own a password. Keep the
+        // ones whose identifier is known; without one, keep everything.
+        let skipped = skippedEntries.filter { $0.kind == .connection }
+        guard skipped.allSatisfy({ $0.id != nil }) else { return }
+        let kept = Set(library.connections.map(\.id.uuidString)).union(skipped.compactMap(\.id))
         for key in keys where !kept.contains(key) {
             try? store.remove(for: key)
         }

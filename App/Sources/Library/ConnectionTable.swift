@@ -25,6 +25,14 @@ struct ConnectionTable: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if model.showsSkippedNotice {
+                SkippedEntriesNotice(
+                    skipped: model.skippedEntries, copy: model.originalFileCopy,
+                    dismiss: { model.showsSkippedNotice = false }
+                )
+            }
+        }
     }
 
     private var emptyLibrary: some View {

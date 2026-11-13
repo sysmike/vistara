@@ -133,3 +133,50 @@ private func keys(in value: JSONValue) -> [String] {
         try LibraryCodec.decode(Data("[]".utf8))
     }
 }
+
+// MARK: Entries that cannot be read (issue #51)
+
+private let goodID = "6C1F6E2A-6B1D-4A63-9C3B-1F0C2D3E4F50"
+private let badID = "0B9E8D7C-6B5A-4F3E-8D2C-1B0A99887766"
+
+@Test func aBadConnectionCostsOnlyItself() throws {
+    let data = Data("""
+        {"schemaVersion": 1, "connections": [
+            {"id": "\(goodID)", "name": "Build Server", "host": "build01"},
+            {"id": "\(badID)", "name": "No Host"},
+            {"id": "11111111-2222-3333-4444-555555555555", "name": "Jump Host", "host": "jump"}
+        ]}
+        """.utf8)
+    let read = try LibraryCodec.read(data)
+    #expect(read.library.connections.map(\.name) == ["Build Server", "Jump Host"])
+    #expect(read.skipped == [.init(kind: .connection, id: badID)])
+}
+
+@Test func aBadFolderCostsOnlyItself() throws {
+    let data = Data("""
+        {"schemaVersion": 1, "folders": [
+            {"id": "\(goodID)", "name": "Office"},
+            {"id": "\(badID)", "name": 42}
+        ], "connections": [{"id": "\(badID)", "name": "Build Server", "host": "build01"}]}
+        """.utf8)
+    let read = try LibraryCodec.read(data)
+    #expect(read.library.folders.map(\.name) == ["Office"])
+    #expect(read.library.connections.count == 1)
+    #expect(read.skipped == [.init(kind: .folder, id: badID)])
+}
+
+@Test func anEntryWithoutAReadableIdentifierIsReportedWithoutOne() throws {
+    let data = Data(#"{"schemaVersion": 1, "connections": ["not an object", {"id": 7, "host": "x"}]}"#.utf8)
+    let read = try LibraryCodec.read(data)
+    #expect(read.library.connections.isEmpty)
+    #expect(read.skipped == [.init(kind: .connection, id: nil), .init(kind: .connection, id: nil)])
+}
+
+@Test func aFileThatIsBadAsAWholeIsStillAnError() {
+    #expect(throws: LibraryCodec.CodecError.notAList("connections")) {
+        try LibraryCodec.read(Data(#"{"schemaVersion": 1, "connections": {"a": 1}}"#.utf8))
+    }
+    #expect(throws: DecodingError.self) {
+        try LibraryCodec.read(Data("{ not json".utf8))
+    }
+}

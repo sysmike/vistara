@@ -69,14 +69,41 @@ private struct TemporaryStore {
     #expect(!FileManager.default.fileExists(atPath: temporary.fileURL.path))
 }
 
-@Test func structurallyWrongFileIsMovedAside() async throws {
+@Test func aFileWithAWrongListIsMovedAside() async throws {
     let temporary = TemporaryStore()
     defer { temporary.cleanUp() }
-    try temporary.write(#"{"schemaVersion": 1, "connections": [{"name": "no id or host"}]}"#)
+    try temporary.write(#"{"schemaVersion": 1, "connections": "everything"}"#)
 
     let result = try await temporary.store.load()
     #expect(result.corruptFileBackup != nil)
     #expect(result.library == Library())
+}
+
+@Test func unreadableEntriesAreLeftOutAndTheFileIsCopiedBeforeTheNextSave() async throws {
+    let temporary = TemporaryStore()
+    defer { temporary.cleanUp() }
+    let contents = """
+        {"schemaVersion": 1, "connections": [
+            {"id": "6C1F6E2A-6B1D-4A63-9C3B-1F0C2D3E4F50", "name": "Build Server", "host": "build01"},
+            {"name": "no id or host"}
+        ]}
+        """
+    try temporary.write(contents)
+
+    let result = try await temporary.store.load()
+    #expect(result.corruptFileBackup == nil)
+    #expect(result.library.connections.map(\.name) == ["Build Server"])
+    #expect(result.skippedEntries == [.init(kind: .connection, id: nil)])
+    let copy = try #require(result.originalFileCopy)
+    #expect(copy.lastPathComponent.hasPrefix("connections.unreadable-"))
+    #expect(try String(contentsOf: copy, encoding: .utf8) == contents)
+
+    // Saving leaves the bad entry out of the file; the copy keeps it.
+    try await temporary.store.save(result.library)
+    let reloaded = try await temporary.store.load()
+    #expect(reloaded.skippedEntries.isEmpty)
+    #expect(reloaded.originalFileCopy == nil)
+    #expect(try String(contentsOf: copy, encoding: .utf8) == contents)
 }
 
 @Test func fileFromANewerVersionIsLeftUntouched() async throws {

@@ -178,6 +178,75 @@ struct ConnectionManagementTests {
         try #expect(store.keys() == [kept.id.uuidString])
     }
 
+    /// A library file with one readable connection, one unreadable one with
+    /// an identifier, and, if asked, one without.
+    private struct PartlyReadable {
+        let model: LibraryModel
+        let good: UUID
+        let bad: UUID
+    }
+
+    private func partlyReadableLibrary(withoutID: Bool) async throws -> PartlyReadable {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vistara-library-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let good = UUID()
+        let bad = UUID()
+        let anonymous = withoutID ? #", {"name": "Anonymous"}"# : ""
+        let contents = """
+            {"schemaVersion": 1, "connections": [
+                {"id": "\(good.uuidString)", "name": "Build Server", "host": "build01"},
+                {"id": "\(bad.uuidString)", "name": "Broken"}\(anonymous)
+            ]}
+            """
+        try Data(contents.utf8).write(to: directory.appendingPathComponent(ConnectionStore.fileName))
+        let model = LibraryModel(store: ConnectionStore(directory: directory))
+        await model.load()
+        return PartlyReadable(model: model, good: good, bad: bad)
+    }
+
+    @Test
+    func unreadableEntriesAreLeftOutAndToldOnce() async throws {
+        let model = try await partlyReadableLibrary(withoutID: false).model
+        #expect(names(model) == ["Build Server"])
+        #expect(model.canChange)
+        #expect(model.showsSkippedNotice)
+        #expect(model.originalFileCopy != nil)
+        let summary = SkippedEntriesNotice.summary(of: model.skippedEntries)
+        #expect(summary == "1 connection couldn’t be read and was left out.")
+    }
+
+    @Test
+    func theSummaryCountsConnectionsAndFolders() {
+        let entries: [LibraryCodec.SkippedEntry] = [
+            .init(kind: .connection, id: nil), .init(kind: .connection, id: nil), .init(kind: .folder, id: nil)
+        ]
+        let summary = SkippedEntriesNotice.summary(of: entries)
+        #expect(summary == "2 connections and 1 folder couldn’t be read and were left out.")
+    }
+
+    @Test
+    func anUnreadableConnectionKeepsItsPassword() async throws {
+        let library = try await partlyReadableLibrary(withoutID: false)
+        let (model, good, bad) = (library.model, library.good, library.bad)
+        let store = InMemoryCredentialStore()
+        let orphan = UUID().uuidString
+        for key in [good.uuidString, bad.uuidString, orphan] {
+            try store.save(StoredCredentials(username: "u", password: "p"), for: key, label: "Test")
+        }
+        model.removeOrphanedCredentials(from: store)
+        try #expect(Set(store.keys()) == [good.uuidString, bad.uuidString])
+    }
+
+    @Test
+    func anUnreadableConnectionWithoutAnIdentifierKeepsEveryPassword() async throws {
+        let model = try await partlyReadableLibrary(withoutID: true).model
+        let store = InMemoryCredentialStore()
+        try store.save(StoredCredentials(username: "u", password: "p"), for: UUID().uuidString, label: "Test")
+        model.removeOrphanedCredentials(from: store)
+        try #expect(store.keys().count == 1)
+    }
+
     @Test
     func anUnreadableLibraryNeverCostsAPassword() async throws {
         let directory = FileManager.default.temporaryDirectory
