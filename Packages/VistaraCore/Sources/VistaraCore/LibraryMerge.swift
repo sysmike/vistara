@@ -11,6 +11,17 @@ protocol SyncedEntry: Equatable, Sendable {
     func joined(with local: Self?) -> Self
 }
 
+extension SyncedEntry {
+    /// Whether the folder would keep the same thing for both, whenever each changed.
+    func hasSameSharedPart(as other: Self) -> Bool {
+        var mine = shared
+        var theirs = other.shared
+        mine.modifiedAt = nil
+        theirs.modifiedAt = nil
+        return mine == theirs
+    }
+}
+
 extension Connection: SyncedEntry {
     /// Shared folders open only on the Mac whose bookmarks they hold, and the
     /// last use is each Mac's own.
@@ -99,6 +110,43 @@ enum LibraryMerge {
             decide(here: nil, there: there, deletedAt: deletions[there.id], into: &outcome)
         }
         return outcome
+    }
+
+    /// This Mac's changes, made to `base`, applied to `latest`, which may have
+    /// changed since, for example by another Mac. What this Mac didn't change
+    /// is taken from `latest`; an entry whose shared part it didn't change
+    /// keeps `latest`'s shared part with this Mac's own fields.
+    static func rebase(_ changed: Library, from base: Library, onto latest: Library) -> Library {
+        var library = changed
+        library.connections = rebaseEntries(changed.connections, from: base.connections, onto: latest.connections)
+        library.folders = rebaseEntries(changed.folders, from: base.folders, onto: latest.folders)
+        return library
+    }
+
+    private static func rebaseEntries<Entry: SyncedEntry>(
+        _ changed: [Entry], from base: [Entry], onto latest: [Entry]
+    ) -> [Entry] {
+        let before = Dictionary(base.map { ($0.id, $0) }) { first, _ in first }
+        let current = Dictionary(latest.map { ($0.id, $0) }) { first, _ in first }
+        var entries: [Entry] = []
+        for entry in changed {
+            guard let old = before[entry.id] else {
+                // New here, or back here, as after an undo.
+                entries.append(entry)
+                continue
+            }
+            let unchanged = entry.hasSameSharedPart(as: old)
+            if let now = current[entry.id] {
+                entries.append(unchanged ? now.shared.joined(with: entry) : entry)
+            } else if !unchanged {
+                // Deleted meanwhile, and changed here since: the later change.
+                entries.append(entry)
+            }
+        }
+        // New since `base`, from another Mac.
+        let changedIDs = Set(changed.map(\.id))
+        entries += latest.filter { before[$0.id] == nil && !changedIDs.contains($0.id) }
+        return entries
     }
 
     private static func decide<Entry: SyncedEntry>(

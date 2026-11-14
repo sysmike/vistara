@@ -11,6 +11,7 @@ the short version.
 - [Clipboard, printing, sound, and shared folders](#clipboard-printing-sound-and-shared-folders)
 - [When the connection drops](#when-the-connection-drops)
 - [Importing and exporting .rdp files](#importing-and-exporting-rdp-files)
+- [Your connections on several Macs](#your-connections-on-several-macs)
 - [Settings](#settings)
 - [Privacy and security](#privacy-and-security)
 - [Known limits](#known-limits)
@@ -351,6 +352,40 @@ A file's gateway comes with it. Vistara uses a gateway always or never: a
 file that uses its gateway only when the computer can't be reached directly,
 or not for local addresses, imports as Always, and the notice says so.
 
+## Your connections on several Macs
+
+Your connections can live in a folder that several Macs share, such as one in
+iCloud Drive. Every Mac that keeps its connections in the same folder has the
+same connections, and a change on one shows on the others within seconds.
+
+1. Open Vistara > Settings… and choose **Sync**.
+2. Choose **In a Folder…**, then the folder. The panel starts in iCloud Drive;
+   any folder another Mac can reach works, including ones from other sync
+   services. Vistara keeps its own folder in it, "Vistara Connections".
+3. Do the same on each Mac.
+
+![Settings > Sync](images/settings-sync.png)
+
+- **Choosing the folder** adds this Mac's connections to the ones already
+  there. Nothing is deleted.
+- **What stays on each Mac**: passwords, trusted certificates, shared
+  folders, when a connection was last used, and Settings. A connection
+  deleted on another Mac takes its saved password on this one with it.
+- **When two Macs change the same connection**, the later change wins, all
+  of it. An editor that's open keeps what you typed; saving it is the later
+  change.
+- **When the folder can't be reached**, for example with iCloud Drive turned
+  off or a disk unplugged, you keep working with your connections as this Mac
+  last saw them. A notice above the list says so, and your changes are written
+  to the folder when it's back.
+- **Choosing On This Mac** keeps the connections you have, on this Mac only,
+  and leaves the folder as it is.
+
+The folder never holds a password. Anyone who can change the folder can
+change a connection's address, but each Mac still checks the computer's
+certificate, so a different computer at that address is a question, not a
+silent connection.
+
 ## Settings
 
 Vistara > Settings… (Command-Comma):
@@ -358,6 +393,9 @@ Vistara > Settings… (Command-Comma):
 - **General**: what new connections start with, and whether to ask before
   quitting with sessions open.
 - **Keyboard**: editing shortcuts, and Right Command as the Windows key.
+- **Sync**: whether your connections are kept on this Mac only or in a folder
+  other Macs share; see [Your connections on several
+  Macs](#your-connections-on-several-macs).
 - **Security**: the certificates you chose to always trust, with their full
   fingerprints. Removing one needs no confirmation; the next connection to
   that computer simply asks again.

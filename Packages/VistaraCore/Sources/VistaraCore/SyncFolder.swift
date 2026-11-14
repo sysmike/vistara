@@ -152,6 +152,25 @@ struct SyncFolder: Sendable {
         }
     }
 
+    /// The names and modification dates of everything in the folder's layout.
+    typealias Fingerprint = [String: Date]
+
+    /// What the folder holds now, to notice a change without reading it.
+    /// Empty when it can't be reached.
+    func fingerprint() -> Fingerprint {
+        var fingerprint = Fingerprint()
+        for folder in [root, connectionsFolder, foldersFolder, deletionsFolder] {
+            let items = (try? FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: [.contentModificationDateKey]
+            )) ?? []
+            for item in items {
+                let date = (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+                fingerprint[item.path] = date ?? .distantPast
+            }
+        }
+        return fingerprint
+    }
+
     // MARK: Writing
 
     func write(_ connection: Connection) throws {

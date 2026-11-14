@@ -63,6 +63,8 @@ without the app.
   sandboxed). The file holds no secrets. With a sync folder chosen, each
   connection and folder is also a file of its own there, and the local file
   is what Vistara last saw (DESIGN.md, Connections on several Macs).
+  The folder is remembered as a security-scoped bookmark in UserDefaults
+  (no secret), looked at every two seconds, and read when it changed.
 - Trusted certificate fingerprints are stored beside it.
 - Passwords live only in the Keychain, keyed by connection identifier.
 

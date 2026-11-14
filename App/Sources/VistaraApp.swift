@@ -42,7 +42,7 @@ struct VistaraApp: App {
         }
 
         Settings {
-            SettingsView(trustStore: coordinator.trustStore)
+            SettingsView(trustStore: coordinator.trustStore, library: library)
         }
     }
 }

@@ -13,7 +13,7 @@ final class TestClock: Sendable {
 }
 
 /// Two Macs, each with its own library directory, sharing one sync folder.
-private struct TwoMacs {
+struct TwoMacs {
     let root: URL
     let shared: URL
     let clock: TestClock
