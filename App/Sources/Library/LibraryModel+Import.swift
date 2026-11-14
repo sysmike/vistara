@@ -15,6 +15,9 @@ struct ImportReport: Equatable {
     /// Files that use only some displays, which Vistara does not yet do: it
     /// uses all of them (docs/DESIGN.md, Multiple displays).
     var chosenDisplays: [String] = []
+    /// Files that use their gateway only sometimes, which Vistara does not:
+    /// it uses it always (docs/DESIGN.md, RD Gateway).
+    var gatewaysUsedAlways: [String] = []
 
     var isEmpty: Bool { imported.isEmpty && failures.isEmpty }
 
@@ -35,12 +38,23 @@ struct ImportReport: Equatable {
         } else if skippedLines > 1 {
             sentences.append("\(skippedLines) lines that aren’t settings were skipped.")
         }
+        return sentences + choicesMade + failures
+    }
+
+    /// Settings Vistara does differently from the file.
+    private var choicesMade: [String] {
+        var sentences: [String] = []
         if !chosenDisplays.isEmpty {
             let which = chosenDisplays.count == 1
                 ? "“\(chosenDisplays[0])” names" : "\(chosenDisplays.count) files name"
             sentences.append("\(which) particular displays; Vistara uses all of them.")
         }
-        return sentences + failures
+        if !gatewaysUsedAlways.isEmpty {
+            let which = gatewaysUsedAlways.count == 1
+                ? "“\(gatewaysUsedAlways[0])” uses its gateway" : "\(gatewaysUsedAlways.count) files use their gateway"
+            sentences.append("\(which) only when needed; Vistara always uses it.")
+        }
+        return sentences
     }
 }
 
@@ -67,6 +81,7 @@ extension LibraryModel {
                 if connection.usesAllDisplays, file.string("selectedmonitors") != nil {
                     report.chosenDisplays.append(name)
                 }
+                if RDPFileMapping.usesGatewayOnlySometimes(file) { report.gatewaysUsedAlways.append(name) }
             } catch RDPFileMapping.ImportError.missingAddress {
                 report.failures.append("“\(url.lastPathComponent)” names no computer and wasn’t imported.")
             } catch {

@@ -48,6 +48,11 @@ Settings > General.
 - **General**: a name, the computer (with a port if it isn't 3389), the user
   name and domain to suggest when signing in, a folder, and tags. You can type
   `DOMAIN\user` in the User field.
+- **Gateway**: whether the connection goes through a Remote Desktop Gateway,
+  which passes it on to a computer inside its network. *Never*, the default,
+  connects directly. *Always* asks for the gateway's address (add a port
+  after a colon if it isn't 443) and how to sign in to it: as the computer's
+  account, or as another account with its own user name and domain.
 - **Display**: *Match Window* resizes the remote desktop to fill the window;
   *Keep Size, Scale to Fit* keeps the desktop's size and scales it; *Fixed
   Size* asks for a size you choose. *Optimize for Retina displays* gives the
@@ -260,6 +265,10 @@ Passwords are never imported or exported. A notice above the list says what
 an import did, including any password it left out and any line it didn't
 understand.
 
+A file's gateway comes with it. Vistara uses a gateway always or never: a
+file that uses its gateway only when the computer can't be reached directly,
+or not for local addresses, imports as Always, and the notice says so.
+
 ## Settings
 
 Vistara > Settings… (Command-Comma):
@@ -297,7 +306,9 @@ the architecture document.
 Vistara is new. It does not yet support:
 
 - using only some of your displays (All Displays uses every one);
-- Remote Desktop Gateway, RemoteApp, smart cards, printers, or USB devices;
+- signing in to a Remote Desktop Gateway as an account other than the
+  computer's;
+- RemoteApp, smart cards, printers, or USB devices;
 - copying files or images through the clipboard (text only);
 - the microphone (by design for now);
 - keeping sessions across a restart of Vistara.

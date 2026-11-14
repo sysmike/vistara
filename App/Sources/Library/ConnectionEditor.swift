@@ -32,6 +32,7 @@ struct ConnectionEditor: View {
         VStack(spacing: 0) {
             Form {
                 general
+                gateway
                 display
                 devices
                 sharedFolders
@@ -82,6 +83,28 @@ struct ConnectionEditor: View {
                 if !folders.isEmpty { Divider() }
                 ForEach(folders) { folder in
                     Text(folder.name).tag(UUID?.some(folder.id))
+                }
+            }
+        }
+    }
+
+    /// Everything but the choice hides while it is Never (docs/DESIGN.md, RD Gateway).
+    private var gateway: some View {
+        Section("Gateway") {
+            Picker("Use a gateway", selection: $draft.gatewayUsage) {
+                Text("Never").tag(Connection.Gateway.Usage.never)
+                Text("Always").tag(Connection.Gateway.Usage.always)
+            }
+            if draft.gatewayUsage == .always {
+                TextField("Gateway", text: $draft.gatewayAddress, prompt: Text("gateway.example.com"))
+                problem(draft.gatewayProblem)
+                Picker("Sign in to the gateway as", selection: $draft.gatewaySignIn) {
+                    Text("Same as the Computer").tag(Connection.Gateway.SignIn.sameAsComputer)
+                    Text("Another Account").tag(Connection.Gateway.SignIn.anotherAccount)
+                }
+                if draft.gatewaySignIn == .anotherAccount {
+                    TextField("Gateway User", text: $draft.gatewayUsername, prompt: Text("Optional"))
+                    TextField("Gateway Domain", text: $draft.gatewayDomain, prompt: Text("Optional"))
                 }
             }
         }

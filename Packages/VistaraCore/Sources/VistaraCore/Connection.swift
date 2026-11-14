@@ -66,6 +66,8 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
     public var reconnectsAutomatically = true
     public var requiresNLA = true
     public var certificatePolicy = CertificatePolicy.askOnFirstUse
+    /// Never, unless the connection says otherwise; older files have none.
+    public var gateway = Gateway()
 
     /// Lines from an imported `.rdp` file that Vistara has no setting for, kept
     /// as written so an export gives them back. Never holds a password.
@@ -78,7 +80,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         case folderID, tags, isFavorite, lastConnectedAt
         case resolutionMode, fixedWidth, fixedHeight, usesHiDPI, usesAllDisplays
         case sharesClipboard, audioMode, sharedFolders
-        case reconnectsAutomatically, requiresNLA, certificatePolicy
+        case reconnectsAutomatically, requiresNLA, certificatePolicy, gateway
         case additionalRDPSettings
     }
 
@@ -119,6 +121,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         requiresNLA = try values.decodeIfPresent(Bool.self, forKey: .requiresNLA) ?? requiresNLA
         certificatePolicy =
             try values.decodeIfPresent(CertificatePolicy.self, forKey: .certificatePolicy) ?? certificatePolicy
+        gateway = try values.decodeIfPresent(Gateway.self, forKey: .gateway) ?? gateway
         additionalRDPSettings =
             try values.decodeIfPresent([String].self, forKey: .additionalRDPSettings) ?? additionalRDPSettings
     }

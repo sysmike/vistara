@@ -27,6 +27,14 @@ struct ConnectionDraft: Equatable {
     var requiresNLA = true
     var certificatePolicy = Connection.CertificatePolicy.askOnFirstUse
 
+    /// The gateway, as the Gateway section's fields hold it: the address with
+    /// a port after a colon when it is not 443.
+    var gatewayUsage = Connection.Gateway.Usage.never
+    var gatewayAddress = ""
+    var gatewaySignIn = Connection.Gateway.SignIn.sameAsComputer
+    var gatewayUsername = ""
+    var gatewayDomain = ""
+
     /// The connection being edited, which keeps everything the editor does
     /// not show. A new connection when nil.
     private var original: Connection?
@@ -53,6 +61,12 @@ struct ConnectionDraft: Equatable {
         reconnectsAutomatically = connection.reconnectsAutomatically
         requiresNLA = connection.requiresNLA
         certificatePolicy = connection.certificatePolicy
+        let gateway = connection.gateway
+        gatewayUsage = gateway.usage
+        gatewayAddress = gateway.host.isEmpty ? "" : gateway.address
+        gatewaySignIn = gateway.signIn
+        gatewayUsername = gateway.username
+        gatewayDomain = gateway.domain
     }
 
     var isNew: Bool { original == nil }
@@ -113,7 +127,7 @@ struct ConnectionDraft: Equatable {
         return nil
     }
 
-    var isValid: Bool { hostProblem == nil && portProblem == nil && sizeProblem == nil }
+    var isValid: Bool { hostProblem == nil && portProblem == nil && sizeProblem == nil && gatewayProblem == nil }
 
     /// One line under a choice that makes the connection less safe.
     var nlaWarning: String? {
@@ -161,6 +175,7 @@ struct ConnectionDraft: Equatable {
         connection.reconnectsAutomatically = reconnectsAutomatically
         connection.requiresNLA = requiresNLA
         connection.certificatePolicy = certificatePolicy
+        connection.gateway = gateway
         return connection
     }
 }

@@ -9,12 +9,12 @@ public enum RDPFileMapping {
 
     /// Keys Vistara understands. Everything else is kept in
     /// `Connection.additionalRDPSettings`.
-    static let mappedKeys: Set<String> = [
+    static let mappedKeys: Set<String> = Set([
         "full address", "server port", "username", "domain",
         "desktopwidth", "desktopheight", "smart sizing", "dynamic resolution", "desktopscalefactor", "use multimon",
         "redirectclipboard", "audiomode", "autoreconnection enabled",
         "enablecredsspsupport", "authentication level"
-    ]
+    ]).union(gatewayKeys)
 
     /// Builds a connection from a file. The file format has no name, so the
     /// caller supplies one, usually the file name.
@@ -32,6 +32,7 @@ public enum RDPFileMapping {
 
         applyDisplaySettings(of: file, to: &connection)
         applyDeviceAndSecuritySettings(of: file, to: &connection)
+        applyGateway(of: file, to: &connection)
 
         connection.additionalRDPSettings = file.settings.filter { !mappedKeys.contains($0.key) }.map(\.line)
         return connection
@@ -96,6 +97,7 @@ public enum RDPFileMapping {
         add("autoreconnection enabled", flag(connection.reconnectsAutomatically))
         add("enablecredsspsupport", flag(connection.requiresNLA))
         add("authentication level", .integer(connection.certificatePolicy == .requireTrusted ? 1 : 2))
+        settings += gatewaySettings(of: connection)
 
         let extras = connection.additionalRDPSettings
             .compactMap(RDPFile.Setting.init(line:))
@@ -118,8 +120,8 @@ public enum RDPFileMapping {
         return (address, nil)
     }
 
-    static func joinAddress(host: String, port: Int) -> String {
-        if port == Connection.defaultPort { return host }
+    static func joinAddress(host: String, port: Int, defaultPort: Int = Connection.defaultPort) -> String {
+        if port == defaultPort { return host }
         return host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
     }
 
