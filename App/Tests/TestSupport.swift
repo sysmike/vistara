@@ -29,10 +29,11 @@ struct TestServer {
         else { return nil }
         let port = environment["VISTARA_TEST_RDP_PORT"].flatMap { UInt16($0) } ?? 3389
         let domain = environment["VISTARA_TEST_RDP_DOMAIN"].flatMap { $0.isEmpty ? nil : $0 }
-        return TestServer(
-            target: SessionTarget(name: "Test Server", host: host, port: port, username: user, domain: domain),
-            password: password
-        )
+        var target = SessionTarget(name: "Test Server", host: host, port: port, username: user, domain: domain)
+        // The test server prints to every printer it is offered, which would
+        // put print panels on every window: only tests about printing want it.
+        target.printsOnThisMac = false
+        return TestServer(target: target, password: password)
     }
 }
 
@@ -61,7 +62,9 @@ extension TestServer {
 
     /// The server's address without an account, as the launcher gives it.
     var address: SessionTarget {
-        SessionTarget(name: target.name, host: target.host, port: target.port)
+        var address = SessionTarget(name: target.name, host: target.host, port: target.port)
+        address.printsOnThisMac = false
+        return address
     }
 }
 

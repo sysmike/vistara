@@ -167,7 +167,9 @@ struct PrintingTests {
     @Test(.enabled(if: TestServer.isFreeRDPTestServer), .timeLimit(.minutes(1)))
     func whatTheServerPrintsComesOutOnTheWindow() async throws {
         let server = try #require(TestServer.current)
-        let model = SessionModel(target: server.address, credentialStore: try server.storeWithCredentials())
+        var target = server.address
+        target.printsOnThisMac = true
+        let model = SessionModel(target: target, credentialStore: try server.storeWithCredentials())
         let controller = SessionWindowController(model: model)
         defer { controller.window.close() }
         let saved = FileManager.default.temporaryDirectory.appendingPathComponent("vistara-print-\(UUID()).pdf")
@@ -189,9 +191,9 @@ struct PrintingTests {
             FileManager.default.fileExists(atPath: saved.path) && controller.window.attachedSheet != nil
         }
 
+        // Printing lays the page out on the print info's paper, so only the page count stays.
         let document = try #require(PDFDocument(url: saved))
         #expect(document.pageCount == 1)
-        #expect(document.page(at: 0)?.bounds(for: .mediaBox).size == CGSize(width: 200, height: 200))
         #expect(model.printQueue.next?.content == .refused(tooLarge: false))
         if let alert = controller.window.attachedSheet { controller.window.endSheet(alert) }
         await waitUntil("nothing waits any more") { model.printQueue.next == nil }
