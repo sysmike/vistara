@@ -74,6 +74,8 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     /// Several monitors for one desktop across them. With fewer than two, one
     /// monitor of `desktopWidth` x `desktopHeight` at `scalePercent`.
     public var monitors: [RDPMonitor] = []
+    /// The gateway to go through, or nil to connect directly.
+    public var gateway: RDPGateway?
 
     public init(
         host: String,
@@ -145,6 +147,9 @@ public struct RDPCertificate: Sendable, Equatable {
     /// Set by whoever keeps a trust store, when a different certificate was
     /// trusted for this host before.
     public var previousFingerprint: String?
+    /// The gateway's certificate, not the computer's. `host` and `port` are
+    /// then the gateway's.
+    public var isGateway = false
 
     public init(
         host: String,
@@ -193,7 +198,7 @@ public enum RDPSessionState: Sendable, Equatable {
     case disconnected(RDPDisconnectReason)
 }
 
-/// The questions a session asks while connecting. Both are answered
+/// The questions a session asks while connecting. Each is answered
 /// asynchronously, typically by showing a sheet.
 ///
 /// The closures must return promptly when their task is cancelled, which
@@ -201,15 +206,26 @@ public enum RDPSessionState: Sendable, Equatable {
 public struct RDPSessionDelegate: Sendable {
     /// Returns the credentials to use, or nil to cancel the connection.
     public var credentials: @Sendable (RDPSessionConfiguration) async -> RDPCredentials?
-    /// Returns true to continue with this certificate for this session.
+    /// Returns true to continue with this certificate for this session. A
+    /// gateway's certificate says so (`isGateway`).
     public var certificateDecision: @Sendable (RDPCertificate) async -> Bool
+    /// For a gateway with an account of its own: returns the credentials to
+    /// sign in to it, or nil to cancel. Asked before `credentials`.
+    public var gatewayCredentials: @Sendable (RDPGateway) async -> RDPCredentials?
+    /// Returns true to accept what the gateway shows and connect. Without an
+    /// answer of its own, a notice is accepted and consent declined.
+    public var gatewayMessage: @Sendable (RDPGatewayMessage) async -> Bool
 
     public init(
         credentials: @escaping @Sendable (RDPSessionConfiguration) async -> RDPCredentials?,
-        certificateDecision: @escaping @Sendable (RDPCertificate) async -> Bool
+        certificateDecision: @escaping @Sendable (RDPCertificate) async -> Bool,
+        gatewayCredentials: @escaping @Sendable (RDPGateway) async -> RDPCredentials? = { _ in nil },
+        gatewayMessage: @escaping @Sendable (RDPGatewayMessage) async -> Bool = { !$0.requiresConsent }
     ) {
         self.credentials = credentials
         self.certificateDecision = certificateDecision
+        self.gatewayCredentials = gatewayCredentials
+        self.gatewayMessage = gatewayMessage
     }
 }
 

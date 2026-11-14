@@ -51,6 +51,12 @@ struct vistara_session {
     bool certificate_rejected;
     vistara_certificate_decider decide_certificate;
     void *decide_certificate_context;
+    vistara_gateway_message_decider decide_gateway_message;
+    void *decide_gateway_message_context;
+    // Whether the connection goes through a gateway, and whether it got past
+    // it: a certificate other than the gateway's was seen.
+    bool uses_gateway;
+    bool reached_computer;
     uint64_t paint_count;
     // Union of everything painted since the last vistara_session_take_dirty().
     bool has_dirty;
@@ -170,13 +176,17 @@ const char *vistara_freerdp_version(void) {
 /// this connection only; FreeRDP stores nothing.
 static int verify_x509_certificate(freerdp *instance, const BYTE *data, size_t length,
                                    const char *hostname, UINT16 port, DWORD flags) {
-    (void)flags;
     vistara_session *session = session_of(instance->context);
+    const bool is_gateway = (flags & VERIFY_CERT_FLAG_GATEWAY) != 0;
+    if (!is_gateway) {
+        session->reached_computer = true;
+    }
     const vistara_certificate certificate = {
         .host = hostname ? hostname : "",
         .port = port,
         .pem = (const char *)data,
         .pem_length = length,
+        .is_gateway = is_gateway,
     };
     if (data && length > 0 && session->decide_certificate &&
         session->decide_certificate(session->decide_certificate_context, &certificate)) {
@@ -184,6 +194,55 @@ static int verify_x509_certificate(freerdp *instance, const BYTE *data, size_t l
     }
     session->certificate_rejected = true;
     return 0;
+}
+
+// MARK: Gateway
+
+/// What the gateway shows before connecting ([MS-TSGU] 2.2.10.14). `length`
+/// is in bytes of UTF-16. Without a decider, a notice is accepted and consent
+/// declined.
+static BOOL present_gateway_message(freerdp *instance, UINT32 type, BOOL is_display_mandatory,
+                                    BOOL is_consent_mandatory, size_t length, const WCHAR *message) {
+    vistara_session *session = session_of(instance->context);
+    const bool is_consent = type == GATEWAY_MESSAGE_CONSENT;
+    const bool requires_consent = is_consent_mandatory || is_consent;
+    if (!session->decide_gateway_message) {
+        return requires_consent ? FALSE : TRUE;
+    }
+    const uint16_t empty = 0;
+    const uint16_t *text = message ? (const uint16_t *)message : &empty;
+    const size_t units = message ? length / sizeof(WCHAR) : 0;
+    return session->decide_gateway_message(session->decide_gateway_message_context, is_consent,
+                                           is_display_mandatory, requires_consent, text, units)
+               ? TRUE
+               : FALSE;
+}
+
+/// The gateway, or none. Only the HTTP transport, over WebSocket where the
+/// gateway offers it: never RPC over HTTP (Windows Server 2008) or UDP.
+static bool apply_gateway(rdpSettings *settings, const vistara_connect_options *options) {
+    if (!options->gateway_host) {
+        return freerdp_set_gateway_usage_method(settings, TSC_PROXY_MODE_NONE_DIRECT);
+    }
+    const bool same = options->gateway_same_credentials;
+    return freerdp_set_gateway_usage_method(settings, TSC_PROXY_MODE_DIRECT) &&
+           freerdp_settings_set_string(settings, FreeRDP_GatewayHostname, options->gateway_host) &&
+           freerdp_settings_set_uint32(settings, FreeRDP_GatewayPort, options->gateway_port) &&
+           freerdp_settings_set_bool(settings, FreeRDP_GatewayUseSameCredentials, same) &&
+           freerdp_settings_set_string(settings, FreeRDP_GatewayUsername,
+                                       same ? options->username : options->gateway_username) &&
+           freerdp_settings_set_string(settings, FreeRDP_GatewayDomain,
+                                       same ? options->domain : options->gateway_domain) &&
+           freerdp_settings_set_string(settings, FreeRDP_GatewayPassword,
+                                       same ? options->password : options->gateway_password) &&
+           freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpTransport, TRUE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_GatewayHttpUseWebsockets, TRUE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_GatewayRpcTransport, FALSE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_GatewayUdpTransport, FALSE);
+}
+
+bool vistara_session_failed_at_gateway(const vistara_session *session) {
+    return session->uses_gateway && !session->reached_computer;
 }
 
 // MARK: Painting
@@ -926,6 +985,7 @@ vistara_session *vistara_session_create(void) {
     instance->PostConnect = post_connect;
     instance->PostDisconnect = post_disconnect;
     instance->VerifyX509Certificate = verify_x509_certificate;
+    instance->PresentGatewayMessage = present_gateway_message;
     instance->LoadChannels = load_channels;
     (void)pthread_once(&addin_provider_once, register_addin_provider);
 
@@ -982,6 +1042,15 @@ void vistara_session_read_settings(const vistara_session *session, vistara_secur
     out->desktop_scale_factor = freerdp_settings_get_uint32(settings, FreeRDP_DesktopScaleFactor);
     out->keyboard_layout = freerdp_settings_get_uint32(settings, FreeRDP_KeyboardLayout);
     out->keyboard_type = freerdp_settings_get_uint32(settings, FreeRDP_KeyboardType);
+    out->gateway_enabled = freerdp_settings_get_bool(settings, FreeRDP_GatewayEnabled);
+    out->gateway_usage_method = freerdp_settings_get_uint32(settings, FreeRDP_GatewayUsageMethod);
+    out->gateway_bypass_local = freerdp_settings_get_bool(settings, FreeRDP_GatewayBypassLocal);
+    out->gateway_http_transport = freerdp_settings_get_bool(settings, FreeRDP_GatewayHttpTransport);
+    out->gateway_websockets = freerdp_settings_get_bool(settings, FreeRDP_GatewayHttpUseWebsockets);
+    out->gateway_rpc_transport = freerdp_settings_get_bool(settings, FreeRDP_GatewayRpcTransport);
+    out->gateway_udp_transport = freerdp_settings_get_bool(settings, FreeRDP_GatewayUdpTransport);
+    out->gateway_same_credentials = freerdp_settings_get_bool(settings, FreeRDP_GatewayUseSameCredentials);
+    out->gateway_port = freerdp_settings_get_uint32(settings, FreeRDP_GatewayPort);
 }
 
 static bool apply_options(rdpSettings *settings, const vistara_connect_options *options) {
@@ -1058,7 +1127,11 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     session->play_audio_here = options->play_audio_here && !options->play_audio_on_remote;
     session->decide_certificate = options->decide_certificate;
     session->decide_certificate_context = options->decide_certificate_context;
+    session->decide_gateway_message = options->decide_gateway_message;
+    session->decide_gateway_message_context = options->decide_gateway_message_context;
+    session->uses_gateway = options->gateway_host != NULL;
     if (!apply_options(session->instance->context->settings, options) ||
+        !apply_gateway(session->instance->context->settings, options) ||
         !apply_keyboard(session->instance->context->settings, options) ||
         !vistara_apply_monitors(session->instance->context->settings, options->monitors, options->monitor_count) ||
         !add_shared_folders(session, session->instance->context->settings, options)) {
@@ -1072,6 +1145,12 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
 
     if (session->certificate_rejected) {
         return VISTARA_CONNECT_CERTIFICATE_UNTRUSTED;
+    }
+    // A refused gateway sign-in is not the computer's: it is told apart from
+    // the error code by vistara_session_failed_at_gateway().
+    if (vistara_session_failed_at_gateway(session) &&
+        freerdp_get_last_error(session->instance->context) != FREERDP_ERROR_CONNECT_CANCELLED) {
+        return VISTARA_CONNECT_FAILED;
     }
     switch (freerdp_get_last_error(session->instance->context)) {
     case FREERDP_ERROR_CONNECT_CANCELLED:

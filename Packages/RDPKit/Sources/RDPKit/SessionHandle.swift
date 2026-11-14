@@ -66,31 +66,41 @@ final class SessionHandle {
     var abortToken: AbortToken { AbortToken(session: session) }
 
     /// Connects and blocks until connected or failed. `decideCertificate` is
-    /// called, on this thread, for the server's certificate. Without it
-    /// every certificate is rejected.
-    func connect(to target: Target, decideCertificate: ((RDPCertificate) -> Bool)? = nil) -> ConnectResult {
+    /// called, on this thread, for the server's certificate and the
+    /// gateway's. Without it every certificate is rejected.
+    /// `decideGatewayMessage` is called for what a gateway shows; without it
+    /// a notice is accepted and consent declined.
+    func connect(
+        to target: Target, decideCertificate: ((RDPCertificate) -> Bool)? = nil,
+        decideGatewayMessage: ((RDPGatewayMessage) -> Bool)? = nil
+    ) -> ConnectResult {
         // strdup copies so every pointer stays valid for the whole call.
-        let hostCopy = strdup(target.host)
-        let usernameCopy = strdup(target.username)
-        let domain = target.domain.flatMap { strdup($0) }
-        let passwordCopy = strdup(target.password)
-        defer {
-            if let passwordCopy {
-                let length = strlen(passwordCopy)
-                memset_s(passwordCopy, length, 0, length)
-            }
-            for pointer in [hostCopy, usernameCopy, domain, passwordCopy] { free(pointer) }
-        }
-        guard let host = hostCopy, let username = usernameCopy, let password = passwordCopy else {
+        let strings = CStrings(target)
+        defer { strings.erase() }
+        guard let host = strings.host, let username = strings.username, let password = strings.password else {
             return .failed(RDPFailure(kind: .cannotConnect, name: "out of memory"))
         }
 
         let decider = decideCertificate.map(CertificateDecider.init)
+        let messageDecider = decideGatewayMessage.map(GatewayMessageDecider.init)
         let folders = SharedFolderList(target.sharedFolders)
-        var options = target.options(host: host, username: username, domain: domain, password: password)
+        var options = target.options(host: host, username: username, domain: strings.domain, password: password)
         if let decider {
             options.decide_certificate = Self.askDecider
             options.decide_certificate_context = Unmanaged.passUnretained(decider).toOpaque()
+        }
+        if let messageDecider {
+            options.decide_gateway_message = Self.askGatewayMessageDecider
+            options.decide_gateway_message_context = Unmanaged.passUnretained(messageDecider).toOpaque()
+        }
+        if target.gateway != nil {
+            guard let gatewayHost = strings.gatewayHost else {
+                return .failed(RDPFailure(kind: .cannotConnect, name: "out of memory"))
+            }
+            options.gateway_host = UnsafePointer(gatewayHost)
+            options.gateway_username = strings.gatewayUsername.map { UnsafePointer($0) }
+            options.gateway_domain = strings.gatewayDomain.map { UnsafePointer($0) }
+            options.gateway_password = strings.gatewayPassword.map { UnsafePointer($0) }
         }
 
         // Valid while `folders` lives, which the call below ensures.
@@ -98,7 +108,7 @@ final class SessionHandle {
         options.shared_folder_count = folders.count
 
         let monitors = target.monitors.map(\.cMonitor)
-        return withExtendedLifetime((decider, folders)) {
+        return withExtendedLifetime((decider, messageDecider, folders)) {
             monitors.withUnsafeBufferPointer { monitors in
                 options.monitors = monitors.baseAddress
                 options.monitor_count = monitors.count
@@ -126,6 +136,7 @@ final class SessionHandle {
         var desktopScaleFactor: UInt32
         var keyboardLayout: UInt32
         var keyboardType: UInt32
+        var gateway: GivenGatewaySettings
     }
 
     /// What FreeRDP was told, read back. For tests.
@@ -136,7 +147,8 @@ final class SessionHandle {
             nla: given.nla, tls: given.tls, rdp: given.rdp, tlsMinimumVersion: given.tls_min_version,
             tlsSecurityLevel: given.tls_security_level, remoteConsoleAudio: given.remote_console_audio,
             audioPlayback: given.audio_playback, desktopScaleFactor: given.desktop_scale_factor,
-            keyboardLayout: given.keyboard_layout, keyboardType: given.keyboard_type
+            keyboardLayout: given.keyboard_layout, keyboardType: given.keyboard_type,
+            gateway: GivenGatewaySettings(given)
         )
     }
 
@@ -152,7 +164,8 @@ final class SessionHandle {
         let osError = vistara_session_last_os_error(session)
         return RDPFailure(
             kind: RDPFailure.kind(
-                code: code, osError: osError == 0 ? nil : osError, whileConnected: whileConnected
+                code: code, osError: osError == 0 ? nil : osError, whileConnected: whileConnected,
+                atGateway: vistara_session_failed_at_gateway(session)
             ),
             code: code,
             name: String(cString: vistara_error_name(code)),
@@ -280,6 +293,7 @@ extension RDPCertificate {
         let bytes = UnsafeRawBufferPointer(start: UnsafeRawPointer(certificate.pem), count: certificate.pem_length)
         guard let pem = String(bytes: bytes, encoding: .utf8) else { return nil }
         self.init(host: String(cString: certificate.host), port: certificate.port, pemChain: pem)
+        isGateway = certificate.is_gateway
     }
 }
 

@@ -20,6 +20,15 @@ extension SessionHandle {
         var keyboard: RDPKeyboard?
         /// Several monitors; with fewer than two, one of width x height.
         var monitors: [RDPMonitor] = []
+        var gateway: Gateway?
+    }
+
+    /// The gateway to go through. Without `credentials`, it signs in with the
+    /// computer's.
+    struct Gateway {
+        var host: String
+        var port: UInt16 = 443
+        var credentials: RDPCredentials?
     }
 }
 
@@ -81,7 +90,15 @@ extension SessionHandle.Target {
             keyboard_subtype: keyboard?.subtype ?? 0,
             keyboard_function_keys: keyboard?.functionKeys ?? 0,
             decide_certificate: nil,
-            decide_certificate_context: nil
+            decide_certificate_context: nil,
+            gateway_host: nil,
+            gateway_port: gateway?.port ?? 0,
+            gateway_same_credentials: gateway?.credentials == nil,
+            gateway_username: nil,
+            gateway_domain: nil,
+            gateway_password: nil,
+            decide_gateway_message: nil,
+            decide_gateway_message_context: nil
         )
     }
 }
