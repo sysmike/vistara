@@ -248,7 +248,9 @@ struct FileClipboardTests {
         one.progress = RDPFileFetchProgress(
             bytesReceived: 500_000, bytesExpected: 2_000_000, filesDone: 0, fileCount: 1
         )
-        #expect(one.detail == "500 KB of 2 MB")
+        let half = Int64(500_000).formatted(.byteCount(style: .file))
+        let expected = "\(half) of \(Int64(2_000_000).formatted(.byteCount(style: .file)))"
+        #expect(one.detail == expected)
         let several = FilePasteProgress(computerName: "Build Server", itemNames: ["a", "b", "c"]) {}
         #expect(several.title == "Copying 3 items from “Build Server”")
     }

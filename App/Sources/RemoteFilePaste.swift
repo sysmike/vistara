@@ -41,10 +41,16 @@ final class RemoteFilePaste: NSObject {
     private var list: RDPRemoteFiles?
     /// Where each item is, once fetched.
     private var fetched: [String: URL]?
-    private var isFetching = false
+    /// The fetch under way, which a paste asking meanwhile waits for.
+    private var running: RunningFetch?
+    /// When a fetch last ended without files: cancelled or failed.
+    private var lastFailure: ContinuousClock.Instant?
     /// Counts lists, so a fetch that ends after its list was replaced is ignored.
     private var generation = 0
     private static let log = RDPLogging.logger("Clipboard")
+    /// A paste asks for each item in turn. After a fetch that was cancelled
+    /// or failed, the rest of that paste gets nothing instead of fetching again.
+    private static let samePaste: Duration = .seconds(3)
 
     init(computerName: String, fetch: @escaping Fetch) {
         self.computerName = computerName
@@ -62,6 +68,7 @@ final class RemoteFilePaste: NSObject {
         generation += 1
         self.list = list.flatMap { $0.topLevel.isEmpty ? nil : $0 }
         fetched = nil
+        lastFailure = nil
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -77,21 +84,26 @@ final class RemoteFilePaste: NSObject {
     }
 
     /// The fetched item at `path`, the path a pasteboard item stands for,
-    /// fetching every item first if needed. Nil while another paste is
-    /// fetching, or when the fetch failed or was cancelled.
+    /// fetching every item first if needed, or waiting for the fetch under
+    /// way. Nil when the fetch failed or was cancelled.
     func url(forItemAt path: String?) -> URL? {
         guard let path, let list else { return nil }
-        if fetched == nil, !isFetching {
+        if let running {
+            handleEvents(until: running.outcome)
+            take(running)
+        } else if fetched == nil, !failedJustNow {
             fetchEverything(of: list)
         }
         return fetched?[path]
     }
 
+    private var failedJustNow: Bool {
+        lastFailure.map { ContinuousClock.now - $0 < Self.samePaste } ?? false
+    }
+
     /// Fetches every item of the list, keeping the main thread handling
-    /// events until it is done. Another paste asking meanwhile gets nothing.
+    /// events until it is done.
     private func fetchEverything(of list: RDPRemoteFiles) {
-        isFetching = true
-        defer { isFetching = false }
         let generation = generation
         let items = list.topLevel
         let destination = folder.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -104,17 +116,15 @@ final class RemoteFilePaste: NSObject {
                 outcome.finish(.failure(error))
             }
         }
+        let current = RunningFetch(outcome: outcome, paths: items.map(\.path), generation: generation)
+        running = current
+        defer { running = nil }
         let progress = FilePasteProgress(
             computerName: computerName, itemNames: items.map(\.path), cancel: { task.cancel() }
         )
         let started = ContinuousClock.now
         var isShown = false
-        while !outcome.isDone {
-            if let event = NSApp.nextEvent(
-                matching: .any, until: Date(timeIntervalSinceNow: 0.05), inMode: .default, dequeue: true
-            ) {
-                NSApp.sendEvent(event)
-            }
+        handleEvents(until: outcome) {
             progress.progress = outcome.progress
             if !isShown, ContinuousClock.now - started >= progressDelay {
                 isShown = true
@@ -122,14 +132,35 @@ final class RemoteFilePaste: NSObject {
             }
         }
         if isShown { showProgress(nil) }
-        switch outcome.result {
-        case .success(let urls)? where generation == self.generation:
-            fetched = Dictionary(zip(items.map(\.path), urls)) { first, _ in first }
-        case .failure(let error)? where !(error is CancellationError):
+        take(current)
+        if case .failure(let error)? = outcome.result, !(error is CancellationError) {
             let reason = String(describing: error)
             Self.log.error("Fetching \(items.count, privacy: .public) items failed: \(reason, privacy: .public)")
+        }
+    }
+
+    /// Keeps where a finished fetch put each item, unless its list was
+    /// replaced meanwhile, or notes that it failed.
+    private func take(_ fetch: RunningFetch) {
+        switch fetch.outcome.result {
+        case .success(let urls)? where fetch.generation == generation && fetched == nil:
+            fetched = Dictionary(zip(fetch.paths, urls)) { first, _ in first }
+        case .failure?:
+            lastFailure = .now
         default:
             break
+        }
+    }
+
+    /// Handles the app's events, as its own run loop would, until the fetch is done.
+    private func handleEvents(until outcome: FetchOutcome, each turn: () -> Void = {}) {
+        while !outcome.isDone {
+            if let event = NSApp.nextEvent(
+                matching: .any, until: Date(timeIntervalSinceNow: 0.05), inMode: .default, dequeue: true
+            ) {
+                NSApp.sendEvent(event)
+            }
+            turn()
         }
     }
 }
@@ -145,6 +176,13 @@ extension RemoteFilePaste: NSPasteboardItemDataProvider {
         let url = MainActor.assumeIsolated { self.url(forItemAt: path) }
         if let url { item.setString(url.absoluteString, forType: .fileURL) }
     }
+}
+
+/// A fetch of every item of one list.
+private struct RunningFetch {
+    let outcome: FetchOutcome
+    let paths: [String]
+    let generation: Int
 }
 
 /// How a fetch running off the main thread is doing.
