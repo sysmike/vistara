@@ -119,6 +119,7 @@ A sheet on the Connections window, grouped like a System Settings form.
 │  Devices and Audio                               │
 │    ☑ Share clipboard                             │
 │      ☐ Copy files                                │
+│    ☑ Print on this Mac                           │
 │    Sound         [ Play on This Mac  ⌄]          │
 │  Shared Folders                                  │
 │    📁 Transfer  ~/Transfer       ☐ Read only  ⊖  │
@@ -524,6 +525,38 @@ side, paste on the other.
 - A folder that cannot be found when connecting is left out; the session
   still starts.
 
+### Printing
+
+Documents printed on the remote computer come out on the Mac, through the
+Mac's own print panel.
+
+- The connection's **Print on this Mac** choice, in the editor's Devices and
+  Audio, turns it on. It is on by default, for connections saved before it
+  existed too, and Settings > General has its default for new connections.
+  *Judgment: on, as in Microsoft's client. Printing only brings documents to
+  the Mac, and nothing is printed until you confirm it there.* With it off,
+  the device redirection channel offers no printer, and is not loaded at all
+  without shared folders.
+- The remote computer sees one printer, **Vistara**, which prints with
+  Windows' own Microsoft Print to PDF driver. No Mac printer is named to it
+  and no driver has to be installed: every document arrives as a PDF.
+  *Judgment: one printer that is the Mac's print panel, instead of one
+  printer for each Mac printer, each needing a matching Windows driver.*
+- Each document opens the print panel as a sheet on that session's window,
+  with a preview, every printer of the Mac, and the PDF menu to save it
+  instead. Cancel throws it away. Documents printed while a panel is open
+  wait their turn. If Vistara is not in front, its Dock icon bounces once.
+- A document is kept only until it is printed or cancelled, or the session
+  ends, and only in a folder of Vistara's own. One larger than 512 MB, or one
+  that is not a PDF, is not shown; the session window says so.
+- Logs count documents and their size; they never name them or show what is
+  in them.
+- `.rdp` files keep it: `redirectprinters` is read on import and written on
+  export.
+- Not in this step: choosing which Mac printers the remote computer sees,
+  remote computers without Microsoft Print to PDF (before Windows 10 and
+  Windows Server 2016), and printing without the panel.
+
 ### Sound
 
 - The connection's Sound choice decides where the remote computer's sound
@@ -560,7 +593,7 @@ the title follows the pane, and the window reopens on the last pane.
 
 | Pane | Contents |
 | --- | --- |
-| General | Defaults for new connections (resolution, Retina, displays, clipboard, copying files, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
+| General | Defaults for new connections (resolution, Retina, displays, clipboard, copying files, printing, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
 | Keyboard | Translate editing shortcuts; Right Command as the Windows key |
 | Security | Trusted certificates: host, fingerprint, date trusted, Remove |
 
