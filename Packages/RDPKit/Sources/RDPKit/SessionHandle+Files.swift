@@ -39,7 +39,13 @@ extension SessionHandle {
         var listID: UInt64 = 0
         guard vistara_session_take_remote_files(session, &entries, &count, &listID) else { return nil }
         defer { vistara_remote_files_free(entries, count) }
-        return Self.remoteFiles(UnsafeBufferPointer(start: entries, count: count), listID: listID)
+        let files = Self.remoteFiles(UnsafeBufferPointer(start: entries, count: count), listID: listID)
+        if !files.isEmpty {
+            let copied = files.files.count
+            let skipped = files.skippedCount
+            Self.filesLog.info("Remote copied \(copied, privacy: .public) items, \(skipped, privacy: .public) left out")
+        }
+        return files
     }
 
     /// Creates the plan's folders below `folder` and starts fetching its
@@ -125,9 +131,9 @@ extension SessionHandle {
         }
     }
 
-    private static func remoteFiles(_ entries: UnsafeBufferPointer<vistara_remote_file>, listID: UInt64)
-        -> RDPRemoteFiles
-    {
+    private static func remoteFiles(
+        _ entries: UnsafeBufferPointer<vistara_remote_file>, listID: UInt64
+    ) -> RDPRemoteFiles {
         var files: [RDPClipboardFile] = []
         var indices: [UInt32] = []
         for (index, entry) in entries.enumerated() {

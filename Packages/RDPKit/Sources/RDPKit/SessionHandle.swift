@@ -202,16 +202,23 @@ final class SessionHandle {
             vistara_session_send_wheel(session, axis == .horizontal, rotation, x, y)
         case .desktopSize(let width, let height, let scalePercent):
             vistara_session_request_size(session, UInt32(width), UInt32(height), UInt32(scalePercent))
-        case .clipboardText(let text):
-            offerClipboardText(text)
-        case .clipboardFiles(let offer):
-            offerClipboardFiles(offer)
+        case .clipboardText, .clipboardFiles:
+            offerClipboard(event)
         case .displayUpdates(let allowed): vistara_session_set_display_updates(session, allowed)
         case .monitorLayout(let monitors):
             monitors.map(\.cMonitor).withUnsafeBufferPointer { buffer in
                 guard let first = buffer.baseAddress else { return false }
                 return vistara_session_request_layout(session, first, buffer.count)
             }
+        }
+    }
+
+    /// This Mac's clipboard, offered in place of what was offered before.
+    private func offerClipboard(_ event: RDPInputEvent) -> Bool {
+        switch event {
+        case .clipboardText(let text): offerClipboardText(text)
+        case .clipboardFiles(let offer): offerClipboardFiles(offer)
+        default: false
         }
     }
 

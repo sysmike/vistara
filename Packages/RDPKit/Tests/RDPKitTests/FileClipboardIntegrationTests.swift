@@ -179,7 +179,7 @@ struct FileClipboardIntegrationTests {
         #expect(lines.contains("client-list count=4"))
         let listed = lines.filter { $0.hasPrefix("client-file index=") }.map { line in
             let parts = line.split(separator: " name=", maxSplits: 1)
-            let name = String(decoding: Self.hexDecoded(parts.count > 1 ? parts[1] : ""), as: UTF8.self)
+            let name = String(bytes: Self.hexDecoded(parts.count > 1 ? parts[1] : ""), encoding: .utf8) ?? ""
             return "\(parts[0].dropFirst("client-file ".count)) \(name)"
         }
         #expect(listed == [

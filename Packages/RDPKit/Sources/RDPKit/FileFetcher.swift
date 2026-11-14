@@ -85,16 +85,23 @@ final class FileFetcher: Sendable {
         if current.isCancelled { handle.cancelFetch() }
         let status = handle.fetchStatus
         report(status.progress, of: running)
-        switch status.state {
-        case .running: return
-        case .done:
+        guard let outcome = Self.outcome(of: status, urls: running.urls) else { return }
+        if case .success = outcome {
             Self.log.info("Fetched \(status.progress.filesDone, privacy: .public) files")
-            finish(running, with: .success(running.urls))
-        case .cancelled: finish(running, with: .failure(CancellationError()))
-        case .refused: finish(running, with: .failure(RDPFileFetchError.refusedByRemote))
-        case .writeFailed: finish(running, with: .failure(RDPFileFetchError.cannotWrite(code: status.osError)))
-        case .listChanged, .idle: finish(running, with: .failure(RDPFileFetchError.noLongerOnClipboard))
-        case .channelClosed: finish(running, with: .failure(RDPFileFetchError.sessionEnded))
+        }
+        finish(running, with: outcome)
+    }
+
+    /// How a fetch with this status ended, or nil while it runs.
+    private static func outcome(of status: SessionHandle.FetchStatus, urls: [URL]) -> Result<[URL], any Error>? {
+        switch status.state {
+        case .running: nil
+        case .done: .success(urls)
+        case .cancelled: .failure(CancellationError())
+        case .refused: .failure(RDPFileFetchError.refusedByRemote)
+        case .writeFailed: .failure(RDPFileFetchError.cannotWrite(code: status.osError))
+        case .listChanged, .idle: .failure(RDPFileFetchError.noLongerOnClipboard)
+        case .channelClosed: .failure(RDPFileFetchError.sessionEnded)
         }
     }
 

@@ -257,20 +257,11 @@ public final class RDPSession: Sendable {
             publishChanges(from: handle)
             if let cursor = handle.takeCursor() { framebuffer.setCursor(cursor) }
             if let text = handle.takeRemoteClipboardText() { remoteClipboardContinuation.yield(text) }
-            if let files = handle.takeRemoteFiles() { publish(files) }
+            if let files = handle.takeRemoteFiles() { remoteFilesContinuation.yield(files) }
             fetcher.service(handle)
         }
         handle.disconnect()
         return .userRequested
-    }
-
-    private func publish(_ files: RDPRemoteFiles) {
-        if !files.isEmpty {
-            let count = files.files.count
-            let skipped = files.skippedCount
-            Self.log.info("Remote copied \(count, privacy: .public) items, \(skipped, privacy: .public) left out")
-        }
-        remoteFilesContinuation.yield(files)
     }
 
     /// Sends what `send(_:)` queued. Runs on the session thread.
