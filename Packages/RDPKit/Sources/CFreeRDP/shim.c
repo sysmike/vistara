@@ -93,8 +93,9 @@ struct vistara_session {
     bool pending_display_updates_allowed;
     // Whether the server was last told to send pictures, as it does unless told.
     bool server_sends_pictures;
-    // Since when the connection is active, and whether a picture came since.
-    uint64_t active_since;
+    // When the server last started activating the connection, and whether a
+    // picture came since it was done.
+    uint64_t activation_started;
     bool painted_since_activation;
     // The layout of one or more monitors waiting with has_pending_size.
     vistara_monitor pending_monitors[VISTARA_MAX_MONITORS];
@@ -703,15 +704,13 @@ static void channel_connected(void *context, const ChannelConnectedEventArgs *ev
     }
 }
 
-/// Leaving the active state starts an activation over (a server's Deactivate
-/// All, or the connection's own): a waiting Suppress Output waits for its end.
-static void connection_state_changed(void *context, const ConnectionStateChangeEventArgs *event) {
+/// The server started an activation, the connection's first or a new one
+/// (after a Deactivate All): a waiting Suppress Output waits for its end.
+static void activation_began(void *context, const ActivatedEventArgs *event) {
+    (void)event;
     vistara_session *session = session_of(context);
-    if (event->state == CONNECTION_STATE_ACTIVE) {
-        session->active_since = GetTickCount64();
-    } else {
-        session->painted_since_activation = false;
-    }
+    session->activation_started = GetTickCount64();
+    session->painted_since_activation = false;
 }
 
 static void channel_disconnected(void *context, const ChannelDisconnectedEventArgs *event) {
@@ -783,7 +782,7 @@ static void send_pending_display_updates(vistara_session *session) {
         return;
     }
     const bool settled = session->painted_since_activation || !session->server_sends_pictures ||
-                         GetTickCount64() - session->active_since >= display_updates_picture_wait_ms;
+                         GetTickCount64() - session->activation_started >= display_updates_picture_wait_ms;
     if (!settled) {
         return;
     }
@@ -941,7 +940,7 @@ vistara_session *vistara_session_create(void) {
     if (!wrap_tcp_connect(session) ||
         PubSub_SubscribeChannelConnected(instance->context->pubSub, channel_connected) < 0 ||
         PubSub_SubscribeChannelDisconnected(instance->context->pubSub, channel_disconnected) < 0 ||
-        PubSub_SubscribeConnectionStateChange(instance->context->pubSub, connection_state_changed) < 0) {
+        PubSub_SubscribeActivated(instance->context->pubSub, activation_began) < 0) {
         vistara_session_destroy(session);
         return NULL;
     }
