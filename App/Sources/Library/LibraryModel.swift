@@ -261,7 +261,8 @@ final class LibraryModel {
         await save()
     }
 
-    private func save() async {
+    /// Writes the library as it is now and waits until it is written.
+    func save() async {
         scheduleSave()
         await flushSaves()
     }
