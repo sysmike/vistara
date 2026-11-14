@@ -99,6 +99,11 @@ every connection through the same gateway uses it.
 A gateway may show a message before it connects: a notice, or terms to
 accept. **Cancel** doesn't connect.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/gateway-consent-dark.png">
+  <img alt="Terms from a gateway, with Accept and Cancel" src="images/gateway-consent.png" width="480">
+</picture>
+
 ### Certificates
 
 Every Remote Desktop computer proves its identity with a certificate. Windows
@@ -122,6 +127,11 @@ A gateway has a certificate too. Most gateways have one your Mac trusts;
 otherwise the same sheet asks about it first, naming the gateway, and
 **Always Trust** remembers it for the gateway's address. Settings > Security
 lists gateways beside computers, marked as gateways.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/gateway-certificate-dark.png">
+  <img alt="An unknown gateway certificate" src="images/gateway-certificate.png" width="520">
+</picture>
 
 If a computer you trusted presents a *different* certificate, Vistara warns
 you before anything else happens:
