@@ -23,8 +23,12 @@ struct FileClipboardProbeTests {
         var copied: [String: Any] = [:]
         var urls: [URL] = []
         var beforePasteboard = false
+        var control = false
         for _ in 0..<Self.attempts {
             copied = try await PasteboardHelper.run("copy")
+            if let path = copied["control"] as? String {
+                control = (try? Data(contentsOf: URL(fileURLWithPath: path))) != nil
+            }
             // Outside the container: the sandbox keeps the app out on its own.
             if let path = copied["file"] as? String {
                 beforePasteboard = (try? Data(contentsOf: URL(fileURLWithPath: path))) != nil
@@ -42,7 +46,7 @@ struct FileClipboardProbeTests {
         let inner = try? FileManager.default.contentsOfDirectory(atPath: folder.path)
         let innerText = try? String(contentsOf: folder.appendingPathComponent("Inner.txt"), encoding: .utf8)
         PasteboardHelper.report(
-            "copy", ["readBeforePasteboard": beforePasteboard, "readFile": read != nil,
+            "copy", ["readControl": control, "readBeforePasteboard": beforePasteboard, "readFile": read != nil,
                      "listFolder": inner ?? [], "readInsideFolder": innerText != nil]
         )
         #expect(read == "Quarterly report\n")
@@ -124,6 +128,47 @@ struct FileClipboardProbeTests {
         #expect(files.first?["name"] as? String == "Fetched.bin")
         #expect(files.first?["size"] as? Int == 1024 * 1024)
         #expect(offer?.providedOnMainThread == false)
+        #expect(longestGap < .milliseconds(500))
+    }
+
+    /// The same file promise between two apps outside the sandbox, to tell
+    /// whether the sandbox or the pasteboard keeps a promise from being kept.
+    @Test(.timeLimit(.minutes(2)))
+    func aFilePromiseBetweenTwoAppsOutsideTheSandbox() async throws {
+        let pasted = try await PasteboardHelper.run("promise-roundtrip")
+        PasteboardHelper.report("promise-roundtrip", pasted)
+    }
+
+    /// Remote computer to Mac, a third way: the provider is asked on the main
+    /// thread, and keeps its run loop turning while a background thread fetches
+    /// the file, as a progress panel would. Whether the main thread stays free.
+    @Test(.timeLimit(.minutes(2)))
+    func aFileURLFetchedWhileTheMainRunLoopTurns() async throws {
+        var pasted: [String: Any] = [:]
+        var files: [[String: Any]] = []
+        var longestGap = Duration.zero
+        var offer: SpinningFileOffer?
+        for _ in 0..<Self.attempts {
+            let current = SpinningFileOffer(size: 1024 * 1024, delay: 1.5)
+            offer = current
+            current.start()
+            var last = ContinuousClock.now
+            longestGap = .zero
+            pasted = try await PasteboardHelper.run("read-urls") {
+                let now = ContinuousClock.now
+                longestGap = max(longestGap, now - last)
+                last = now
+            }
+            files = pasted["files"] as? [[String: Any]] ?? []
+            if !files.isEmpty { break }
+        }
+        PasteboardHelper.report(
+            "spinning", ["files": files, "longestMainGapMs": longestGap.milliseconds,
+                         "providedOnMainThread": offer?.providedOnMainThread ?? "never",
+                         "seconds": pasted["seconds"] ?? ""]
+        )
+        #expect(files.first?["name"] as? String == "Fetched.bin")
+        #expect(files.first?["size"] as? Int == 1024 * 1024)
         #expect(longestGap < .milliseconds(500))
     }
 }
@@ -258,6 +303,47 @@ private final class BackgroundFileOffer: NSObject, NSPasteboardItemDataProvider,
         Thread.sleep(forTimeInterval: delay)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Fetched.bin")
         try? Data(repeating: 0xA5, count: size).write(to: url)
+        item.setString(url.absoluteString, forType: .fileURL)
+    }
+}
+
+/// Puts one file URL on the general pasteboard, provided only when another
+/// app asks. The provider, asked on the main thread, starts the fetch on a
+/// background thread and keeps the main run loop turning until it is done.
+private final class SpinningFileOffer: NSObject, NSPasteboardItemDataProvider, @unchecked Sendable {
+    let size: Int
+    let delay: TimeInterval
+    private(set) var providedOnMainThread: Bool?
+
+    init(size: Int, delay: TimeInterval) {
+        self.size = size
+        self.delay = delay
+    }
+
+    @MainActor
+    func start() {
+        let item = NSPasteboardItem()
+        item.setDataProvider(self, forTypes: [.fileURL])
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([item])
+    }
+
+    func pasteboard(
+        _ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType
+    ) {
+        providedOnMainThread = Thread.isMainThread
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Fetched.bin")
+        let done = DispatchSemaphore(value: 0)
+        let size = size
+        let delay = delay
+        Thread.detachNewThread {
+            Thread.sleep(forTimeInterval: delay)
+            try? Data(repeating: 0x3C, count: size).write(to: url)
+            done.signal()
+        }
+        while done.wait(timeout: .now()) == .timedOut {
+            _ = RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02))
+        }
         item.setString(url.absoluteString, forType: .fileURL)
     }
 }

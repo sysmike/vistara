@@ -12,6 +12,10 @@
 //   pasteboard-helper read-urls <directory>  Reads the file URLs on the
 //                                            pasteboard, as a paste in the Finder
 //                                            asks for them, and checks each file.
+//   pasteboard-helper offer-promise <dir>    Puts a promised file on the
+//                                            pasteboard and fulfils it for 25
+//                                            seconds: a provider outside the
+//                                            sandbox, to compare with the app.
 // Prints one line of JSON with what happened.
 
 import AppKit
@@ -28,8 +32,11 @@ func copy(into directory: URL) -> Never {
     let fileManager = FileManager.default
     let file = directory.appendingPathComponent("Report.txt")
     let folder = directory.appendingPathComponent("Folder", isDirectory: true)
+    // Next to them, never copied: whether the app can read here at all.
+    let control = directory.appendingPathComponent("Control.txt")
     do {
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("Not copied\n".utf8).write(to: control)
         try Data("Quarterly report\n".utf8).write(to: file)
         try Data("Inside the folder\n".utf8).write(to: folder.appendingPathComponent("Inner.txt"))
     } catch {
@@ -38,7 +45,7 @@ func copy(into directory: URL) -> Never {
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
     let written = pasteboard.writeObjects([file as NSURL, folder as NSURL])
-    reply(["written": written, "file": file.path, "folder": folder.path])
+    reply(["written": written, "file": file.path, "folder": folder.path, "control": control.path])
 }
 
 func receive(into directory: URL) -> Never {
@@ -86,6 +93,34 @@ func readURLs() -> Never {
     reply(["files": files, "seconds": Date().timeIntervalSince(started), "types": types])
 }
 
+final class PromiseWriter: NSObject, NSFilePromiseProviderDelegate {
+    func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
+        "Helper.bin"
+    }
+
+    func filePromiseProvider(
+        _ provider: NSFilePromiseProvider, writePromiseTo url: URL, completionHandler: @escaping (Error?) -> Void
+    ) {
+        do {
+            try Data(repeating: 0x42, count: 65_536).write(to: url)
+            completionHandler(nil)
+        } catch {
+            completionHandler(error)
+        }
+    }
+}
+
+func offerPromise() -> Never {
+    let writer = PromiseWriter()
+    let provider = NSFilePromiseProvider(fileType: "public.data", delegate: writer)
+    NSPasteboard.general.clearContents()
+    let written = NSPasteboard.general.writeObjects([provider])
+    FileHandle.standardError.write(Data("offered \(written)\n".utf8))
+    RunLoop.main.run(until: Date().addingTimeInterval(25))
+    withExtendedLifetime((writer, provider)) {}
+    exit(0)
+}
+
 let arguments = CommandLine.arguments
 guard arguments.count == 3 else { reply(["error": "usage: pasteboard-helper copy|receive <directory>"]) }
 let directory = URL(fileURLWithPath: arguments[2], isDirectory: true)
@@ -93,5 +128,6 @@ switch arguments[1] {
 case "copy": copy(into: directory)
 case "receive": receive(into: directory)
 case "read-urls": readURLs()
+case "offer-promise": offerPromise()
 default: reply(["error": "unknown command \(arguments[1])"])
 }
