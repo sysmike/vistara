@@ -23,7 +23,7 @@ final class RemoteFilePaste: NSObject {
     ) async throws -> [URL]
 
     /// Which copied item a pasteboard item stands for: its path in the list.
-    static let itemType = NSPasteboard.PasteboardType("io.github.sysmike.vistara.remote-file")
+    nonisolated static let itemType = NSPasteboard.PasteboardType("io.github.sysmike.vistara.remote-file")
     /// Where every session's fetched files go, each in a folder of its own.
     static let parentFolder = FileManager.default.temporaryDirectory
         .appendingPathComponent("Vistara Clipboard", isDirectory: true)
@@ -76,11 +76,11 @@ final class RemoteFilePaste: NSObject {
         }
     }
 
-    /// The fetched item a pasteboard item stands for, fetching every item
-    /// first if needed. Nil while another paste is fetching, or when the
-    /// fetch failed or was cancelled.
-    func url(for item: NSPasteboardItem) -> URL? {
-        guard let path = item.string(forType: Self.itemType), let list else { return nil }
+    /// The fetched item at `path`, the path a pasteboard item stands for,
+    /// fetching every item first if needed. Nil while another paste is
+    /// fetching, or when the fetch failed or was cancelled.
+    func url(forItemAt path: String?) -> URL? {
+        guard let path, let list else { return nil }
         if fetched == nil, !isFetching {
             fetchEverything(of: list)
         }
@@ -134,12 +134,16 @@ final class RemoteFilePaste: NSObject {
     }
 }
 
-extension RemoteFilePaste: @preconcurrency NSPasteboardItemDataProvider {
-    func pasteboard(
+extension RemoteFilePaste: NSPasteboardItemDataProvider {
+    /// The pasteboard asks on the main thread (issue #134), whichever thread
+    /// the pasting app reads on.
+    nonisolated func pasteboard(
         _ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType
     ) {
-        guard type == .fileURL, let url = url(for: item) else { return }
-        item.setString(url.absoluteString, forType: .fileURL)
+        guard type == .fileURL else { return }
+        let path = item.string(forType: Self.itemType)
+        let url = MainActor.assumeIsolated { self.url(forItemAt: path) }
+        if let url { item.setString(url.absoluteString, forType: .fileURL) }
     }
 }
 
