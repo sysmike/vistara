@@ -302,7 +302,8 @@ jobs:
                 command="$(cat "$request")"
                 answer="${request%.request}.json"
                 rm -f "$request"
-                work="$(mktemp -d /tmp/vistara-pasteboard-probe.XXXXXX)"
+                # In the home folder, which the sandbox keeps the app out of.
+                work="$(mktemp -d "$RUNNER_TEMP/vistara-pasteboard.XXXXXX")"
                 build/pasteboard-helper "$command" "$work" > "$answer.part" 2>&1
                 mv "$answer.part" "$answer"
               done

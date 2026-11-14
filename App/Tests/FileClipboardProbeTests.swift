@@ -81,12 +81,49 @@ struct FileClipboardProbeTests {
 
         PasteboardHelper.report(
             "receive", ["files": files, "elapsedMs": elapsed.milliseconds, "longestMainGapMs": longestGap.milliseconds,
-                        "error": pasted["error"] ?? ""]
+                        "error": pasted["error"] ?? "", "timedOut": pasted["timedOut"] ?? "",
+                        "types": pasted["types"] ?? [], "promisedTypes": pasted["promisedTypes"] ?? [],
+                        "askedForName": writer.askedForName]
         )
         #expect(files.count == 1)
         #expect(files.first?["name"] as? String == "Promised.bin")
         #expect(files.first?["size"] as? Int == 4 * 1024 * 1024)
         #expect(writer.wroteOnMainThread == false)
+        #expect(longestGap < .milliseconds(500))
+    }
+
+    /// Remote computer to Mac, another way: a file URL provided only when
+    /// pasted, by a data provider on a thread of its own, which fetches the
+    /// file into the container first. Whether the main thread stays free.
+    @Test(.timeLimit(.minutes(2)))
+    func aFileURLProvidedOnABackgroundThreadIsPastedWithoutBlockingTheMainThread() async throws {
+        var pasted: [String: Any] = [:]
+        var files: [[String: Any]] = []
+        var longestGap = Duration.zero
+        var offer: BackgroundFileOffer?
+        for _ in 0..<Self.attempts {
+            let current = BackgroundFileOffer(size: 1024 * 1024, delay: 1.5)
+            offer = current
+            current.start()
+            var last = ContinuousClock.now
+            longestGap = .zero
+            pasted = try await PasteboardHelper.run("read-urls") {
+                let now = ContinuousClock.now
+                longestGap = max(longestGap, now - last)
+                last = now
+            }
+            current.stop()
+            files = pasted["files"] as? [[String: Any]] ?? []
+            if !files.isEmpty { break }
+        }
+        PasteboardHelper.report(
+            "read-urls", ["files": files, "longestMainGapMs": longestGap.milliseconds,
+                          "providedOnMainThread": offer?.providedOnMainThread ?? "never",
+                          "types": pasted["types"] ?? [], "seconds": pasted["seconds"] ?? ""]
+        )
+        #expect(files.first?["name"] as? String == "Fetched.bin")
+        #expect(files.first?["size"] as? Int == 1024 * 1024)
+        #expect(offer?.providedOnMainThread == false)
         #expect(longestGap < .milliseconds(500))
     }
 }
@@ -98,6 +135,7 @@ private final class SlowPromiseWriter: NSObject, NSFilePromiseProviderDelegate, 
     let chunks: Int
     let pause: Duration
     private(set) var wroteOnMainThread: Bool?
+    private(set) var askedForName = false
     private let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.name = "Promised file writer"
@@ -111,7 +149,8 @@ private final class SlowPromiseWriter: NSObject, NSFilePromiseProviderDelegate, 
     }
 
     func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
-        "Promised.bin"
+        askedForName = true
+        return "Promised.bin"
     }
 
     func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue {
@@ -169,10 +208,56 @@ enum PasteboardHelper {
     /// What a probe found, for the spike's written decision. Goes to the test log.
     static func report(_ probe: String, _ findings: [String: Any]) {
         let data = (try? JSONSerialization.data(withJSONObject: findings, options: [.sortedKeys])) ?? Data()
-        print("vistara-probe \(probe) \(String(decoding: data, as: UTF8.self))")
+        print("vistara-probe \(probe) \(String(bytes: data, encoding: .utf8) ?? "")")
     }
 }
 
 private extension Duration {
     var milliseconds: Int { Int(components.seconds * 1000 + components.attoseconds / 1_000_000_000_000_000) }
+}
+
+/// Puts one file URL on the general pasteboard from a thread with a run loop
+/// of its own, provided only when another app asks: the provider waits as a
+/// download would, writes the file into the container, and answers its URL.
+private final class BackgroundFileOffer: NSObject, NSPasteboardItemDataProvider, @unchecked Sendable {
+    let size: Int
+    let delay: TimeInterval
+    private(set) var providedOnMainThread: Bool?
+    private var isStopped = false
+    private let written = DispatchSemaphore(value: 0)
+
+    init(size: Int, delay: TimeInterval) {
+        self.size = size
+        self.delay = delay
+    }
+
+    func start() {
+        let thread = Thread { [self] in
+            let item = NSPasteboardItem()
+            item.setDataProvider(self, forTypes: [.fileURL])
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects([item])
+            written.signal()
+            while !isStopped {
+                _ = RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.1))
+            }
+        }
+        thread.name = "Pasteboard offer"
+        thread.start()
+        written.wait()
+    }
+
+    func stop() {
+        isStopped = true
+    }
+
+    func pasteboard(
+        _ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType
+    ) {
+        providedOnMainThread = Thread.isMainThread
+        Thread.sleep(forTimeInterval: delay)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Fetched.bin")
+        try? Data(repeating: 0xA5, count: size).write(to: url)
+        item.setString(url.absoluteString, forType: .fileURL)
+    }
 }

@@ -9,6 +9,9 @@
 //                                            two to the pasteboard.
 //   pasteboard-helper receive <directory>    Pastes the promised files on the
 //                                            pasteboard into <directory>.
+//   pasteboard-helper read-urls <directory>  Reads the file URLs on the
+//                                            pasteboard, as a paste in the Finder
+//                                            asks for them, and checks each file.
 // Prints one line of JSON with what happened.
 
 import AppKit
@@ -39,8 +42,9 @@ func copy(into directory: URL) -> Never {
 }
 
 func receive(into directory: URL) -> Never {
+    let types = NSPasteboard.general.types?.map(\.rawValue) ?? []
     let receivers = NSPasteboard.general.readObjects(forClasses: [NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver]
-    guard let receivers, !receivers.isEmpty else { reply(["error": "no file promise on the pasteboard"]) }
+    guard let receivers, !receivers.isEmpty else { reply(["error": "no file promise on the pasteboard", "types": types]) }
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let queue = OperationQueue()
     var results: [[String: Any]] = []
@@ -63,7 +67,23 @@ func receive(into directory: URL) -> Never {
     while pending > 0, Date() < deadline {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
-    reply(["files": results, "seconds": Date().timeIntervalSince(started), "timedOut": pending > 0])
+    reply([
+        "files": results, "seconds": Date().timeIntervalSince(started), "timedOut": pending > 0, "types": types,
+        "promisedTypes": receivers.flatMap(\.fileTypes)
+    ])
+}
+
+func readURLs() -> Never {
+    let started = Date()
+    let types = NSPasteboard.general.types?.map(\.rawValue) ?? []
+    let urls = NSPasteboard.general.readObjects(
+        forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]
+    ) as? [URL] ?? []
+    let files: [[String: Any]] = urls.map { url in
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber
+        return ["name": url.lastPathComponent, "size": size?.intValue ?? -1]
+    }
+    reply(["files": files, "seconds": Date().timeIntervalSince(started), "types": types])
 }
 
 let arguments = CommandLine.arguments
@@ -72,5 +92,6 @@ let directory = URL(fileURLWithPath: arguments[2], isDirectory: true)
 switch arguments[1] {
 case "copy": copy(into: directory)
 case "receive": receive(into: directory)
+case "read-urls": readURLs()
 default: reply(["error": "unknown command \(arguments[1])"])
 }
