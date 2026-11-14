@@ -158,6 +158,11 @@ typedef struct {
     /// accepted and consent declined.
     vistara_gateway_message_decider _Nullable decide_gateway_message;
     void *_Nullable decide_gateway_message_context;
+    /// Offer the remote computer the printer "Vistara" and keep what it
+    /// prints in this folder, which must exist; NULL offers no printer. With
+    /// neither a printer nor shared folders, the device redirection channel
+    /// is not loaded.
+    const char *_Nullable print_folder;
 } vistara_connect_options;
 
 typedef enum {
@@ -300,6 +305,49 @@ void vistara_session_read_fetch(vistara_session *session, vistara_fetch_status *
 uint8_t *_Nullable vistara_file_list_encode(const vistara_local_file *_Nullable files, size_t count,
                                             size_t *length);
 
+// MARK: Printing
+
+/// The documents the remote computer prints, each written to a file in one
+/// folder while it arrives, and kept until handed over.
+typedef struct vistara_print_spool vistara_print_spool;
+
+typedef enum {
+    /// A PDF, in a file of the spool's folder that the taker now owns.
+    VISTARA_PRINTED_PDF = 0,
+    /// Something else, which was removed: only its size is told.
+    VISTARA_PRINTED_NOT_PDF = 1,
+    /// Larger than the limit: cut off there and removed.
+    VISTARA_PRINTED_TOO_LARGE = 2,
+} vistara_printed_kind;
+
+typedef struct {
+    vistara_printed_kind kind;
+    /// The PDF's path; NULL for the other kinds.
+    char *_Nullable path;
+    /// How many bytes arrived, up to the limit.
+    uint64_t size;
+} vistara_printed_document;
+
+/// A spool writing into `folder`, which is created if needed, for documents
+/// of at most `limit` bytes. Safe from several threads.
+vistara_print_spool *_Nullable vistara_print_spool_new(const char *folder, uint64_t limit);
+/// Removes the documents that are still arriving or not taken.
+void vistara_print_spool_free(vistara_print_spool *_Nullable spool);
+/// A document starts, is written in parts, and ends, as the remote computer
+/// prints it. Writing returns false once it is past the limit.
+bool vistara_print_spool_open(vistara_print_spool *spool, uint32_t job);
+bool vistara_print_spool_write(vistara_print_spool *spool, uint32_t job, const uint8_t *data, size_t length);
+void vistara_print_spool_close(vistara_print_spool *spool, uint32_t job);
+/// The documents that ended since the last call, in order. Free the list
+/// with vistara_printed_documents_free(); a PDF's file is the caller's.
+bool vistara_print_spool_take(vistara_print_spool *spool, vistara_printed_document *_Nullable *_Nonnull documents,
+                              size_t *count);
+void vistara_printed_documents_free(vistara_printed_document *_Nullable documents, size_t count);
+
+/// What the remote computer printed since the last call, as vistara_print_spool_take().
+bool vistara_session_take_printed(vistara_session *session,
+                                  vistara_printed_document *_Nullable *_Nonnull documents, size_t *count);
+
 /// Reads a packed file list as one from the remote computer is read. For tests.
 bool vistara_file_list_decode(const uint8_t *data, size_t length, vistara_remote_file *_Nullable *_Nonnull files,
                               size_t *count);
@@ -360,6 +408,8 @@ typedef struct {
     bool gateway_udp_transport;
     bool gateway_same_credentials;
     uint32_t gateway_port;
+    /// Whether the device redirection channel is used.
+    bool device_redirection;
 } vistara_security_settings;
 
 void vistara_session_read_settings(const vistara_session *session, vistara_security_settings *settings);

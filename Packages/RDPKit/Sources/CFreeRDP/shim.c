@@ -2,6 +2,7 @@
 #include "audio.h"
 #include "clipboard_files.h"
 #include "drive.h"
+#include "printer.h"
 #include "monitors.h"
 #include "probe.h"
 
@@ -107,6 +108,9 @@ struct vistara_session {
     size_t shared_folder_count;
     char **read_only_paths;
     size_t read_only_count;
+    // What the remote computer prints, and the id its printer device carries.
+    vistara_print_spool *print_spool;
+    uint32_t printer_id;
     // A size asked for that has not been sent yet: the channel comes up a few
     // round trips after connecting, and a request made before that must not
     // be lost. Session thread only.
@@ -825,9 +829,14 @@ static BOOL load_static_channel(rdpContext *context, const char *name, void *dat
                                            WINPR_FUNC_PTR_CAST(entry, PVIRTUALCHANNELENTRYEX), data) == 0;
 }
 
-/// Finds channels and their parts: the shim's own sound output, and
-/// everything else among the channels compiled into libfreerdp-client.
+/// Finds channels and their parts: the shim's own sound output, shared
+/// folders, and printer, and everything else among the channels compiled
+/// into libfreerdp-client.
 static PVIRTUALCHANNELENTRY load_addin_entry(LPCSTR name, LPCSTR subsystem, LPCSTR type, DWORD flags) {
+    if (name && subsystem && strcmp(name, "printer") == 0 &&
+        strncmp(subsystem, VISTARA_PRINTER_SUBSYSTEM, strlen(VISTARA_PRINTER_SUBSYSTEM)) == 0) {
+        return WINPR_FUNC_PTR_CAST(&vistara_printer_backend_entry, PVIRTUALCHANNELENTRY);
+    }
     if (name && subsystem && strcmp(name, RDPSND_CHANNEL_NAME) == 0 &&
         strcmp(subsystem, VISTARA_AUDIO_SUBSYSTEM) == 0) {
         return WINPR_FUNC_PTR_CAST(&vistara_rdpsnd_device_entry, PVIRTUALCHANNELENTRY);
@@ -865,7 +874,7 @@ static bool add_shared_folders(vistara_session *session, rdpSettings *settings,
                                const vistara_connect_options *options) {
     session->shared_folder_count = options->shared_folders ? options->shared_folder_count : 0;
     if (session->shared_folder_count == 0) {
-        return freerdp_settings_set_bool(settings, FreeRDP_DeviceRedirection, FALSE);
+        return true;
     }
     session->read_only_paths = calloc(session->shared_folder_count, sizeof(char *));
     if (!session->read_only_paths) {
@@ -890,7 +899,56 @@ static bool add_shared_folders(vistara_session *session, rdpSettings *settings,
             session->read_only_paths[session->read_only_count++] = path;
         }
     }
-    return freerdp_settings_set_bool(settings, FreeRDP_DeviceRedirection, TRUE);
+    return true;
+}
+
+static void wake_for_printed(void *session) {
+    vistara_session_wake(session);
+}
+
+/// Adds the printer "Vistara", whose documents go to the spool in
+/// `options->print_folder`. FreeRDP keeps what the remote computer tells it
+/// about its printers in FreeRDP_ConfigPath, which is put in that folder too.
+static bool add_printer(vistara_session *session, rdpSettings *settings, const vistara_connect_options *options) {
+    if (!options->print_folder) {
+        return true;
+    }
+    session->print_spool = vistara_print_spool_new(options->print_folder, VISTARA_PRINT_LIMIT);
+    if (!session->print_spool) {
+        return false;
+    }
+    vistara_print_spool_set_notify(session->print_spool, wake_for_printed, session);
+    session->printer_id = vistara_printer_register(session->print_spool);
+    char driver[96];
+    char config[1024];
+    if (session->printer_id == 0 ||
+        snprintf(driver, sizeof(driver), "%s:%s-%u", VISTARA_PRINTER_DRIVER, VISTARA_PRINTER_SUBSYSTEM,
+                 (unsigned)session->printer_id) >= (int)sizeof(driver) ||
+        snprintf(config, sizeof(config), "%s/.freerdp", options->print_folder) >= (int)sizeof(config)) {
+        return false;
+    }
+    const char *const arguments[] = {VISTARA_PRINTER_NAME, driver};
+    RDPDR_DEVICE *device = freerdp_device_new(RDPDR_DTYP_PRINT, ARRAYSIZE(arguments), arguments);
+    if (!device || !freerdp_device_collection_add(settings, device)) {
+        freerdp_device_free(device);
+        return false;
+    }
+    return freerdp_settings_set_string(settings, FreeRDP_ConfigPath, config) &&
+           freerdp_settings_set_bool(settings, FreeRDP_RedirectPrinters, TRUE);
+}
+
+/// Whether the device redirection channel is loaded: for shared folders or the printer.
+static bool uses_device_redirection(const vistara_session *session) {
+    return session->shared_folder_count > 0 || session->print_spool != NULL;
+}
+
+bool vistara_session_take_printed(vistara_session *session, vistara_printed_document **documents, size_t *count) {
+    if (!session->print_spool) {
+        *documents = NULL;
+        *count = 0;
+        return false;
+    }
+    return vistara_print_spool_take(session->print_spool, documents, count);
 }
 
 vistara_audio_stats *vistara_audio_stats_for(rdpContext *context) {
@@ -923,8 +981,8 @@ static BOOL load_channels(freerdp *instance) {
     if (session_of(context)->play_audio_here && !load_audio_channel(context)) {
         return FALSE;
     }
-    // Device redirection only for shared folders, and with only them.
-    if (session_of(context)->shared_folder_count > 0 &&
+    // Device redirection only for shared folders and the printer, and with only them.
+    if (uses_device_redirection(session_of(context)) &&
         !load_static_channel(context, RDPDR_SVC_CHANNEL_NAME, context->settings)) {
         return FALSE;
     }
@@ -1216,8 +1274,11 @@ void vistara_session_destroy(vistara_session *session) {
         return;
     }
     vistara_session_disconnect(session);
+    vistara_printer_unregister(session->printer_id);
     freerdp_context_free(session->instance);
     freerdp_free(session->instance);
+    // After the channels: a document still arriving is removed with the spool.
+    vistara_print_spool_free(session->print_spool);
     (void)CloseHandle(session->wake_event);
     free(session->cursor_pixels);
     free(session->local_text);
@@ -1256,6 +1317,7 @@ void vistara_session_read_settings(const vistara_session *session, vistara_secur
     out->gateway_udp_transport = freerdp_settings_get_bool(settings, FreeRDP_GatewayUdpTransport);
     out->gateway_same_credentials = freerdp_settings_get_bool(settings, FreeRDP_GatewayUseSameCredentials);
     out->gateway_port = freerdp_settings_get_uint32(settings, FreeRDP_GatewayPort);
+    out->device_redirection = freerdp_settings_get_bool(settings, FreeRDP_DeviceRedirection);
 }
 
 static uint32_t clipboard_features(const vistara_connect_options *options) {
@@ -1346,7 +1408,10 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
         !apply_gateway(session->instance->context->settings, options) ||
         !apply_keyboard(session->instance->context->settings, options) ||
         !vistara_apply_monitors(session->instance->context->settings, options->monitors, options->monitor_count) ||
-        !add_shared_folders(session, session->instance->context->settings, options)) {
+        !add_shared_folders(session, session->instance->context->settings, options) ||
+        !add_printer(session, session->instance->context->settings, options) ||
+        !freerdp_settings_set_bool(session->instance->context->settings, FreeRDP_DeviceRedirection,
+                                   uses_device_redirection(session))) {
         return VISTARA_CONNECT_FAILED;
     }
 

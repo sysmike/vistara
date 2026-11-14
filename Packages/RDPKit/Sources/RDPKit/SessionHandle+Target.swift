@@ -17,6 +17,7 @@ extension SessionHandle {
         var audio: RDPAudioMode = .off
         var sharesClipboard = false
         var copiesFiles = false
+        var printing: RDPPrinting?
         var sharedFolders: [RDPSharedFolder] = []
         var keyboard: RDPKeyboard?
         /// Several monitors; with fewer than two, one of width x height.
@@ -100,7 +101,8 @@ extension SessionHandle.Target {
             gateway_domain: nil,
             gateway_password: nil,
             decide_gateway_message: nil,
-            decide_gateway_message_context: nil
+            decide_gateway_message_context: nil,
+            print_folder: nil
         )
     }
 }

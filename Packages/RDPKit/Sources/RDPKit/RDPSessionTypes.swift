@@ -79,6 +79,8 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     public var monitors: [RDPMonitor] = []
     /// The gateway to go through, or nil to connect directly.
     public var gateway: RDPGateway?
+    /// The printer to offer the remote computer, or nil for none.
+    public var printing: RDPPrinting?
 
     public init(
         host: String,

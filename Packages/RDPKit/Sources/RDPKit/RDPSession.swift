@@ -40,6 +40,7 @@ public final class RDPSession: Sendable {
     public let remoteClipboardFiles: AsyncStream<RDPRemoteFiles>
     private let remoteFilesContinuation: AsyncStream<RDPRemoteFiles>.Continuation
     let fetcher = FileFetcher()
+    let printed = PrintedDocuments()
 
     private let delegate: RDPSessionDelegate
     private let continuation: AsyncStream<RDPSessionState>.Continuation
@@ -143,6 +144,7 @@ public final class RDPSession: Sendable {
         remoteClipboardContinuation.finish()
         remoteFilesContinuation.finish()
         fetcher.end()
+        printed.finish()
         framebuffer.finish()
     }
 
@@ -206,6 +208,7 @@ public final class RDPSession: Sendable {
             audio: configuration.audio,
             sharesClipboard: configuration.sharesClipboard,
             copiesFiles: configuration.copiesFiles,
+            printing: configuration.printing,
             sharedFolders: configuration.sharedFolders,
             keyboard: configuration.keyboard,
             monitors: configuration.monitors,
@@ -259,6 +262,7 @@ public final class RDPSession: Sendable {
             if let text = handle.takeRemoteClipboardText() { remoteClipboardContinuation.yield(text) }
             if let files = handle.takeRemoteFiles() { remoteFilesContinuation.yield(files) }
             fetcher.service(handle)
+            printed.publish(handle.takePrinted())
         }
         handle.disconnect()
         return .userRequested

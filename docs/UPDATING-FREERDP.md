@@ -20,14 +20,16 @@ The issue links them. Look for:
 - **Security fixes and CVEs.** These decide how soon to ship. Check whether
   they touch what Vistara uses: TLS and NLA, certificate handling, the
   graphics and codec paths (GDI, surface commands), and the channels Vistara
-  loads: `cliprdr`, `rdpsnd`, `rdpdr` and `drive`, `drdynvc`, and `disp`.
+  loads: `cliprdr`, `rdpsnd`, `rdpdr` with `drive` and `printer`, `drdynvc`,
+  and `disp`.
 - **API changes.** Vistara reaches FreeRDP only through
   `Packages/RDPKit/Sources/CFreeRDP` (`shim.c`, `audio.c`, `drive.c`,
-  `clipboard_files.c`). These are the parts to look for in the notes:
+  `clipboard_files.c`, `printer.c`). These are the parts to look for in the notes:
   - functions and settings that are renamed or deprecated;
   - changed callback signatures, for example in `rdpsndDevicePlugin`,
-    `CliprdrClientContext`, the drive service and IRP handling, `rdpPointer`,
-    and the WLog appender;
+    `CliprdrClientContext`, the drive service and IRP handling, the printer
+    backend (`rdpPrinterDriver`, and how `printer_DeviceServiceEntry` picks a
+    backend from the driver name), `rdpPointer`, and the WLog appender;
   - the file list helpers in `freerdp/utils/cliprdr_utils.h`, and how the
     clipboard channel applies `ClipboardFeatureMask` to file messages;
   - changed defaults in `freerdp_settings_*`.
@@ -36,8 +38,8 @@ The issue links them. Look for:
   or `WITH_MACAUDIO` changed.
 - **The shadow server.** The test server is FreeRDP's shadow server with
   `scripts/test-server/sample-screen.patch`. Changes to
-  `server/shadow/shadow_client.c` or `Sample/sample_shadow.c` may stop the
-  patch from applying.
+  `server/shadow/shadow_client.c`, `Sample/sample_shadow.c`, or
+  `channels/rdpdr/server/rdpdr_main.c` may stop the patch from applying.
 
 ## 2. Pin the release
 
