@@ -9,7 +9,9 @@ extension RDPSession {
     /// The session thread does the fetching, in parts, so the caller's thread
     /// stays free; `progress` is called on the session thread as parts arrive.
     /// Cancelling the task stops the fetch and removes the file being written;
-    /// files already fetched stay. One fetch runs at a time.
+    /// files already fetched stay. One fetch runs at a time. Where the remote
+    /// computer supports it, the fetch locks its files: copying something
+    /// else there meanwhile does not end it.
     public func fetchFiles(
         _ items: [RDPClipboardFile], from list: RDPRemoteFiles, into folder: URL,
         progress: @escaping @Sendable (RDPFileFetchProgress) -> Void = { _ in }

@@ -57,8 +57,9 @@ public struct RDPFileFetchProgress: Sendable, Equatable {
 
 /// Why fetching files failed. Cancelling the task throws `CancellationError`.
 public enum RDPFileFetchError: Error, Sendable, Equatable {
-    /// The remote computer copied something else, or the connection does not
-    /// copy files: these files can no longer be fetched.
+    /// The remote computer copied something else, and could not keep these
+    /// files for the fetch (it does not support locking), or the connection
+    /// does not copy files: they can no longer be fetched.
     case noLongerOnClipboard
     /// The remote computer refused a file or sent less of it than it listed.
     case refusedByRemote

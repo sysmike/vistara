@@ -20,18 +20,48 @@
 
 // MARK: File lists
 
-static void free_offer(vistara_clipboard_files *files) {
-    for (size_t index = 0; index < files->offered_count; index++) {
-        free(files->offered[index].name);
-        free(files->offered[index].path);
-    }
-    free(files->offered);
-    files->offered = NULL;
-    files->offered_count = 0;
+static void close_offered(vistara_clipboard_files *files) {
     if (files->open_fd >= 0) {
         (void)close(files->open_fd);
         files->open_fd = -1;
     }
+    files->open_file = NULL;
+}
+
+static void free_files(vistara_offered_file *list, size_t count) {
+    for (size_t index = 0; list && index < count; index++) {
+        free(list[index].name);
+        free(list[index].path);
+    }
+    free(list);
+}
+
+/// A copy of `count` offered files, or NULL.
+static vistara_offered_file *copy_files(const vistara_offered_file *list, size_t count) {
+    vistara_offered_file *copy = calloc(count ? count : 1, sizeof(*copy));
+    for (size_t index = 0; copy && index < count; index++) {
+        copy[index] = list[index];
+        copy[index].name = strdup(list[index].name);
+        copy[index].path = strdup(list[index].path);
+        if (!copy[index].name || !copy[index].path) {
+            free_files(copy, index + 1);
+            return NULL;
+        }
+    }
+    return copy;
+}
+
+static void free_offer(vistara_clipboard_files *files) {
+    close_offered(files);
+    free_files(files->offered, files->offered_count);
+    files->offered = NULL;
+    files->offered_count = 0;
+}
+
+static void free_lock(vistara_clipboard_files *files, vistara_locked_offer *lock) {
+    close_offered(files);
+    free_files(lock->files, lock->count);
+    *lock = (vistara_locked_offer){0};
 }
 
 /// The packed file list for `count` files. Each name must fit in a file
@@ -171,7 +201,7 @@ static void free_untaken(vistara_clipboard_files *files) {
 }
 
 void vistara_files_free(vistara_clipboard_files *files) {
-    vistara_files_end_fetch(files, VISTARA_FETCH_CHANNEL_CLOSED, 0);
+    vistara_files_channel_closed(files);
     free_offer(files);
     free_untaken(files);
     free(files->listed);
@@ -245,17 +275,13 @@ static UINT send_contents(CliprdrClientContext *clipboard, uint32_t stream_id, c
     return clipboard->ClientFileContentsResponse(clipboard, &response);
 }
 
-/// The offered file at `index`, opened for reading: a regular file, reached
-/// without following a symbolic link, and still the one that was listed.
-static int open_offered(vistara_clipboard_files *files, size_t index) {
-    if (files->open_fd >= 0 && files->open_index == index) {
+/// An offered file, opened for reading: a regular file, reached without
+/// following a symbolic link, and still the one that was listed.
+static int open_offered(vistara_clipboard_files *files, const vistara_offered_file *file) {
+    if (files->open_fd >= 0 && files->open_file == file) {
         return files->open_fd;
     }
-    if (files->open_fd >= 0) {
-        (void)close(files->open_fd);
-        files->open_fd = -1;
-    }
-    const vistara_offered_file *file = &files->offered[index];
+    close_offered(files);
     const int fd = open(file->path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
         return -1;
@@ -267,19 +293,62 @@ static int open_offered(vistara_clipboard_files *files, size_t index) {
         return -1;
     }
     files->open_fd = fd;
-    files->open_index = index;
+    files->open_file = file;
     return fd;
+}
+
+static vistara_locked_offer *find_lock(vistara_clipboard_files *files, uint32_t clip_data_id) {
+    for (size_t index = 0; index < VISTARA_MAX_LOCKS; index++) {
+        if (files->locks[index].used && files->locks[index].clip_data_id == clip_data_id) {
+            return &files->locks[index];
+        }
+    }
+    return NULL;
+}
+
+void vistara_files_lock(vistara_clipboard_files *files, uint32_t clip_data_id) {
+    vistara_locked_offer *lock = find_lock(files, clip_data_id);
+    for (size_t index = 0; !lock && index < VISTARA_MAX_LOCKS; index++) {
+        if (!files->locks[index].used) {
+            lock = &files->locks[index];
+        }
+    }
+    if (!lock) {
+        lock = &files->locks[files->next_lock_slot];
+        files->next_lock_slot = (files->next_lock_slot + 1) % VISTARA_MAX_LOCKS;
+    }
+    free_lock(files, lock);
+    vistara_offered_file *copy = copy_files(files->offered, files->offered_count);
+    if (copy) {
+        *lock = (vistara_locked_offer){
+            .used = true, .clip_data_id = clip_data_id, .files = copy, .count = files->offered_count};
+    }
+}
+
+void vistara_files_unlock(vistara_clipboard_files *files, uint32_t clip_data_id) {
+    vistara_locked_offer *lock = find_lock(files, clip_data_id);
+    if (lock) {
+        free_lock(files, lock);
+    }
 }
 
 UINT vistara_files_answer_contents_request(vistara_clipboard_files *files, CliprdrClientContext *clipboard,
                                            const CLIPRDR_FILE_CONTENTS_REQUEST *request) {
     const bool wants_size = (request->dwFlags & FILECONTENTS_SIZE) != 0;
     const bool wants_range = (request->dwFlags & FILECONTENTS_RANGE) != 0;
-    if (request->listIndex >= files->offered_count || files->offered[request->listIndex].is_folder ||
-        wants_size == wants_range) {
+    // A request naming a lock reads the offer locked then; one naming a lock
+    // that is not there reads nothing.
+    const vistara_offered_file *list = files->offered;
+    size_t count = files->offered_count;
+    if (request->haveClipDataId) {
+        const vistara_locked_offer *lock = find_lock(files, request->clipDataId);
+        list = lock ? lock->files : NULL;
+        count = lock ? lock->count : 0;
+    }
+    if (!list || request->listIndex >= count || list[request->listIndex].is_folder || wants_size == wants_range) {
         return send_contents(clipboard, request->streamId, NULL, 0);
     }
-    const int fd = open_offered(files, request->listIndex);
+    const int fd = open_offered(files, &list[request->listIndex]);
     if (fd < 0) {
         return send_contents(clipboard, request->streamId, NULL, 0);
     }
@@ -331,7 +400,10 @@ UINT vistara_files_answer_contents_request(vistara_clipboard_files *files, Clipr
 // MARK: Remote computer to Mac
 
 void vistara_files_remote_changed(vistara_clipboard_files *files, bool has_files) {
-    vistara_files_end_fetch(files, VISTARA_FETCH_LIST_CHANGED, 0);
+    // A fetch holding a lock goes on: the remote computer keeps those files.
+    if (!files->fetch_lock) {
+        vistara_files_end_fetch(files, VISTARA_FETCH_LIST_CHANGED, 0);
+    }
     free(files->listed);
     files->listed = NULL;
     files->listed_count = 0;
@@ -368,6 +440,18 @@ static void close_fetched(vistara_clipboard_files *files, bool keep) {
     }
 }
 
+/// Releases the lock the fetch holds, if the channel is still there.
+static void release_fetch_lock(vistara_clipboard_files *files) {
+    if (files->fetch_lock && files->fetch_clipboard) {
+        CLIPRDR_UNLOCK_CLIPBOARD_DATA unlock = {0};
+        unlock.common.msgType = CB_UNLOCK_CLIPDATA;
+        unlock.clipDataId = files->fetch_lock;
+        (void)files->fetch_clipboard->ClientUnlockClipboardData(files->fetch_clipboard, &unlock);
+    }
+    files->fetch_lock = 0;
+    files->fetch_clipboard = NULL;
+}
+
 void vistara_files_end_fetch(vistara_clipboard_files *files, vistara_fetch_state state, int32_t os_error) {
     if (files->status.state != VISTARA_FETCH_RUNNING) {
         return;
@@ -376,13 +460,17 @@ void vistara_files_end_fetch(vistara_clipboard_files *files, vistara_fetch_state
     files->status.state = state;
     files->status.os_error = os_error;
     free_jobs(files);
+    release_fetch_lock(files);
 }
 
 void vistara_files_channel_closed(vistara_clipboard_files *files) {
+    // Nothing more can be sent.
+    files->fetch_clipboard = NULL;
     vistara_files_end_fetch(files, VISTARA_FETCH_CHANNEL_CLOSED, 0);
-    if (files->open_fd >= 0) {
-        (void)close(files->open_fd);
-        files->open_fd = -1;
+    release_fetch_lock(files);
+    close_offered(files);
+    for (size_t index = 0; index < VISTARA_MAX_LOCKS; index++) {
+        free_lock(files, &files->locks[index]);
     }
 }
 
@@ -420,6 +508,8 @@ static void request_next(vistara_clipboard_files *files, CliprdrClientContext *c
             request.cbRequested = left < VISTARA_FILE_CHUNK ? (UINT32)left : VISTARA_FILE_CHUNK;
         }
         request.streamId = ++files->stream_id;
+        request.haveClipDataId = files->fetch_lock != 0;
+        request.clipDataId = files->fetch_lock;
         if (clipboard->ClientFileContentsRequest(clipboard, &request) != CHANNEL_RC_OK) {
             vistara_files_end_fetch(files, VISTARA_FETCH_REFUSED, 0);
         }
@@ -427,10 +517,11 @@ static void request_next(vistara_clipboard_files *files, CliprdrClientContext *c
     }
     files->status.state = VISTARA_FETCH_DONE;
     free_jobs(files);
+    release_fetch_lock(files);
 }
 
 bool vistara_files_start_fetch(vistara_clipboard_files *files, CliprdrClientContext *clipboard, uint64_t list_id,
-                               const vistara_fetch_item *items, size_t count) {
+                               const vistara_fetch_item *items, size_t count, bool can_lock) {
     if (files->status.state == VISTARA_FETCH_RUNNING || list_id != files->list_id || !files->listed || count == 0 ||
         count > files->listed_count) {
         return false;
@@ -463,6 +554,16 @@ bool vistara_files_start_fetch(vistara_clipboard_files *files, CliprdrClientCont
     files->status = status;
     files->job = 0;
     files->offset = 0;
+    if (can_lock) {
+        files->last_lock = files->last_lock == UINT32_MAX ? 1 : files->last_lock + 1;
+        CLIPRDR_LOCK_CLIPBOARD_DATA lock = {0};
+        lock.common.msgType = CB_LOCK_CLIPDATA;
+        lock.clipDataId = files->last_lock;
+        if (clipboard->ClientLockClipboardData(clipboard, &lock) == CHANNEL_RC_OK) {
+            files->fetch_lock = files->last_lock;
+            files->fetch_clipboard = clipboard;
+        }
+    }
     request_next(files, clipboard);
     return true;
 }

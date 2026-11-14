@@ -240,6 +240,24 @@ struct FileClipboardTests {
         #expect(ContinuousClock.now - started < .seconds(10))
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func aPasteUnderWayKeepsItsFilesWhenTheRemoteComputerCopiesSomethingElse() throws {
+        let fixture = make(fetch: FakeFetch(delay: .milliseconds(600)))
+        defer { fixture.bridge.stop() }
+        fixture.files.progressDelay = .milliseconds(100)
+        // Halfway through, the remote computer copies something else.
+        fixture.files.showProgress = { paste in
+            if paste != nil { fixture.files.replace(with: nil) }
+        }
+        fixture.bridge.receive(Self.remote)
+
+        let urls = pastedURLs(from: fixture.pasteboard)
+
+        #expect(urls.map(\.lastPathComponent) == ["Report.pdf", "Photos"])
+        #expect(urls.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+        #expect(!fixture.files.hasFiles)
+    }
+
     @Test
     func progressSaysWhatIsCopiedAndHowMuch() {
         let one = FilePasteProgress(computerName: "Build Server", itemNames: ["Report.pdf"]) {}
