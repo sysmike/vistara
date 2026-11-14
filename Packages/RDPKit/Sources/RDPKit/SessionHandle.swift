@@ -50,7 +50,8 @@ final class SessionHandle {
         return Unmanaged<CertificateDecider>.fromOpaque(context).takeUnretainedValue().decide(certificate)
     }
 
-    private let session: OpaquePointer
+    /// The shim's session. Only this type and its extensions use it.
+    let session: OpaquePointer
 
     init?() {
         // FreeRDP's log goes through Vistara's redaction from the start.
@@ -203,6 +204,8 @@ final class SessionHandle {
             vistara_session_request_size(session, UInt32(width), UInt32(height), UInt32(scalePercent))
         case .clipboardText(let text):
             offerClipboardText(text)
+        case .clipboardFiles(let offer):
+            offerClipboardFiles(offer)
         case .displayUpdates(let allowed): vistara_session_set_display_updates(session, allowed)
         case .monitorLayout(let monitors):
             monitors.map(\.cMonitor).withUnsafeBufferPointer { buffer in

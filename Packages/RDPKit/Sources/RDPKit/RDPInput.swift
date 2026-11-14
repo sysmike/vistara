@@ -74,6 +74,10 @@ public enum RDPInputEvent: Sendable, Hashable {
     /// for it when someone pastes. Dropped when the clipboard is not shared.
     /// Never logged.
     case clipboardText(String)
+    /// Files and folders on this Mac, offered to the remote computer in place
+    /// of any text, which asks for their contents when someone pastes there.
+    /// Dropped unless the connection copies files. Names are never logged.
+    case clipboardFiles(RDPLocalFileOffer)
     /// Whether the remote computer sends its screen. False while nobody can
     /// see the session (a background tab, a minimized or covered window): it
     /// stays connected but stops drawing. True draws the whole desktop again.
@@ -89,9 +93,10 @@ public enum RDPInputEvent: Sendable, Hashable {
     /// that only the latest needs sending.
     func isSuperseded(by later: RDPInputEvent) -> Bool {
         switch (self, later) {
-        case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize), (.clipboardText, .clipboardText),
-            (.displayUpdates, .displayUpdates), (.monitorLayout, .monitorLayout),
-            (.desktopSize, .monitorLayout), (.monitorLayout, .desktopSize): true
+        case (.pointerMove, .pointerMove), (.desktopSize, .desktopSize), (.displayUpdates, .displayUpdates),
+            (.monitorLayout, .monitorLayout), (.desktopSize, .monitorLayout), (.monitorLayout, .desktopSize),
+            (.clipboardText, .clipboardText), (.clipboardFiles, .clipboardFiles), (.clipboardText, .clipboardFiles),
+            (.clipboardFiles, .clipboardText): true
         default: false
         }
     }

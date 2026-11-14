@@ -118,6 +118,9 @@ typedef struct {
     /// Load the clipboard channel and share text both ways. When false the
     /// channel is not loaded, so no clipboard data can pass in either direction.
     bool share_clipboard;
+    /// Also copy files both ways. Needs share_clipboard; without it, the
+    /// clipboard channel lets only text pass.
+    bool copy_files;
     /// The folders to share, each as one drive. With none, the device
     /// redirection channel is not loaded, so nothing on this Mac is shared.
     /// Nothing else is ever shared: not the home folder, not other drives,
@@ -193,6 +196,108 @@ void vistara_session_offer_local_text(vistara_session *session, const char *text
 /// data were sent to the remote computer. For tests.
 bool vistara_session_clipboard_connected(vistara_session *session);
 uint64_t vistara_session_clipboard_bytes_sent(vistara_session *session);
+
+// MARK: Files through the clipboard
+
+/// A file or folder on this Mac to offer to the remote computer.
+typedef struct {
+    /// Its path below what was copied, as the remote computer sees it: parts
+    /// separated by "\", UTF-8, at most 259 UTF-16 code units.
+    const char *name;
+    /// Its absolute path on this Mac. Ignored for folders.
+    const char *path;
+    uint64_t size;
+    bool is_folder;
+    /// The file's device and inode when it was listed. A file read later must
+    /// still be that file: one put in its place is not read.
+    uint64_t device;
+    uint64_t inode;
+} vistara_local_file;
+
+/// Offers files and folders to the remote computer as this Mac's clipboard,
+/// in place of any text, in the order given: a folder before what is in it.
+/// Nothing is read until the remote computer asks for a file's contents, and
+/// then only from a regular file at `path` that is still the one listed;
+/// symbolic links are not followed. An empty list offers nothing. Returns
+/// false, offering nothing, when the connection does not copy files.
+bool vistara_session_offer_local_files(vistara_session *session, const vistara_local_file *_Nullable files,
+                                       size_t count);
+
+/// One entry of the remote computer's file list.
+typedef struct {
+    /// Its path below what was copied, parts separated by "\", UTF-8 as the
+    /// remote computer sent it: not checked, so never use it as a path as is.
+    /// Empty if it was not valid UTF-16.
+    char *name;
+    uint64_t size;
+    /// Whether the remote computer said how large it is.
+    bool has_size;
+    bool is_folder;
+} vistara_remote_file;
+
+/// The files the remote computer copied, if they changed since the last call:
+/// an empty list once it copies something else. `list_id` names the list for
+/// vistara_session_start_fetch(). Free the list with vistara_remote_files_free().
+bool vistara_session_take_remote_files(vistara_session *session, vistara_remote_file *_Nullable *_Nonnull files,
+                                       size_t *count, uint64_t *list_id);
+void vistara_remote_files_free(vistara_remote_file *_Nullable files, size_t count);
+
+/// One file to fetch from the remote computer's list.
+typedef struct {
+    /// Its index in the remote computer's list.
+    uint32_t list_index;
+    /// Where to write it: a file that does not exist yet, in a folder that does.
+    const char *destination;
+} vistara_fetch_item;
+
+typedef enum {
+    VISTARA_FETCH_IDLE = 0,
+    VISTARA_FETCH_RUNNING = 1,
+    VISTARA_FETCH_DONE = 2,
+    VISTARA_FETCH_CANCELLED = 3,
+    /// The remote computer refused a file, or sent less than it listed.
+    VISTARA_FETCH_REFUSED = 4,
+    /// A file could not be written here; see os_error.
+    VISTARA_FETCH_WRITE_FAILED = 5,
+    /// The remote computer copied something else first.
+    VISTARA_FETCH_LIST_CHANGED = 6,
+    /// The clipboard channel closed.
+    VISTARA_FETCH_CHANNEL_CLOSED = 7,
+} vistara_fetch_state;
+
+typedef struct {
+    vistara_fetch_state state;
+    uint64_t bytes_received;
+    /// The size of every file to fetch whose size is known so far.
+    uint64_t bytes_expected;
+    uint32_t files_done;
+    uint32_t file_count;
+    int32_t os_error;
+} vistara_fetch_status;
+
+/// Starts fetching files of the list `list_id` in the background, one after
+/// the other and in parts, writing each to its destination. Folders are not
+/// fetched: the caller creates them. Returns false, starting nothing, when a
+/// fetch is running, the list is no longer the current one, or an item is not
+/// a file in it. A file that fails is removed; files already fetched stay.
+bool vistara_session_start_fetch(vistara_session *session, uint64_t list_id, const vistara_fetch_item *items,
+                                 size_t count);
+
+/// Ends a running fetch and removes the file it was writing. Safe from any
+/// thread, like vistara_session_wake().
+void vistara_session_cancel_fetch(vistara_session *session);
+
+/// How the last fetch is doing. Safe from any thread.
+void vistara_session_read_fetch(vistara_session *session, vistara_fetch_status *status);
+
+/// The packed file list ([MS-RDPECLIP] 2.2.5.2.3) for `files`, as the remote
+/// computer receives it, or NULL. Free it with free(). For tests.
+uint8_t *_Nullable vistara_file_list_encode(const vistara_local_file *_Nullable files, size_t count,
+                                            size_t *length);
+
+/// Reads a packed file list as one from the remote computer is read. For tests.
+bool vistara_file_list_decode(const uint8_t *data, size_t length, vistara_remote_file *_Nullable *_Nonnull files,
+                              size_t *count);
 
 /// What the sound channel did, for tests and diagnostics.
 typedef struct {

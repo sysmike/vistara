@@ -64,6 +64,9 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     /// Loads the clipboard channel and shares text both ways. When false the
     /// channel is not loaded at all.
     public var sharesClipboard: Bool
+    /// Copies files through the clipboard too, both ways. Needs
+    /// `sharesClipboard`; without this, the clipboard channel lets only text pass.
+    public var copiesFiles: Bool
     /// The only folders the remote computer sees. Empty: none, and the device
     /// redirection channel is not loaded.
     public var sharedFolders: [RDPSharedFolder]
@@ -88,6 +91,7 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         requiresNLA: Bool = true,
         audio: RDPAudioMode = .thisMac,
         sharesClipboard: Bool = true,
+        copiesFiles: Bool = false,
         sharedFolders: [RDPSharedFolder] = [],
         keyboard: RDPKeyboard? = nil,
         reconnectsAutomatically: Bool = true
@@ -102,6 +106,7 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
         self.requiresNLA = requiresNLA
         self.audio = audio
         self.sharesClipboard = sharesClipboard
+        self.copiesFiles = copiesFiles
         self.sharedFolders = sharedFolders
         self.keyboard = keyboard
         self.reconnectsAutomatically = reconnectsAutomatically

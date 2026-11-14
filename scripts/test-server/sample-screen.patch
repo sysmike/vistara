@@ -286,7 +286,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,515 @@
+@@ -37,6 +37,824 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -397,10 +397,14 @@
 +	(void)fflush(stderr);
 +}
 +
-+/* Vistara test server: a clipboard. It offers a known text as soon as the
-+ * client's clipboard is up, and reports the text a client offers it, in hex,
-+ * so tests can check both directions. */
++/* Vistara test server: a clipboard. It offers a known text and a few files as
++ * soon as the client's clipboard is up, and reports the text a client offers
++ * it, in hex, so tests can check both directions. Files a client offers are
++ * listed and fetched, each file's bytes reported as a checksum. */
 +#include <freerdp/server/cliprdr.h>
++#include <freerdp/utils/cliprdr_utils.h>
++#include <winpr/file.h>
++#include <winpr/shell.h>
 +#include <winpr/string.h>
 +#include <winpr/user.h>
 +
@@ -423,45 +427,297 @@
 +
 +static const char vistara_clipboard_text[] = "Gr\xc3\xbc\xc3\x9f" "e aus dem Testserver \xe2\x9c\x93\r\nZweite Zeile";
 +
++/* The files the server offers. The report's bytes follow vistara_report_byte()
++ * and it spans several of the client's parts; the last file's size is left
++ * out of the list, so a client has to ask for it. */
++#define VISTARA_FORMAT_FILE_LIST 0xC0A0u
++#define VISTARA_FORMAT_FILE_CONTENTS 0xC0A1u
++#define VISTARA_REPORT_SIZE (2621440ull + 123ull)
++
++typedef struct
++{
++	const char* name;
++	BOOL folder;
++	BOOL listsSize;
++	const char* text;
++} vistaraServerFile;
++
++static const vistaraServerFile vistara_server_files[] = {
++	{ "Server Report.bin", FALSE, TRUE, nullptr },
++	{ "Server Folder", TRUE, TRUE, nullptr },
++	{ "Server Folder\\Gr\xc3\xbc\xc3\x9f" "e \xe2\x9c\x93.txt", FALSE, TRUE, "Inhalt aus dem Testserver\r\n" },
++	{ "Server Folder\\Q1/Q2.txt", FALSE, FALSE, "Ohne Gr\xc3\xb6\xc3\x9f" "e\r\n" },
++	{ "\\Absolute.txt", FALSE, TRUE, "Never written\r\n" },
++};
++
++static BYTE vistara_report_byte(UINT64 offset)
++{
++	return (BYTE)((offset * 31u + (offset >> 16)) & 0xFFu);
++}
++
++static UINT64 vistara_server_file_size(const vistaraServerFile* file)
++{
++	if (file->folder)
++		return 0;
++	return file->text ? strlen(file->text) : VISTARA_REPORT_SIZE;
++}
++
++/* What the server is fetching from the client: its list, and one file at a
++ * time, in parts of VISTARA_CLIENT_PART. Then two requests the client must
++ * refuse: a folder's contents and an index beyond the list. */
++#define VISTARA_CLIENT_PART (1024u * 1024u)
++
++typedef enum
++{
++	VISTARA_FETCH_FILES,
++	VISTARA_FETCH_FOLDER,
++	VISTARA_FETCH_BEYOND,
++	VISTARA_FETCH_NONE
++} vistaraFetchStep;
++
 +typedef struct
 +{
 +	CliprdrServerContext* cliprdr;
 +	BOOL tried;
++	BOOL awaitingFiles;
++	FILEDESCRIPTORW* clientFiles;
++	UINT32 clientCount;
++	vistaraFetchStep step;
++	UINT32 index;
++	UINT64 offset;
++	UINT64 checksum;
++	UINT32 streamId;
 +} vistaraClipboard;
 +
 +static UINT vistara_clip_client_caps(CliprdrServerContext* context,
 +                                     WINPR_ATTR_UNUSED const CLIPRDR_CAPABILITIES* capabilities)
 +{
-+	(void)fprintf(stderr, "vistara-clipboard joined\n");
++	(void)fprintf(stderr, "vistara-clipboard joined files=%u\n",
++	              (unsigned)context->streamFileClipEnabled);
 +	(void)fflush(stderr);
-+	CLIPRDR_FORMAT format = { .formatId = CF_UNICODETEXT, .formatName = nullptr };
++	CLIPRDR_FORMAT formats[] = {
++		{ .formatId = CF_UNICODETEXT, .formatName = nullptr },
++		{ .formatId = VISTARA_FORMAT_FILE_LIST, .formatName = "FileGroupDescriptorW" },
++		{ .formatId = VISTARA_FORMAT_FILE_CONTENTS, .formatName = "FileContents" },
++	};
 +	CLIPRDR_FORMAT_LIST list = WINPR_C_ARRAY_INIT;
 +	list.common.msgType = CB_FORMAT_LIST;
-+	list.numFormats = 1;
-+	list.formats = &format;
++	list.numFormats = ARRAYSIZE(formats);
++	list.formats = formats;
 +	return context->ServerFormatList(context, &list);
++}
++
++static UINT vistara_clip_request(CliprdrServerContext* context, vistaraClipboard* state,
++                                 UINT32 index, UINT32 flags, UINT64 offset, UINT32 length)
++{
++	CLIPRDR_FILE_CONTENTS_REQUEST request = WINPR_C_ARRAY_INIT;
++	request.common.msgType = CB_FILECONTENTS_REQUEST;
++	request.streamId = ++state->streamId;
++	request.listIndex = index;
++	request.dwFlags = flags;
++	request.nPositionLow = (UINT32)(offset & 0xFFFFFFFFu);
++	request.nPositionHigh = (UINT32)(offset >> 32);
++	request.cbRequested = length;
++	return context->ServerFileContentsRequest(context, &request);
++}
++
++static UINT64 vistara_client_file_size(const FILEDESCRIPTORW* file)
++{
++	return ((UINT64)file->nFileSizeHigh << 32) | file->nFileSizeLow;
++}
++
++static BOOL vistara_client_file_is_folder(const FILEDESCRIPTORW* file)
++{
++	return (file->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
++}
++
++/* Asks for the next part of what the server is fetching, logging each file
++ * as it is complete. */
++static UINT vistara_clip_fetch_next(CliprdrServerContext* context, vistaraClipboard* state)
++{
++	while (state->step == VISTARA_FETCH_FILES && state->index < state->clientCount)
++	{
++		const FILEDESCRIPTORW* file = &state->clientFiles[state->index];
++		const UINT64 size = vistara_client_file_size(file);
++		if (!vistara_client_file_is_folder(file) && state->offset < size)
++		{
++			const UINT64 left = size - state->offset;
++			return vistara_clip_request(context, state, state->index, FILECONTENTS_RANGE,
++			                            state->offset,
++			                            left < VISTARA_CLIENT_PART ? (UINT32)left : VISTARA_CLIENT_PART);
++		}
++		if (!vistara_client_file_is_folder(file))
++		{
++			(void)fprintf(stderr, "vistara-clipboard client-file-done index=%u bytes=%llu fnv=%016llx\n",
++			              (unsigned)state->index, (unsigned long long)state->offset,
++			              (unsigned long long)state->checksum);
++			(void)fflush(stderr);
++		}
++		state->index++;
++		state->offset = 0;
++		state->checksum = 0xcbf29ce484222325ull;
++	}
++	if (state->step == VISTARA_FETCH_FILES)
++	{
++		state->step = VISTARA_FETCH_FOLDER;
++		for (UINT32 index = 0; index < state->clientCount; index++)
++		{
++			if (vistara_client_file_is_folder(&state->clientFiles[index]))
++				return vistara_clip_request(context, state, index, FILECONTENTS_RANGE, 0, 16);
++		}
++	}
++	if (state->step == VISTARA_FETCH_FOLDER)
++	{
++		state->step = VISTARA_FETCH_BEYOND;
++		return vistara_clip_request(context, state, state->clientCount, FILECONTENTS_RANGE, 0, 16);
++	}
++	state->step = VISTARA_FETCH_NONE;
++	(void)fprintf(stderr, "vistara-clipboard client-files-done\n");
++	(void)fflush(stderr);
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_clip_client_contents_response(CliprdrServerContext* context,
++                                                  const CLIPRDR_FILE_CONTENTS_RESPONSE* response)
++{
++	vistaraClipboard* state = context->custom;
++	if (response->streamId != state->streamId || state->step == VISTARA_FETCH_NONE)
++		return CHANNEL_RC_OK;
++	const BOOL ok = (response->common.msgFlags & CB_RESPONSE_OK) != 0;
++	if (state->step != VISTARA_FETCH_FILES)
++	{
++		(void)fprintf(stderr, "vistara-clipboard client-refused what=%s ok=%u\n",
++		              state->step == VISTARA_FETCH_FOLDER ? "folder" : "beyond", (unsigned)ok);
++		(void)fflush(stderr);
++		return vistara_clip_fetch_next(context, state);
++	}
++	if (!ok || (response->cbRequested == 0))
++	{
++		(void)fprintf(stderr, "vistara-clipboard client-file-failed index=%u\n", (unsigned)state->index);
++		(void)fflush(stderr);
++		state->index++;
++		state->offset = 0;
++		state->checksum = 0xcbf29ce484222325ull;
++		return vistara_clip_fetch_next(context, state);
++	}
++	for (UINT32 i = 0; i < response->cbRequested; i++)
++	{
++		state->checksum ^= response->requestedData[i];
++		state->checksum *= 0x100000001b3ull;
++	}
++	state->offset += response->cbRequested;
++	return vistara_clip_fetch_next(context, state);
++}
++
++/* The client asks for a part of a file the server offers. */
++static UINT vistara_clip_client_contents_request(CliprdrServerContext* context,
++                                                 const CLIPRDR_FILE_CONTENTS_REQUEST* request)
++{
++	const UINT64 offset = ((UINT64)request->nPositionHigh << 32) | request->nPositionLow;
++	(void)fprintf(stderr,
++	              "vistara-clipboard file-request index=%u flags=%u offset=%llu requested=%u\n",
++	              (unsigned)request->listIndex, (unsigned)request->dwFlags,
++	              (unsigned long long)offset, (unsigned)request->cbRequested);
++	(void)fflush(stderr);
++	CLIPRDR_FILE_CONTENTS_RESPONSE response = WINPR_C_ARRAY_INIT;
++	response.common.msgType = CB_FILECONTENTS_RESPONSE;
++	response.common.msgFlags = CB_RESPONSE_FAIL;
++	response.streamId = request->streamId;
++	BYTE* data = nullptr;
++	BYTE size[8] = WINPR_C_ARRAY_INIT;
++	const vistaraServerFile* file = (request->listIndex < ARRAYSIZE(vistara_server_files))
++	                                    ? &vistara_server_files[request->listIndex]
++	                                    : nullptr;
++	if (file && !file->folder && (request->dwFlags & FILECONTENTS_SIZE))
++	{
++		const UINT64 value = vistara_server_file_size(file);
++		for (size_t i = 0; i < sizeof(size); i++)
++			size[i] = (BYTE)(value >> (8 * i));
++		response.common.msgFlags = CB_RESPONSE_OK;
++		response.cbRequested = sizeof(size);
++		response.requestedData = size;
++	}
++	else if (file && !file->folder && (request->dwFlags & FILECONTENTS_RANGE))
++	{
++		const UINT64 total = vistara_server_file_size(file);
++		const UINT64 left = offset < total ? total - offset : 0;
++		const UINT32 length = left < request->cbRequested ? (UINT32)left : request->cbRequested;
++		data = malloc(length ? length : 1);
++		if (data)
++		{
++			for (UINT32 i = 0; i < length; i++)
++				data[i] = file->text ? (BYTE)file->text[offset + i] : vistara_report_byte(offset + i);
++			response.common.msgFlags = CB_RESPONSE_OK;
++			response.cbRequested = length;
++			response.requestedData = data;
++		}
++		/* Slow enough that a client can cancel in the middle of the report. */
++		if (!file->text)
++			Sleep(100);
++	}
++	const UINT rc = context->ServerFileContentsResponse(context, &response);
++	free(data);
++	return rc;
++}
++
++static UINT vistara_clip_send_file_list(CliprdrServerContext* context)
++{
++	FILEDESCRIPTORW descriptors[ARRAYSIZE(vistara_server_files)] = WINPR_C_ARRAY_INIT;
++	for (size_t i = 0; i < ARRAYSIZE(vistara_server_files); i++)
++	{
++		const vistaraServerFile* file = &vistara_server_files[i];
++		FILEDESCRIPTORW* descriptor = &descriptors[i];
++		descriptor->dwFlags = FD_ATTRIBUTES | (file->listsSize ? FD_FILESIZE : 0);
++		descriptor->dwFileAttributes = file->folder ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
++		const UINT64 size = file->listsSize ? vistara_server_file_size(file) : 0;
++		descriptor->nFileSizeHigh = (UINT32)(size >> 32);
++		descriptor->nFileSizeLow = (UINT32)(size & 0xFFFFFFFFu);
++		(void)ConvertUtf8ToWChar(file->name, descriptor->cFileName, ARRAYSIZE(descriptor->cFileName));
++	}
++	BYTE* data = nullptr;
++	UINT32 length = 0;
++	CLIPRDR_FORMAT_DATA_RESPONSE response = WINPR_C_ARRAY_INIT;
++	response.common.msgType = CB_FORMAT_DATA_RESPONSE;
++	response.common.msgFlags = CB_RESPONSE_FAIL;
++	if (cliprdr_serialize_file_list_ex(CB_STREAM_FILECLIP_ENABLED | CB_HUGE_FILE_SUPPORT_ENABLED,
++	                                   descriptors, ARRAYSIZE(descriptors), &data,
++	                                   &length) == CHANNEL_RC_OK)
++	{
++		response.common.msgFlags = CB_RESPONSE_OK;
++		response.common.dataLen = length;
++		response.requestedFormatData = data;
++	}
++	const UINT rc = context->ServerFormatDataResponse(context, &response);
++	free(data);
++	return rc;
 +}
 +
 +static UINT vistara_clip_client_format_list(CliprdrServerContext* context,
 +                                            const CLIPRDR_FORMAT_LIST* list)
 +{
++	vistaraClipboard* state = context->custom;
 +	CLIPRDR_FORMAT_LIST_RESPONSE response = WINPR_C_ARRAY_INIT;
 +	response.common.msgType = CB_FORMAT_LIST_RESPONSE;
 +	response.common.msgFlags = CB_RESPONSE_OK;
 +	const UINT rc = context->ServerFormatListResponse(context, &response);
 +	if (rc != CHANNEL_RC_OK)
 +		return rc;
++	UINT32 wanted = 0;
 +	for (UINT32 i = 0; i < list->numFormats; i++)
 +	{
-+		if (list->formats[i].formatId == CF_UNICODETEXT)
-+		{
-+			CLIPRDR_FORMAT_DATA_REQUEST request = WINPR_C_ARRAY_INIT;
-+			request.common.msgType = CB_FORMAT_DATA_REQUEST;
-+			request.requestedFormatId = CF_UNICODETEXT;
-+			return context->ServerFormatDataRequest(context, &request);
-+		}
++		const CLIPRDR_FORMAT* format = &list->formats[i];
++		if (format->formatName && (strcmp(format->formatName, "FileGroupDescriptorW") == 0))
++			wanted = format->formatId;
++		else if ((format->formatId == CF_UNICODETEXT) && (wanted == 0))
++			wanted = CF_UNICODETEXT;
 +	}
-+	return CHANNEL_RC_OK;
++	if (wanted == 0)
++		return CHANNEL_RC_OK;
++	state->awaitingFiles = wanted != CF_UNICODETEXT;
++	CLIPRDR_FORMAT_DATA_REQUEST request = WINPR_C_ARRAY_INIT;
++	request.common.msgType = CB_FORMAT_DATA_REQUEST;
++	request.requestedFormatId = wanted;
++	return context->ServerFormatDataRequest(context, &request);
 +}
 +
 +static UINT vistara_clip_client_format_list_response(
@@ -474,6 +730,8 @@
 +static UINT vistara_clip_client_data_request(CliprdrServerContext* context,
 +                                             const CLIPRDR_FORMAT_DATA_REQUEST* request)
 +{
++	if (request->requestedFormatId == VISTARA_FORMAT_FILE_LIST)
++		return vistara_clip_send_file_list(context);
 +	CLIPRDR_FORMAT_DATA_RESPONSE response = WINPR_C_ARRAY_INIT;
 +	response.common.msgType = CB_FORMAT_DATA_RESPONSE;
 +	size_t length = 0;
@@ -491,11 +749,52 @@
 +	return rc;
 +}
 +
-+static UINT vistara_clip_client_data_response(WINPR_ATTR_UNUSED CliprdrServerContext* context,
++/* The client's file list: each entry is logged, then its files fetched. */
++static UINT vistara_clip_take_client_files(CliprdrServerContext* context, vistaraClipboard* state,
++                                           const CLIPRDR_FORMAT_DATA_RESPONSE* response)
++{
++	free(state->clientFiles);
++	state->clientFiles = nullptr;
++	state->clientCount = 0;
++	if (cliprdr_parse_file_list(response->requestedFormatData, response->common.dataLen,
++	                            &state->clientFiles, &state->clientCount) != CHANNEL_RC_OK)
++	{
++		(void)fprintf(stderr, "vistara-clipboard client-list unreadable\n");
++		(void)fflush(stderr);
++		return CHANNEL_RC_OK;
++	}
++	(void)fprintf(stderr, "vistara-clipboard client-list count=%u\n", (unsigned)state->clientCount);
++	for (UINT32 i = 0; i < state->clientCount; i++)
++	{
++		const FILEDESCRIPTORW* file = &state->clientFiles[i];
++		char* name = ConvertWCharNToUtf8Alloc(
++		    file->cFileName, _wcsnlen(file->cFileName, ARRAYSIZE(file->cFileName)), nullptr);
++		char prefix[128] = { 0 };
++		(void)snprintf(prefix, sizeof(prefix),
++		               "vistara-clipboard client-file index=%u folder=%u size=%llu name=", (unsigned)i,
++		               (unsigned)vistara_client_file_is_folder(file),
++		               (unsigned long long)vistara_client_file_size(file));
++		vistara_log_hex(prefix, (const BYTE*)(name ? name : ""), name ? strlen(name) : 0);
++		free(name);
++	}
++	(void)fflush(stderr);
++	state->step = VISTARA_FETCH_FILES;
++	state->index = 0;
++	state->offset = 0;
++	state->checksum = 0xcbf29ce484222325ull;
++	return vistara_clip_fetch_next(context, state);
++}
++
++static UINT vistara_clip_client_data_response(CliprdrServerContext* context,
 +                                              const CLIPRDR_FORMAT_DATA_RESPONSE* response)
 +{
++	vistaraClipboard* state = context->custom;
++	const BOOL files = state->awaitingFiles;
++	state->awaitingFiles = FALSE;
 +	if (!(response->common.msgFlags & CB_RESPONSE_OK) || !response->requestedFormatData)
 +		return CHANNEL_RC_OK;
++	if (files)
++		return vistara_clip_take_client_files(context, state, response);
 +	vistara_log_hex("vistara-clipboard from-client ", response->requestedFormatData,
 +	                response->common.dataLen);
 +	return CHANNEL_RC_OK;
@@ -507,16 +806,23 @@
 +	    !WTSVirtualChannelManagerIsChannelJoined(client->vcm, CLIPRDR_SVC_CHANNEL_NAME))
 +		return;
 +	state->tried = TRUE;
++	state->step = VISTARA_FETCH_NONE;
 +	CliprdrServerContext* cliprdr = cliprdr_server_context_new(client->vcm);
 +	if (!cliprdr)
 +		return;
 +	cliprdr->rdpcontext = &client->context;
++	cliprdr->custom = state;
 +	cliprdr->useLongFormatNames = TRUE;
++	cliprdr->streamFileClipEnabled = TRUE;
++	cliprdr->fileClipNoFilePaths = TRUE;
++	cliprdr->hasHugeFileSupport = TRUE;
 +	cliprdr->ClientCapabilities = vistara_clip_client_caps;
 +	cliprdr->ClientFormatList = vistara_clip_client_format_list;
 +	cliprdr->ClientFormatListResponse = vistara_clip_client_format_list_response;
 +	cliprdr->ClientFormatDataRequest = vistara_clip_client_data_request;
 +	cliprdr->ClientFormatDataResponse = vistara_clip_client_data_response;
++	cliprdr->ClientFileContentsRequest = vistara_clip_client_contents_request;
++	cliprdr->ClientFileContentsResponse = vistara_clip_client_contents_response;
 +	if (cliprdr->Start(cliprdr) != CHANNEL_RC_OK)
 +	{
 +		cliprdr_server_context_free(cliprdr);
@@ -527,11 +833,14 @@
 +
 +static void vistara_clipboard_close(vistaraClipboard* state)
 +{
-+	if (!state->cliprdr)
-+		return;
-+	(void)state->cliprdr->Stop(state->cliprdr);
-+	cliprdr_server_context_free(state->cliprdr);
-+	state->cliprdr = nullptr;
++	if (state->cliprdr)
++	{
++		(void)state->cliprdr->Stop(state->cliprdr);
++		cliprdr_server_context_free(state->cliprdr);
++		state->cliprdr = nullptr;
++	}
++	free(state->clientFiles);
++	state->clientFiles = nullptr;
 +}
 +
 +/* Vistara test server: shared folders. For every drive a client announces,
@@ -802,7 +1111,7 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -574,6 +1083,32 @@
+@@ -574,6 +1392,32 @@
  	subsystem = server->subsystem;
  	WINPR_ASSERT(subsystem);
  
@@ -835,7 +1144,7 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -735,6 +1270,8 @@
+@@ -735,6 +1579,8 @@
  	WINPR_ASSERT(client);
  
  	client->suppressOutput = !(allow);
@@ -844,7 +1153,7 @@
  
  	if (allow)
  	{
-@@ -2845,6 +3382,9 @@
+@@ -2845,6 +3691,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -854,7 +1163,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3490,11 @@
+@@ -2950,6 +3799,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -866,7 +1175,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3582,8 @@
+@@ -3037,6 +3891,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -875,7 +1184,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +3737,15 @@
+@@ -3190,6 +4046,15 @@
  
  fail:
  

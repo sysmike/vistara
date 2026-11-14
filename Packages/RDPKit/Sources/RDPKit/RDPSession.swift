@@ -33,6 +33,14 @@ public final class RDPSession: Sendable {
     public let remoteClipboard: AsyncStream<String>
     private let remoteClipboardContinuation: AsyncStream<String>.Continuation
 
+    /// The files the remote computer copied, as names and sizes, as they
+    /// change: an empty list once it copies something else. Only the latest
+    /// is kept. Ends with the session. Empty unless the configuration copies
+    /// files. Fetch them with `fetchFiles(_:from:into:progress:)`.
+    public let remoteClipboardFiles: AsyncStream<RDPRemoteFiles>
+    private let remoteFilesContinuation: AsyncStream<RDPRemoteFiles>.Continuation
+    let fetcher = FileFetcher()
+
     private let delegate: RDPSessionDelegate
     private let continuation: AsyncStream<RDPSessionState>.Continuation
     private let control = OSAllocatedUnfairLock(initialState: Control())
@@ -48,6 +56,11 @@ public final class RDPSession: Sendable {
         )
         remoteClipboard = clipboard
         remoteClipboardContinuation = clipboardContinuation
+        let (files, filesContinuation) = AsyncStream.makeStream(
+            of: RDPRemoteFiles.self, bufferingPolicy: .bufferingNewest(1)
+        )
+        remoteClipboardFiles = files
+        remoteFilesContinuation = filesContinuation
     }
 
     /// Starts connecting. Calling it again does nothing.
@@ -93,6 +106,11 @@ public final class RDPSession: Sendable {
         }
     }
 
+    /// Ends a `poll` of the session thread early, to act on something new.
+    func wakeSessionThread() {
+        control.withLock { $0.abortToken?.wake() }
+    }
+
     // MARK: Session thread
 
     private var isStopRequested: Bool {
@@ -123,6 +141,8 @@ public final class RDPSession: Sendable {
         continuation.yield(.disconnected(final))
         continuation.finish()
         remoteClipboardContinuation.finish()
+        remoteFilesContinuation.finish()
+        fetcher.end()
         framebuffer.finish()
     }
 
@@ -185,6 +205,7 @@ public final class RDPSession: Sendable {
             requiresNLA: configuration.requiresNLA,
             audio: configuration.audio,
             sharesClipboard: configuration.sharesClipboard,
+            copiesFiles: configuration.copiesFiles,
             sharedFolders: configuration.sharedFolders,
             keyboard: configuration.keyboard,
             monitors: configuration.monitors,
@@ -217,7 +238,7 @@ public final class RDPSession: Sendable {
         return run(handle)
     }
 
-    /// Exchanges input, pictures, and clipboard text until the session ends.
+    /// Exchanges input, pictures, and the clipboard until the session ends.
     private func run(_ handle: SessionHandle) -> RDPDisconnectReason {
         control.withLock { $0.acceptsInput = true }
         defer {
@@ -236,9 +257,20 @@ public final class RDPSession: Sendable {
             publishChanges(from: handle)
             if let cursor = handle.takeCursor() { framebuffer.setCursor(cursor) }
             if let text = handle.takeRemoteClipboardText() { remoteClipboardContinuation.yield(text) }
+            if let files = handle.takeRemoteFiles() { publish(files) }
+            fetcher.service(handle)
         }
         handle.disconnect()
         return .userRequested
+    }
+
+    private func publish(_ files: RDPRemoteFiles) {
+        if !files.isEmpty {
+            let count = files.files.count
+            let skipped = files.skippedCount
+            Self.log.info("Remote copied \(count, privacy: .public) items, \(skipped, privacy: .public) left out")
+        }
+        remoteFilesContinuation.yield(files)
     }
 
     /// Sends what `send(_:)` queued. Runs on the session thread.
