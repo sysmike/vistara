@@ -155,7 +155,7 @@ struct SyncedLibraryStoreTests {
         #expect(theirs.connections.first?.sharedFolders.isEmpty == true)
         #expect(theirs.connections.first?.lastConnectedAt == nil)
         let file = try Data(contentsOf: macs.file("connections", connection.id))
-        #expect(!String(decoding: file, as: UTF8.self).contains("Transfer"))
+        #expect(String(bytes: file, encoding: .utf8)?.contains("Transfer") == false)
 
         // Using it on the second Mac changes nothing shared.
         macs.clock.advance()
