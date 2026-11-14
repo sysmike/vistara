@@ -1,3 +1,23 @@
+--- a/channels/rdpdr/server/rdpdr_main.c
++++ b/channels/rdpdr/server/rdpdr_main.c
+@@ -3473,11 +3473,14 @@
+ 	           ", ioStatus=0x%" PRIx32 "",
+ 	           deviceId, completionId, ioStatus);
+ 
+-	if (!Stream_CheckAndLogRequiredLengthWLog(priv->log, s, 5))
++	/* Vistara test server: [MS-RDPEFS] 2.2.1.5.1 lets a client leave out
++	 * Information, as FreeRDP's printer does. */
++	if (!Stream_CheckAndLogRequiredLengthWLog(priv->log, s, 4))
+ 		return ERROR_INVALID_DATA;
+ 
+-	const uint32_t fileId = Stream_Get_UINT32(s);    /* FileId (4 bytes) */
+-	const uint8_t information = Stream_Get_UINT8(s); /* Information (1 byte) */
++	const uint32_t fileId = Stream_Get_UINT32(s); /* FileId (4 bytes) */
++	const uint8_t information =
++	    Stream_GetRemainingLength(s) >= 1 ? Stream_Get_UINT8(s) : 0; /* Information (1 byte) */
+ 	WLog_Print(priv->log, WLOG_DEBUG, "fileId [0x%08" PRIx32 "], information %s", fileId,
+ 	           fileInformation2str(information));
+ 
 --- a/server/shadow/Sample/sample_shadow.c
 +++ b/server/shadow/Sample/sample_shadow.c
 @@ -17,9 +17,14 @@
@@ -286,7 +306,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,910 @@
+@@ -37,6 +37,1032 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -954,7 +974,10 @@
 +	VISTARA_DRIVE_ESCAPE_CLOSE,
 +	VISTARA_DRIVE_WRITE_OPEN,
 +	VISTARA_DRIVE_WRITE,
-+	VISTARA_DRIVE_WRITE_CLOSE
++	VISTARA_DRIVE_WRITE_CLOSE,
++	VISTARA_PRINT_OPEN,
++	VISTARA_PRINT_WRITE,
++	VISTARA_PRINT_CLOSE
 +} vistaraDriveStep;
 +
 +/* One drive's way through the steps above. */
@@ -964,7 +987,24 @@
 +	UINT32 fileId;
 +	char name[9];
 +	vistaraDriveStep step;
++	/* Printing: which document, and how many of its parts were written. */
++	UINT32 document;
++	UINT32 part;
 +} vistaraDriveRun;
++
++/* Vistara test server: a client's printer. The server logs the printer's
++ * name and driver when the client announces it, then prints two documents to
++ * it, each opened, written, and closed as a print job: a PDF in three parts,
++ * and a short text that is not a PDF. */
++static const char vistara_print_pdf[] =
++    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
++    "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
++    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n"
++    "trailer<</Root 1 0 R>>\n%%EOF\n";
++static const char vistara_print_text[] = "Hello, printer\r\n";
++#define VISTARA_PRINT_PARTS 3u
++
++static void vistara_print_next(RdpdrServerContext* context, vistaraDriveRun* run);
 +
 +typedef struct
 +{
@@ -1077,6 +1117,17 @@
 +			    CHANNEL_RC_OK)
 +				vistara_drive_done(run);
 +			return;
++		case VISTARA_PRINT_OPEN:
++			(void)fprintf(stderr, "vistara-printer opened document=%u status=0x%08x\n",
++			              (unsigned)run->document, (unsigned)status);
++			(void)fflush(stderr);
++			if (status != STATUS_SUCCESS)
++			{
++				vistara_drive_done(run);
++				return;
++			}
++			vistara_print_next(context, run);
++			return;
 +		case VISTARA_DRIVE_WRITE_OPEN:
 +			if (status != STATUS_SUCCESS)
 +			{
@@ -1107,10 +1158,89 @@
 +	vistara_drive_close(context, run, escaped ? VISTARA_DRIVE_ESCAPE_CLOSE : VISTARA_DRIVE_READ_CLOSE);
 +}
 +
++static void vistara_print_open(RdpdrServerContext* context, vistaraDriveRun* run)
++{
++	run->step = VISTARA_PRINT_OPEN;
++	run->part = 0;
++	if (context->DriveOpenFile(context, run, run->deviceId, "", VISTARA_FILE_WRITE_DATA,
++	                           VISTARA_FILE_OVERWRITE_IF) != CHANNEL_RC_OK)
++		vistara_drive_done(run);
++}
++
++/* Writes the current document's next part, or closes it after the last. */
++static void vistara_print_next(RdpdrServerContext* context, vistaraDriveRun* run)
++{
++	const char* text = run->document == 0 ? vistara_print_pdf : vistara_print_text;
++	const UINT32 length = (UINT32)strlen(text);
++	const UINT32 parts = run->document == 0 ? VISTARA_PRINT_PARTS : 1;
++	if (run->part >= parts)
++	{
++		vistara_drive_close(context, run, VISTARA_PRINT_CLOSE);
++		return;
++	}
++	const UINT32 start = length * run->part / parts;
++	const UINT32 end = length * (run->part + 1) / parts;
++	run->step = VISTARA_PRINT_WRITE;
++	run->part++;
++	if (context->DriveWriteFile(context, run, run->deviceId, run->fileId, &text[start], end - start,
++	                            start) != CHANNEL_RC_OK)
++		vistara_drive_done(run);
++}
++
++/* The announced printer's name and driver ([MS-RDPEFS] 2.2.2.1.1, DeviceData of
++ * DR_PRN_DEVICE_ANNOUNCE), then the documents. */
++static UINT vistara_printer_created(RdpdrServerContext* context, const RdpdrDevice* device)
++{
++	char* driver = nullptr;
++	char* name = nullptr;
++	const BYTE* data = device->DeviceData;
++	if (data && (device->DeviceDataLength >= 24))
++	{
++		UINT32 lengths[4] = { 0 };
++		for (size_t i = 0; i < 4; i++)
++			lengths[i] = (UINT32)data[8 + 4 * i] | ((UINT32)data[9 + 4 * i] << 8) |
++			             ((UINT32)data[10 + 4 * i] << 16) | ((UINT32)data[11 + 4 * i] << 24);
++		const UINT64 pnp = lengths[0];
++		const UINT64 driverLength = lengths[1];
++		const UINT64 nameLength = lengths[2];
++		if (24 + pnp + driverLength + nameLength <= device->DeviceDataLength)
++		{
++			driver = ConvertWCharNToUtf8Alloc((const WCHAR*)(const void*)&data[24 + pnp],
++			                                  driverLength / sizeof(WCHAR), nullptr);
++			name = ConvertWCharNToUtf8Alloc((const WCHAR*)(const void*)&data[24 + pnp + driverLength],
++			                                nameLength / sizeof(WCHAR), nullptr);
++		}
++	}
++	(void)fprintf(stderr, "vistara-printer announced name=%s driver=%s\n", name ? name : "",
++	              driver ? driver : "");
++	(void)fflush(stderr);
++	free(driver);
++	free(name);
++	vistaraDriveRun* run = calloc(1, sizeof(vistaraDriveRun));
++	if (!run)
++		return CHANNEL_RC_NO_MEMORY;
++	run->deviceId = device->DeviceId;
++	memcpy(run->name, "printer", 8);
++	run->document = 0;
++	vistara_print_open(context, run);
++	return CHANNEL_RC_OK;
++}
++
 +static void vistara_drive_written(RdpdrServerContext* context, void* data, UINT32 status,
 +                                  WINPR_ATTR_UNUSED UINT32 bytesWritten)
 +{
 +	vistaraDriveRun* run = data;
++	if (run->step == VISTARA_PRINT_WRITE)
++	{
++		(void)fprintf(stderr, "vistara-printer wrote document=%u part=%u status=0x%08x\n",
++		              (unsigned)run->document, (unsigned)run->part, (unsigned)status);
++		(void)fflush(stderr);
++		if (status != STATUS_SUCCESS)
++			vistara_drive_close(context, run, VISTARA_PRINT_CLOSE);
++		else
++			vistara_print_next(context, run);
++		return;
++	}
 +	vistara_drive_report(run, "write", status);
 +	vistara_drive_close(context, run, VISTARA_DRIVE_WRITE_CLOSE);
 +}
@@ -1126,6 +1256,17 @@
 +			return;
 +		case VISTARA_DRIVE_ESCAPE_CLOSE:
 +			vistara_drive_write_open(context, run);
++			return;
++		case VISTARA_PRINT_CLOSE:
++			(void)fprintf(stderr, "vistara-printer printed document=%u\n", (unsigned)run->document);
++			(void)fflush(stderr);
++			if (run->document == 0)
++			{
++				run->document = 1;
++				vistara_print_open(context, run);
++				return;
++			}
++			vistara_drive_done(run);
 +			return;
 +		default:
 +			vistara_drive_done(run);
@@ -1143,8 +1284,9 @@
 +	if (!rdpdr)
 +		return;
 +	rdpdr->rdpcontext = &client->context;
-+	rdpdr->supported = RDPDR_DTYP_FILESYSTEM;
++	rdpdr->supported = RDPDR_DTYP_FILESYSTEM | RDPDR_DTYP_PRINT;
 +	rdpdr->OnDriveCreate = vistara_drive_created;
++	rdpdr->OnPrinterCreate = vistara_printer_created;
 +	rdpdr->OnDriveQueryDirectoryComplete = vistara_drive_listed;
 +	rdpdr->OnDriveOpenFileComplete = vistara_drive_opened;
 +	rdpdr->OnDriveReadFileComplete = vistara_drive_read;
@@ -1197,7 +1339,7 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -574,6 +1478,32 @@
+@@ -574,6 +1600,32 @@
  	subsystem = server->subsystem;
  	WINPR_ASSERT(subsystem);
  
@@ -1230,7 +1372,7 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -735,6 +1665,8 @@
+@@ -735,6 +1787,8 @@
  	WINPR_ASSERT(client);
  
  	client->suppressOutput = !(allow);
@@ -1239,7 +1381,7 @@
  
  	if (allow)
  	{
-@@ -2845,6 +3777,9 @@
+@@ -2845,6 +3899,9 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -1249,7 +1391,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +3885,11 @@
+@@ -2950,6 +4007,11 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -1261,7 +1403,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +3977,8 @@
+@@ -3037,6 +4099,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -1270,7 +1412,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +4132,15 @@
+@@ -3190,6 +4254,15 @@
  
  fail:
  
