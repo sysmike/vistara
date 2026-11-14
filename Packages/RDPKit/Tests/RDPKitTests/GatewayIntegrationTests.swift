@@ -71,7 +71,7 @@ struct GatewayIntegrationTests {
         let failure = Self.failure(in: states)
         #expect(failure?.kind == .gatewaySignInRefused, "\(states)")
         // It never got as far as the computer.
-        #expect(certificates.allSatisfy(\.isGateway))
+        #expect(certificates.allSatisfy { $0.isGateway })
     }
 
     @Test func aComputerTheGatewayDoesNotAllowIsRefusedByIt() async {
