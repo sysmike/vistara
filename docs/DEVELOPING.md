@@ -89,6 +89,22 @@ The test server is a build of FreeRDP's own server with a 1024x768
 screen filled with one colour. It checks the protocol path (TLS, Network Level Authentication,
 graphics updates). It is not a substitute for testing against Windows.
 
+What the server does for the tests is in `scripts/test-server/sample-screen.patch`,
+and it logs what it receives as lines starting with `vistara-`. The clipboard:
+
+- **Text:** it offers a known text as soon as the client's clipboard is up, and
+  logs the text a client offers in hex (`vistara-clipboard from-client`).
+- **Files it offers:** along with the text, a file list. It holds a 2.5 MiB report, larger
+  than a client's part of 1 MiB; a folder with a file whose name is not ASCII;
+  a file named with a "/" whose size the list leaves out; and an absolute path,
+  which a client must skip. Each contents request is logged
+  (`vistara-clipboard file-request`), and the report's parts are slowed
+  to 100 ms each, so a test can cancel in the middle.
+- **Files a client offers:** it fetches the list, logs each entry with its name
+  in hex (`client-file`), then fetches every file in parts and logs its size and
+  FNV-1a checksum (`client-file-done`). Last, it asks for a folder's contents and
+  for an entry beyond the list, which the client must refuse (`client-refused`).
+
 ### Through an RD Gateway
 
 CI also runs [rdpgw](https://github.com/bolkedebruin/rdpgw), an open-source

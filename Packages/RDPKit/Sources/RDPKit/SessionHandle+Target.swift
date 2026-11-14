@@ -16,6 +16,7 @@ extension SessionHandle {
         /// sound channel.
         var audio: RDPAudioMode = .off
         var sharesClipboard = false
+        var copiesFiles = false
         var sharedFolders: [RDPSharedFolder] = []
         var keyboard: RDPKeyboard?
         /// Several monitors; with fewer than two, one of width x height.
@@ -81,6 +82,7 @@ extension SessionHandle.Target {
             play_audio_on_remote: audio == .remote,
             play_audio_here: audio == .thisMac,
             share_clipboard: sharesClipboard,
+            copy_files: copiesFiles,
             shared_folders: nil,
             shared_folder_count: 0,
             monitors: nil,

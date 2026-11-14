@@ -1,5 +1,6 @@
 #include "CFreeRDP.h"
 #include "audio.h"
+#include "clipboard_files.h"
 #include "drive.h"
 #include "monitors.h"
 #include "probe.h"
@@ -39,6 +40,14 @@
 #include <winpr/synch.h>
 #include <winpr/wlog.h>
 
+/// The remote computer's clipboard data asked for: an answer does not say
+/// which format it holds.
+typedef enum {
+    VISTARA_AWAITING_NOTHING,
+    VISTARA_AWAITING_TEXT,
+    VISTARA_AWAITING_FILE_LIST,
+} vistara_awaiting;
+
 struct vistara_session {
     freerdp *instance;
     // FreeRDP's own TCP connect, which tcp_connect() wraps.
@@ -71,9 +80,17 @@ struct vistara_session {
     pthread_mutex_t clipboard_lock;
     CliprdrClientContext *clipboard;
     bool share_clipboard;
+    // Files too: share_clipboard and the connection's copy_files.
+    bool copy_files;
     bool clipboard_ready;
     bool clipboard_ever_connected;
-    bool awaiting_remote_text;
+    // The server's general clipboard capability flags.
+    uint32_t server_clipboard_flags;
+    // What the last format data request asked for, and whether text was
+    // offered along with the files, to ask for once the list is in.
+    vistara_awaiting awaiting;
+    bool text_after_files;
+    vistara_clipboard_files files;
     // This Mac's text as UTF-16LE with a terminating zero, for when the remote
     // computer asks for it.
     WCHAR *local_text;
@@ -415,16 +432,29 @@ bool vistara_session_take_cursor(vistara_session *session, vistara_cursor *curso
 
 // MARK: Clipboard
 
-// The largest text accepted from the remote computer: 16 MiB of UTF-16.
+// The largest text or file list accepted from the remote computer: 16 MiB.
 #define VISTARA_MAX_CLIPBOARD_BYTES (16u * 1024u * 1024u)
+
+/// Whether this Mac's files can be offered: the connection copies files and
+/// the server can ask for their contents.
+static bool can_offer_files(const vistara_session *session) {
+    return session->copy_files && (session->server_clipboard_flags & CB_STREAM_FILECLIP_ENABLED);
+}
 
 static UINT clipboard_send_format_list(vistara_session *session) {
     // Call with clipboard_lock held.
-    CLIPRDR_FORMAT text = {.formatId = CF_UNICODETEXT, .formatName = NULL};
+    CLIPRDR_FORMAT formats[2] = {0};
     CLIPRDR_FORMAT_LIST list = {0};
     list.common.msgType = CB_FORMAT_LIST;
-    list.numFormats = session->local_text ? 1 : 0;
-    list.formats = session->local_text ? &text : NULL;
+    if (session->local_text) {
+        formats[0] = (CLIPRDR_FORMAT){.formatId = CF_UNICODETEXT, .formatName = NULL};
+        list.numFormats = 1;
+    } else if (session->files.offered_count > 0 && can_offer_files(session)) {
+        formats[0] = (CLIPRDR_FORMAT){.formatId = VISTARA_FORMAT_FILE_LIST, .formatName = "FileGroupDescriptorW"};
+        formats[1] = (CLIPRDR_FORMAT){.formatId = VISTARA_FORMAT_FILE_CONTENTS, .formatName = "FileContents"};
+        list.numFormats = 2;
+    }
+    list.formats = list.numFormats > 0 ? formats : NULL;
     return session->clipboard->ClientFormatList(session->clipboard, &list);
 }
 
@@ -435,7 +465,7 @@ static UINT clipboard_monitor_ready(CliprdrClientContext *clipboard, const CLIPR
     general.capabilitySetType = CB_CAPSTYPE_GENERAL;
     general.capabilitySetLength = CB_CAPSTYPE_GENERAL_LEN;
     general.version = CB_CAPS_VERSION_2;
-    general.generalFlags = CB_USE_LONG_FORMAT_NAMES;
+    general.generalFlags = CB_USE_LONG_FORMAT_NAMES | (session->copy_files ? VISTARA_FILE_CAPABILITIES : 0);
     CLIPRDR_CAPABILITIES capabilities = {0};
     capabilities.cCapabilitiesSets = 1;
     capabilities.capabilitySets = (CLIPRDR_CAPABILITY_SET *)&general;
@@ -452,11 +482,34 @@ static UINT clipboard_monitor_ready(CliprdrClientContext *clipboard, const CLIPR
 
 static UINT clipboard_server_capabilities(CliprdrClientContext *clipboard,
                                           const CLIPRDR_CAPABILITIES *capabilities) {
-    (void)clipboard, (void)capabilities;
+    vistara_session *session = clipboard->custom;
+    uint32_t flags = 0;
+    const BYTE *set = (const BYTE *)capabilities->capabilitySets;
+    for (UINT32 index = 0; set && index < capabilities->cCapabilitiesSets; index++) {
+        const CLIPRDR_CAPABILITY_SET *each = (const CLIPRDR_CAPABILITY_SET *)set;
+        if (each->capabilitySetType == CB_CAPSTYPE_GENERAL) {
+            flags = ((const CLIPRDR_GENERAL_CAPABILITY_SET *)set)->generalFlags;
+        }
+        if (each->capabilitySetLength == 0) {
+            break;
+        }
+        set += each->capabilitySetLength;
+    }
+    pthread_mutex_lock(&session->clipboard_lock);
+    session->server_clipboard_flags = flags;
+    pthread_mutex_unlock(&session->clipboard_lock);
     return CHANNEL_RC_OK;
 }
 
-/// The remote computer copied something: acknowledge, and fetch it if it is text.
+static UINT clipboard_request(CliprdrClientContext *clipboard, uint32_t format) {
+    CLIPRDR_FORMAT_DATA_REQUEST request = {0};
+    request.common.msgType = CB_FORMAT_DATA_REQUEST;
+    request.requestedFormatId = format;
+    return clipboard->ClientFormatDataRequest(clipboard, &request);
+}
+
+/// The remote computer copied something: acknowledge, and fetch its file list
+/// or text, the list first. File contents wait until they are asked for.
 static UINT clipboard_server_format_list(CliprdrClientContext *clipboard, const CLIPRDR_FORMAT_LIST *list) {
     vistara_session *session = clipboard->custom;
     CLIPRDR_FORMAT_LIST_RESPONSE response = {0};
@@ -467,21 +520,37 @@ static UINT clipboard_server_format_list(CliprdrClientContext *clipboard, const 
         return result;
     }
     bool has_text = false;
+    uint32_t file_list = 0;
+    bool has_file_list = false;
     for (UINT32 index = 0; index < list->numFormats; index++) {
-        if (list->formats[index].formatId == CF_UNICODETEXT) {
+        const CLIPRDR_FORMAT *format = &list->formats[index];
+        if (format->formatId == CF_UNICODETEXT) {
             has_text = true;
+        } else if (format->formatName && strcmp(format->formatName, "FileGroupDescriptorW") == 0) {
+            file_list = format->formatId;
+            has_file_list = true;
         }
     }
-    if (!has_text) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    has_file_list = has_file_list && session->copy_files;
+    if (session->copy_files) {
+        vistara_files_remote_changed(&session->files, has_file_list);
+    }
+    session->text_after_files = has_file_list && has_text;
+    session->awaiting = has_file_list ? VISTARA_AWAITING_FILE_LIST
+                        : has_text    ? VISTARA_AWAITING_TEXT
+                                      : VISTARA_AWAITING_NOTHING;
+    const vistara_awaiting awaiting = session->awaiting;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    vistara_session_wake(session);
+    switch (awaiting) {
+    case VISTARA_AWAITING_FILE_LIST:
+        return clipboard_request(clipboard, file_list);
+    case VISTARA_AWAITING_TEXT:
+        return clipboard_request(clipboard, CF_UNICODETEXT);
+    default:
         return CHANNEL_RC_OK;
     }
-    pthread_mutex_lock(&session->clipboard_lock);
-    session->awaiting_remote_text = true;
-    pthread_mutex_unlock(&session->clipboard_lock);
-    CLIPRDR_FORMAT_DATA_REQUEST request = {0};
-    request.common.msgType = CB_FORMAT_DATA_REQUEST;
-    request.requestedFormatId = CF_UNICODETEXT;
-    return clipboard->ClientFormatDataRequest(clipboard, &request);
 }
 
 static UINT clipboard_server_format_list_response(CliprdrClientContext *clipboard,
@@ -490,13 +559,21 @@ static UINT clipboard_server_format_list_response(CliprdrClientContext *clipboar
     return CHANNEL_RC_OK;
 }
 
-/// The remote computer pastes: hand over this Mac's text, or say there is none.
+/// The remote computer pastes: hand over this Mac's text or file list, or say
+/// there is none.
 static UINT clipboard_server_format_data_request(CliprdrClientContext *clipboard,
                                                  const CLIPRDR_FORMAT_DATA_REQUEST *request) {
     vistara_session *session = clipboard->custom;
     CLIPRDR_FORMAT_DATA_RESPONSE response = {0};
     response.common.msgType = CB_FORMAT_DATA_RESPONSE;
     pthread_mutex_lock(&session->clipboard_lock);
+    if (request->requestedFormatId == VISTARA_FORMAT_FILE_LIST && can_offer_files(session) &&
+        session->files.offered_count > 0) {
+        const UINT result =
+            vistara_files_answer_list_request(&session->files, clipboard, session->server_clipboard_flags);
+        pthread_mutex_unlock(&session->clipboard_lock);
+        return result;
+    }
     if (request->requestedFormatId == CF_UNICODETEXT && session->local_text) {
         response.common.msgFlags = CB_RESPONSE_OK;
         response.common.dataLen = (UINT32)session->local_text_bytes;
@@ -510,30 +587,75 @@ static UINT clipboard_server_format_data_request(CliprdrClientContext *clipboard
     return result;
 }
 
-/// The remote computer's text arrived.
+static void take_remote_text(vistara_session *session, const CLIPRDR_FORMAT_DATA_RESPONSE *response) {
+    // Call with clipboard_lock held.
+    if (!(response->common.msgFlags & CB_RESPONSE_OK) || !response->requestedFormatData ||
+        response->common.dataLen < sizeof(WCHAR) || response->common.dataLen > VISTARA_MAX_CLIPBOARD_BYTES) {
+        return;
+    }
+    const WCHAR *text = (const WCHAR *)response->requestedFormatData;
+    size_t length = response->common.dataLen / sizeof(WCHAR);
+    // The text ends at its first zero, if it has one.
+    for (size_t index = 0; index < length; index++) {
+        if (text[index] == 0) {
+            length = index;
+            break;
+        }
+    }
+    char *converted = ConvertWCharNToUtf8Alloc(text, length, NULL);
+    if (converted) {
+        free(session->remote_text);
+        session->remote_text = converted;
+    }
+}
+
+/// The remote computer's text or file list arrived.
 static UINT clipboard_server_format_data_response(CliprdrClientContext *clipboard,
                                                   const CLIPRDR_FORMAT_DATA_RESPONSE *response) {
     vistara_session *session = clipboard->custom;
+    UINT result = CHANNEL_RC_OK;
     pthread_mutex_lock(&session->clipboard_lock);
-    const bool expected = session->awaiting_remote_text;
-    session->awaiting_remote_text = false;
-    if (expected && (response->common.msgFlags & CB_RESPONSE_OK) && response->requestedFormatData &&
-        response->common.dataLen >= sizeof(WCHAR) && response->common.dataLen <= VISTARA_MAX_CLIPBOARD_BYTES) {
-        const WCHAR *text = (const WCHAR *)response->requestedFormatData;
-        size_t length = response->common.dataLen / sizeof(WCHAR);
-        // The text ends at its first zero, if it has one.
-        for (size_t index = 0; index < length; index++) {
-            if (text[index] == 0) {
-                length = index;
-                break;
-            }
-        }
-        char *converted = ConvertWCharNToUtf8Alloc(text, length, NULL);
-        if (converted) {
-            free(session->remote_text);
-            session->remote_text = converted;
+    const vistara_awaiting awaiting = session->awaiting;
+    session->awaiting = VISTARA_AWAITING_NOTHING;
+    if (awaiting == VISTARA_AWAITING_TEXT) {
+        take_remote_text(session, response);
+    } else if (awaiting == VISTARA_AWAITING_FILE_LIST) {
+        const bool usable = (response->common.msgFlags & CB_RESPONSE_OK) && response->requestedFormatData &&
+                            response->common.dataLen <= VISTARA_MAX_CLIPBOARD_BYTES;
+        vistara_files_take_list(&session->files, usable ? response->requestedFormatData : NULL,
+                                usable ? response->common.dataLen : 0);
+        if (session->text_after_files) {
+            session->text_after_files = false;
+            session->awaiting = VISTARA_AWAITING_TEXT;
         }
     }
+    const bool ask_for_text = session->awaiting == VISTARA_AWAITING_TEXT;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    if (ask_for_text) {
+        result = clipboard_request(clipboard, CF_UNICODETEXT);
+    }
+    vistara_session_wake(session);
+    return result;
+}
+
+/// The remote computer asks for a part of a file this Mac offered.
+static UINT clipboard_server_file_contents_request(CliprdrClientContext *clipboard,
+                                                   const CLIPRDR_FILE_CONTENTS_REQUEST *request) {
+    vistara_session *session = clipboard->custom;
+    pthread_mutex_lock(&session->clipboard_lock);
+    const uint64_t before = session->files.bytes_sent;
+    const UINT result = vistara_files_answer_contents_request(&session->files, clipboard, request);
+    session->clipboard_bytes_sent += session->files.bytes_sent - before;
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return result;
+}
+
+/// A part of a file being fetched arrived.
+static UINT clipboard_server_file_contents_response(CliprdrClientContext *clipboard,
+                                                    const CLIPRDR_FILE_CONTENTS_RESPONSE *response) {
+    vistara_session *session = clipboard->custom;
+    pthread_mutex_lock(&session->clipboard_lock);
+    vistara_files_contents_response(&session->files, clipboard, response);
     pthread_mutex_unlock(&session->clipboard_lock);
     vistara_session_wake(session);
     return CHANNEL_RC_OK;
@@ -547,6 +669,8 @@ static void clipboard_connected(vistara_session *session, CliprdrClientContext *
     clipboard->ServerFormatListResponse = clipboard_server_format_list_response;
     clipboard->ServerFormatDataRequest = clipboard_server_format_data_request;
     clipboard->ServerFormatDataResponse = clipboard_server_format_data_response;
+    clipboard->ServerFileContentsRequest = clipboard_server_file_contents_request;
+    clipboard->ServerFileContentsResponse = clipboard_server_file_contents_response;
     pthread_mutex_lock(&session->clipboard_lock);
     session->clipboard = clipboard;
     session->clipboard_ever_connected = true;
@@ -557,6 +681,8 @@ static void clipboard_disconnected(vistara_session *session) {
     pthread_mutex_lock(&session->clipboard_lock);
     session->clipboard = NULL;
     session->clipboard_ready = false;
+    session->awaiting = VISTARA_AWAITING_NOTHING;
+    vistara_files_channel_closed(&session->files);
     pthread_mutex_unlock(&session->clipboard_lock);
 }
 
@@ -583,9 +709,64 @@ void vistara_session_offer_local_text(vistara_session *session, const char *text
     free(session->local_text);
     session->local_text = converted;
     session->local_text_bytes = (length + 1) * sizeof(WCHAR);
+    (void)vistara_files_set_offer(&session->files, NULL, 0);
     if (session->clipboard && session->clipboard_ready) {
         (void)clipboard_send_format_list(session);
     }
+    pthread_mutex_unlock(&session->clipboard_lock);
+}
+
+bool vistara_session_offer_local_files(vistara_session *session, const vistara_local_file *files, size_t count) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    if (!session->copy_files) {
+        pthread_mutex_unlock(&session->clipboard_lock);
+        return false;
+    }
+    free(session->local_text);
+    session->local_text = NULL;
+    session->local_text_bytes = 0;
+    const bool offered = vistara_files_set_offer(&session->files, files, files ? count : 0);
+    if (session->clipboard && session->clipboard_ready) {
+        (void)clipboard_send_format_list(session);
+    }
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return offered;
+}
+
+bool vistara_session_take_remote_files(vistara_session *session, vistara_remote_file **files, size_t *count,
+                                       uint64_t *list_id) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    const bool changed = session->files.has_untaken;
+    *files = changed ? session->files.untaken : NULL;
+    *count = changed ? session->files.untaken_count : 0;
+    *list_id = session->files.list_id;
+    if (changed) {
+        session->files.untaken = NULL;
+        session->files.untaken_count = 0;
+        session->files.has_untaken = false;
+    }
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return changed;
+}
+
+bool vistara_session_start_fetch(vistara_session *session, uint64_t list_id, const vistara_fetch_item *items,
+                                 size_t count) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    const bool started = session->clipboard && session->copy_files &&
+                         vistara_files_start_fetch(&session->files, session->clipboard, list_id, items, count);
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return started;
+}
+
+void vistara_session_cancel_fetch(vistara_session *session) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    vistara_files_end_fetch(&session->files, VISTARA_FETCH_CANCELLED, 0);
+    pthread_mutex_unlock(&session->clipboard_lock);
+}
+
+void vistara_session_read_fetch(vistara_session *session, vistara_fetch_status *status) {
+    pthread_mutex_lock(&session->clipboard_lock);
+    *status = session->files.status;
     pthread_mutex_unlock(&session->clipboard_lock);
 }
 
@@ -964,6 +1145,7 @@ vistara_session *vistara_session_create(void) {
     }
 
     pthread_mutex_init(&session->clipboard_lock, NULL);
+    vistara_files_init(&session->files);
     session->server_sends_pictures = true;
     session->wake_event = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!session->wake_event) {
@@ -1018,6 +1200,7 @@ void vistara_session_destroy(vistara_session *session) {
     free(session->cursor_pixels);
     free(session->local_text);
     free(session->remote_text);
+    vistara_files_free(&session->files);
     freerdp_addin_argv_free(session->audio_args);
     for (size_t index = 0; index < session->read_only_count; index++) {
         free(session->read_only_paths[index]);
@@ -1053,6 +1236,12 @@ void vistara_session_read_settings(const vistara_session *session, vistara_secur
     out->gateway_port = freerdp_settings_get_uint32(settings, FreeRDP_GatewayPort);
 }
 
+static uint32_t clipboard_features(const vistara_connect_options *options) {
+    const uint32_t text = CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL;
+    const uint32_t files = CLIPRDR_FLAG_LOCAL_TO_REMOTE_FILES | CLIPRDR_FLAG_REMOTE_TO_LOCAL_FILES;
+    return options->share_clipboard && options->copy_files ? text | files : text;
+}
+
 static bool apply_options(rdpSettings *settings, const vistara_connect_options *options) {
     return freerdp_settings_set_string(settings, FreeRDP_ServerHostname, options->host) &&
            freerdp_settings_set_uint32(settings, FreeRDP_ServerPort, options->port) &&
@@ -1081,9 +1270,9 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            // Never the home folder or all drives: only the folders given.
            freerdp_settings_set_bool(settings, FreeRDP_RedirectHomeDrive, FALSE) &&
            freerdp_settings_set_bool(settings, FreeRDP_RedirectDrives, FALSE) &&
-           // Text only, both ways: never files.
-           freerdp_settings_set_uint32(settings, FreeRDP_ClipboardFeatureMask,
-                                       CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL) &&
+           // Text both ways, and files only when copied: the clipboard
+           // channel itself drops every file message otherwise.
+           freerdp_settings_set_uint32(settings, FreeRDP_ClipboardFeatureMask, clipboard_features(options)) &&
            // Certificates are judged by the application alone: the system's
            // trust evaluation and Vistara's own trust store. FreeRDP's
            // known-hosts file is neither read nor written.
@@ -1123,6 +1312,7 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
 
     pthread_mutex_lock(&session->clipboard_lock);
     session->share_clipboard = options->share_clipboard;
+    session->copy_files = options->share_clipboard && options->copy_files;
     pthread_mutex_unlock(&session->clipboard_lock);
     session->play_audio_here = options->play_audio_here && !options->play_audio_on_remote;
     session->decide_certificate = options->decide_certificate;

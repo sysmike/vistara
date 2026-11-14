@@ -6,8 +6,9 @@
 # The server's "sample" screen source has no monitor and never sends anything.
 # A patch gives it one fixed 1024x768 monitor filled with a known colour and a
 # timer that pushes pending updates, so clients receive a predictable picture.
-# The same timer sends a steady tone, and the patch adds a clipboard and logs
-# the input and clipboard text it receives.
+# The same timer sends a steady tone, and the patch adds a clipboard that
+# offers text and files and fetches the files a client offers, and logs the
+# input and clipboard data it receives.
 #
 # The build also has FreeRDP's minimal client, sfreerdp, which checks the test
 # gateway with a client that is not Vistara (scripts/check-test-gateway.sh).
