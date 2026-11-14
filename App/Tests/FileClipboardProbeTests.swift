@@ -71,6 +71,8 @@ struct FileClipboardProbeTests {
         )
         #expect(files.first?["name"] as? String == "Fetched.bin")
         #expect(files.first?["size"] as? Int == 1024 * 1024)
+        // Written by the sandboxed app, so marked as downloaded on its own.
+        #expect(files.first?["quarantined"] as? Bool == true)
         #expect(offer?.providedOnMainThread == true)
         #expect(longestGap < .milliseconds(500))
     }
