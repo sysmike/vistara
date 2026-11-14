@@ -118,6 +118,7 @@ A sheet on the Connections window, grouped like a System Settings form.
 │    ☑ Optimize for Retina displays                │
 │  Devices and Audio                               │
 │    ☑ Share clipboard                             │
+│      ☐ Copy files                                │
 │    Sound         [ Play on This Mac  ⌄]          │
 │  Shared Folders                                  │
 │    📁 Transfer  ~/Transfer       ☐ Read only  ⊖  │
@@ -478,7 +479,38 @@ connect.
   there. *Judgment.*
 - Items marked concealed or transient by password managers (the
   `org.nspasteboard` convention) are never offered.
-- Line endings are converted. Files and images come later.
+- Line endings are converted. Images come later; files are below.
+
+### Copying files
+
+Files can go through the clipboard both ways, as in the Finder: copy on one
+side, paste on the other.
+
+- The connection's **Copy files** choice, beneath Share clipboard in the
+  editor's Devices and Audio, turns it on; it needs Share clipboard and is
+  off by default. Settings > General has its default for new connections.
+  *Judgment: off by default. While a session is in front, the remote
+  computer can read whatever is copied on the Mac without anyone pasting it
+  there; for a file, that is all of it. Text is offered the same way, but a
+  copied file is often more than anyone meant to share.*
+- **Mac to remote computer**: files and folders copied in the Finder or
+  another app are offered like text, only while that session's window is in
+  front. A folder brings everything in it. Nothing is read until the remote
+  computer asks for it, and nothing is read but what was copied: symbolic
+  links are not followed.
+- **Remote computer to Mac**: files copied there can be pasted in the Finder
+  or any app that takes files. They are fetched only when pasted, into a
+  folder of Vistara's own, and the app that pastes copies them from there.
+  Vistara stays responsive while they arrive, and a large paste shows its
+  progress and can be cancelled.
+- Files from the remote computer are marked as downloaded (quarantined), so
+  macOS checks them before anything in them runs. Fetched files are removed
+  when the session ends or something else is copied.
+- Logs count files; they never name them.
+- `.rdp` files have no setting for this, so imports leave it off and exports
+  write nothing for it.
+- Not in this step: images, dragging files into the session window, and a
+  limit on how much can be copied.
 
 ### Shared folders
 
@@ -528,7 +560,7 @@ the title follows the pane, and the window reopens on the last pane.
 
 | Pane | Contents |
 | --- | --- |
-| General | Defaults for new connections (resolution, Retina, displays, clipboard, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
+| General | Defaults for new connections (resolution, Retina, displays, clipboard, copying files, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
 | Keyboard | Translate editing shortcuts; Right Command as the Windows key |
 | Security | Trusted certificates: host, fingerprint, date trusted, Remove |
 
