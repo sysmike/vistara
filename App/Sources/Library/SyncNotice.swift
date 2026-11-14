@@ -7,6 +7,7 @@ import VistaraCore
 struct SyncNotice: View {
     let folder: SyncFolderChoice
     let state: SyncedLibraryStore.FolderState
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -16,12 +17,10 @@ struct SyncNotice: View {
             Text(Self.message(folder: folder.name, state: state))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-            SettingsLink {
-                Text("Sync Settings…")
-            }
-            .simultaneousGesture(TapGesture().onEnded {
+            Button("Sync Settings…") {
                 UserDefaults.standard.set(SettingsView.Pane.sync.rawValue, forKey: SettingsView.paneKey)
-            })
+                openSettings()
+            }
         }
         .noticeBackground()
     }

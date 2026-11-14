@@ -71,7 +71,7 @@ extension LibraryModel {
     /// showing this one would take that change away for a moment.
     private func received(_ result: SyncedLibraryStore.SyncResult, generation: Int) {
         guard case .folder = storage else { return }
-        syncState = result.folder
+        if syncState != result.folder { syncState = result.folder }
         damagedSyncFiles = result.damagedFiles
         guard generation == lastOperation else { return }
         syncedBase = result.library
@@ -166,15 +166,18 @@ extension LibraryModel {
         guard !isCheckingFolder, canChange, let choice = syncFolder else { return }
         isCheckingFolder = true
         defer { isCheckingFolder = false }
-        if syncState == .unreachable { reopenFolder(choice) }
+        if syncState == .unreachable {
+            // Resolving a bookmark may wait for a disk; not on the main thread.
+            let opened = await Task.detached { choice.open() }.value
+            if let opened { reopenFolder(opened) }
+        }
         guard case .folder(let store) = storage, await store.needsSync() else { return }
         await syncNow()
     }
 
     /// Opens the folder again if its bookmark couldn't be opened before, or
     /// it moved, as when it was renamed.
-    private func reopenFolder(_ choice: SyncFolderChoice) {
-        guard let opened = choice.open() else { return }
+    private func reopenFolder(_ opened: (url: URL, moved: SyncFolderChoice?)) {
         guard openedFolder == nil || opened.moved != nil else {
             // Still where it was, and open already: it is away, not moved.
             opened.url.stopAccessingSecurityScopedResource()

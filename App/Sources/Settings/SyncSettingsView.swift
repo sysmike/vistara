@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import VistaraCore
 
 /// Settings > Sync: whether the connections are kept on this Mac only or in
@@ -97,7 +98,7 @@ private struct FolderLabel: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: folder.path))
+            Image(nsImage: NSWorkspace.shared.icon(for: .folder))
                 .resizable()
                 .frame(width: 16, height: 16)
                 .accessibilityHidden(true)

@@ -8,7 +8,7 @@ import VistaraCore
 @Suite(.serialized)
 @MainActor
 struct SyncScreenshotTests {
-    private static let settingsSize = NSSize(width: 520, height: 380)
+    private static let settingsSize = NSSize(width: 520, height: 280)
 
     /// The sample library kept in a folder "Vistara" in a folder "iCloud Drive".
     private func libraryInAFolder() async throws -> (model: LibraryModel, folder: URL) {
@@ -50,6 +50,8 @@ struct SyncScreenshotTests {
         let (model, folder) = try await libraryInAFolder()
         try FileManager.default.removeItem(at: folder)
         await model.syncNow()
+        #expect(model.syncState == .unreachable)
+        #expect(model.library.connections.count == SampleLibrary.library.connections.count)
         let bytes = try await Screenshots.write(
             ConnectionsView(model: model) { _, _ in }, size: NSSize(width: 780, height: 460),
             name: dark ? "library-sync-unreachable-dark" : "library-sync-unreachable", dark: dark,
