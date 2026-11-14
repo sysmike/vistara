@@ -314,6 +314,11 @@ jobs:
           status=0
           xcodebuild test -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData || status=$?
+          # The real print panel last: it makes macOS ask about the local
+          # network, in a dialog that takes the focus from every test after it.
+          TEST_RUNNER_VISTARA_PRINT_PANEL=1 xcodebuild test-without-building -project Vistara.xcodeproj \
+            -scheme Vistara -configuration Debug -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/DerivedData -only-testing:VistaraTests/PrintPanelScreenshotTests || status=$?
           kill "$capturer"
           exit "$status"
 

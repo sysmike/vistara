@@ -16,6 +16,9 @@ final class SessionPrinter: NSObject {
     var makePrintInfo: () -> NSPrintInfo = { (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo() }
     /// Whether the print panel is shown. Tests print without it.
     var showsPrintPanel = true
+    /// Runs a print operation as a sheet on the window. Tests that must not
+    /// show the print panel take the operation instead, then call `operationEnded()`.
+    var run: ((NSPrintOperation) -> Void)?
 
     init(window: NSWindow, model: SessionModel) {
         self.window = window
@@ -66,6 +69,10 @@ final class SessionPrinter: NSObject {
         operation.showsPrintPanel = showsPrintPanel
         operation.showsProgressPanel = showsPrintPanel
         operation.printPanel.options.formUnion([.showsPreview, .showsCopies, .showsPageRange, .showsPaperSize])
+        if let run {
+            run(operation)
+            return
+        }
         operation.runModal(
             for: window, delegate: self, didRun: #selector(printOperationDidRun(_:success:contextInfo:)),
             contextInfo: nil
@@ -75,6 +82,11 @@ final class SessionPrinter: NSObject {
     @objc private func printOperationDidRun(
         _ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?
     ) {
+        finishShown()
+    }
+
+    /// The print operation that `run` took has ended.
+    func operationEnded() {
         finishShown()
     }
 
