@@ -10,6 +10,7 @@
 
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
+#include <winpr/sysinfo.h>
 #include <pthread.h>
 #include <stdatomic.h>
 
@@ -87,9 +88,15 @@ struct vistara_session {
     // round trips after connecting, and a request made before that must not
     // be lost. Session thread only.
     bool has_pending_size;
-    // Suppress Output waits until the connection is active; zero means none.
+    // A Suppress Output waiting to be sent (send_pending_display_updates).
     bool has_pending_display_updates;
     bool pending_display_updates_allowed;
+    // Whether the server was last told to send pictures, as it does unless told.
+    bool server_sends_pictures;
+    // When the server last started activating the connection, and whether a
+    // picture came since it was done.
+    uint64_t activation_started;
+    bool painted_since_activation;
     // The layout of one or more monitors waiting with has_pending_size.
     vistara_monitor pending_monitors[VISTARA_MAX_MONITORS];
     size_t pending_monitor_count;
@@ -212,6 +219,9 @@ static BOOL end_paint(rdpContext *context) {
     if (!invalid->null) {
         vistara_session *session = session_of(context);
         session->paint_count += 1;
+        if (freerdp_get_state(context) == CONNECTION_STATE_ACTIVE) {
+            session->painted_since_activation = true;
+        }
         add_dirty(session, invalid->x, invalid->y, invalid->w, invalid->h);
     }
     return TRUE;
@@ -694,6 +704,15 @@ static void channel_connected(void *context, const ChannelConnectedEventArgs *ev
     }
 }
 
+/// The server started an activation, the connection's first or a new one
+/// (after a Deactivate All): a waiting Suppress Output waits for its end.
+static void activation_began(void *context, const ActivatedEventArgs *event) {
+    (void)event;
+    vistara_session *session = session_of(context);
+    session->activation_started = GetTickCount64();
+    session->painted_since_activation = false;
+}
+
 static void channel_disconnected(void *context, const ChannelDisconnectedEventArgs *event) {
     vistara_session *session = session_of(context);
     if (strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
@@ -744,16 +763,32 @@ static bool supports_display_updates(rdpContext *context) {
     return freerdp_settings_get_bool(context->settings, FreeRDP_SuppressOutput) && context->update->SuppressOutput;
 }
 
-/// Sends a waiting Suppress Output once the connection is active: sent during
-/// the connection's finalization, it can make a server drop the connection.
+/// How long a waiting Suppress Output waits for the server's first picture.
+static const uint64_t display_updates_picture_wait_ms = 1000;
+
+/// Sends a waiting Suppress Output once the connection is active and the
+/// server is done activating it. Sent while the server is (re)activating the
+/// connection, it can make the server drop it.
+///
+/// Active alone is not enough: a server may resize the desktop the moment the
+/// client turns active, which starts an activation the client learns of only
+/// later. The server's first picture after an activation says it is done. A
+/// server told to send no pictures may send none, and one may be slow, so after
+/// a second the update goes anyway.
 static void send_pending_display_updates(vistara_session *session) {
     rdpContext *context = session->instance->context;
     if (!session->has_pending_display_updates || !session->connected ||
         freerdp_get_state(context) != CONNECTION_STATE_ACTIVE) {
         return;
     }
+    const bool settled = session->painted_since_activation || !session->server_sends_pictures ||
+                         GetTickCount64() - session->activation_started >= display_updates_picture_wait_ms;
+    if (!settled) {
+        return;
+    }
     session->has_pending_display_updates = false;
     const bool allowed = session->pending_display_updates_allowed;
+    session->server_sends_pictures = allowed;
     const uint32_t width = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopWidth);
     const uint32_t height = freerdp_settings_get_uint32(context->settings, FreeRDP_DesktopHeight);
     const RECTANGLE_16 desktop = {
@@ -870,6 +905,7 @@ vistara_session *vistara_session_create(void) {
     }
 
     pthread_mutex_init(&session->clipboard_lock, NULL);
+    session->server_sends_pictures = true;
     session->wake_event = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!session->wake_event) {
         pthread_mutex_destroy(&session->clipboard_lock);
@@ -903,7 +939,8 @@ vistara_session *vistara_session_create(void) {
     ((vistara_context *)instance->context)->session = session;
     if (!wrap_tcp_connect(session) ||
         PubSub_SubscribeChannelConnected(instance->context->pubSub, channel_connected) < 0 ||
-        PubSub_SubscribeChannelDisconnected(instance->context->pubSub, channel_disconnected) < 0) {
+        PubSub_SubscribeChannelDisconnected(instance->context->pubSub, channel_disconnected) < 0 ||
+        PubSub_SubscribeActivated(instance->context->pubSub, activation_began) < 0) {
         vistara_session_destroy(session);
         return NULL;
     }
