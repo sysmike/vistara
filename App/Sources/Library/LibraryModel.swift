@@ -358,6 +358,7 @@ extension SessionTarget {
         fixedHeight = connection.fixedHeight
         usesHiDPI = connection.usesHiDPI
         usesAllDisplays = connection.usesAllDisplays
+        gateway = connection.gateway.isUsed ? connection.gateway : nil
         requiresNLA = connection.requiresNLA
         certificatePolicy = connection.certificatePolicy
         audioMode = connection.audioMode

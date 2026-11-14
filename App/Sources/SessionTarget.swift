@@ -31,6 +31,8 @@ struct SessionTarget: Equatable, Sendable {
     /// One desktop across all of the Mac's displays, in full screen
     /// (docs/DESIGN.md, Multiple displays).
     var usesAllDisplays = false
+    /// The gateway to go through, when the connection uses one.
+    var gateway: Connection.Gateway?
 
     /// What RDPKit is told about this target, for a desktop of the given size.
     func configuration(desktop: DesktopSize) -> RDPSessionConfiguration {
@@ -39,7 +41,7 @@ struct SessionTarget: Equatable, Sendable {
         case .playOnRemote: .remote
         case .off: .off
         }
-        return RDPSessionConfiguration(
+        var configuration = RDPSessionConfiguration(
             host: host,
             port: port,
             username: username,
@@ -52,6 +54,19 @@ struct SessionTarget: Equatable, Sendable {
             sharesClipboard: sharesClipboard,
             reconnectsAutomatically: reconnectsAutomatically
         )
+        configuration.gateway = gateway.map(Self.rdpGateway)
+        return configuration
+    }
+
+    /// The gateway as RDPKit takes it. The gateway's own account is asked for
+    /// when connecting, by its own sheet (#124).
+    private static func rdpGateway(_ gateway: Connection.Gateway) -> RDPGateway {
+        let signIn: RDPGateway.SignIn = switch gateway.signIn {
+        case .sameAsComputer: .sameAsComputer
+        case .anotherAccount:
+            .ownAccount(username: gateway.username, domain: gateway.domain.isEmpty ? nil : gateway.domain)
+        }
+        return RDPGateway(host: gateway.host, port: UInt16(clamping: gateway.port), signIn: signIn)
     }
 
     /// The saved connection this target comes from, if any.
