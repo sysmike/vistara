@@ -19,8 +19,9 @@ struct SuppressOutputIntegrationTests {
     }
 
     /// Polls until the server has logged `expected` after the first `skipping`
-    /// lines. Other suites connect at the same time, but only this one sends
-    /// Suppress Output.
+    /// lines. Other suites connect at the same time; only this one and
+    /// `aHiddenSessionSurvivesTheServerResizingItAsItConnects` send Suppress
+    /// Output, and that one only `allow=0`.
     private func waitForServer(
         toSee expected: String, after skipping: Int, while handle: SessionHandle
     ) -> Bool {
