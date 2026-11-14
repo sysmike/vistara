@@ -359,6 +359,18 @@ copies it for a bug report.
 
 ![A lost connection](images/lost.png)
 
+Through a gateway, the window says whether the gateway is what failed: it
+can't be reached, it didn't accept the user name or password (*Use Another
+Account* asks again for the account that signs in to it), or it doesn't allow
+a connection to this computer. That last one is the gateway's policy; ask
+whoever runs the gateway.
+
+<p>
+  <img alt="Can’t reach the gateway" src="images/gateway-unreachable.png" width="240">
+  <img alt="The gateway didn’t accept the user name or password" src="images/gateway-sign-in-refused.png" width="240">
+  <img alt="The gateway doesn’t allow a connection to this computer" src="images/gateway-refused-computer.png" width="240">
+</p>
+
 To see more, collect Vistara's log while you reproduce the problem:
 
 ```bash

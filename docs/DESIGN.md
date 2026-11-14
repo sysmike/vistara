@@ -623,6 +623,9 @@ password.
 | Account not allowed | This account can't sign in remotely | Ask the computer's administrator to allow Remote Desktop for this account. | Use Another Account |
 | No common sign-in | "Build Server" requires a kind of sign-in Vistara doesn't support | Ask the computer's administrator which sign-in methods Remote Desktop accepts there. | Try Again |
 | Certificate rejected | Connection cancelled | You chose not to trust this computer's certificate. | Try Again |
+| Gateway not reached | Can't reach the gateway "gateway.example.com" | Check the gateway's address, and your network and VPN connection. | Try Again |
+| Gateway refused the sign-in | The gateway "gateway.example.com" didn't accept the user name or password | Sign in with the account the gateway knows you by. *(Signing in as the computer's account: This connection signs in to the gateway with the computer's account. Try another one.)* | Use Another Account, for the gateway's account or the computer's |
+| Gateway refused the computer | The gateway "gateway.example.com" doesn't allow a connection to "Build Server" | Its policy doesn't include this computer. Ask whoever runs the gateway to allow it. | Try Again |
 | Ended by the server | "Build Server" ended the session | An administrator or a program on that computer disconnected you. | Reconnect |
 | Taken over | Another connection took over this session | The same account connected to "Build Server" from somewhere else. | Reconnect |
 | Idle | "Build Server" ended the session after a period of inactivity | Reconnect to continue where you left off. | Reconnect |
@@ -632,7 +635,9 @@ password.
 | Anything else | "Build Server" closed the connection unexpectedly | Try again. If it keeps happening, copy the details below into a bug report. | Try Again |
 
 On screen the quotes and apostrophes are typographic. Edit Connection joins
-Try Again where the address or port may be wrong.
+Try Again where the address or port may be wrong, the gateway's included.
+Reconnecting tries a gateway that cannot be reached again, like a computer;
+a gateway that refuses the sign-in or the computer ends it.
 
 ### Reconnecting
 

@@ -46,6 +46,7 @@ struct SessionContentView: View {
                         switch action {
                         case .connect: model.reconnect()
                         case .useAnotherAccount: model.reconnectWithAnotherAccount()
+                        case .useAnotherGatewayAccount: model.reconnectWithAnotherGatewayAccount()
                         case .editConnection: model.onEditConnection?()
                         }
                     }
