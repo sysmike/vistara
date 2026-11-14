@@ -12,26 +12,17 @@ extension SessionHandle {
         }
     }
 
-    /// The C callback, which hands its arguments on to `decideGatewayMessage`.
+    /// The C callback: turns the gateway's UTF-16 text into a message and asks
+    /// the Swift closure behind the context pointer. Its arguments: context,
+    /// consent, must be shown, requires consent, text, and text length.
     static let askGatewayMessageDecider: vistara_gateway_message_decider = {
-        SessionHandle.decideGatewayMessage(
-            context: $0, isConsent: $1, mustBeShown: $2, requiresConsent: $3, text: $4, length: $5
-        )
-    }
-
-    /// Turns the gateway's UTF-16 text into a message and asks the Swift
-    /// closure behind the context pointer.
-    private static func decideGatewayMessage(
-        context: UnsafeMutableRawPointer?, isConsent: Bool, mustBeShown: Bool, requiresConsent: Bool,
-        text: UnsafePointer<UInt16>, length: Int
-    ) -> Bool {
-        guard let context else { return false }
+        guard let context = $0 else { return false }
+        let text = String(decoding: UnsafeBufferPointer(start: $4, count: $5), as: UTF16.self)
         let message = RDPGatewayMessage(
-            kind: isConsent ? .consent : .notice,
-            text: String(decoding: UnsafeBufferPointer(start: text, count: length), as: UTF16.self)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\0")),
-            mustBeShown: mustBeShown,
-            requiresConsent: requiresConsent
+            kind: $1 ? .consent : .notice,
+            text: text.trimmingCharacters(in: CharacterSet(charactersIn: "\0")),
+            mustBeShown: $2,
+            requiresConsent: $3
         )
         return Unmanaged<GatewayMessageDecider>.fromOpaque(context).takeUnretainedValue().decide(message)
     }
