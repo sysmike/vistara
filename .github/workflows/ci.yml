@@ -300,6 +300,28 @@ jobs:
           kill "$capturer"
           exit "$status"
 
+      # Temporary (#128): repeat the flaky test until it fails, with the server's log.
+      - name: Repeat closingATabEndsOnlyItsSession
+        if: ${{ !cancelled() }}
+        env:
+          TEST_RUNNER_VISTARA_TEST_RDP_HOST: ${{ env.VISTARA_TEST_RDP_HOST }}
+          TEST_RUNNER_VISTARA_TEST_RDP_PORT: ${{ env.VISTARA_TEST_RDP_PORT }}
+          TEST_RUNNER_VISTARA_TEST_RDP_USER: ${{ env.VISTARA_TEST_RDP_USER }}
+          TEST_RUNNER_VISTARA_TEST_RDP_PASSWORD: ${{ env.VISTARA_TEST_RDP_PASSWORD }}
+          TEST_RUNNER_VISTARA_TEST_SERVER_LOG: ${{ env.VISTARA_TEST_SERVER_LOG }}
+        run: |
+          log=build/test-server/run/server.log
+          before=$(wc -l < "$log")
+          status=0
+          xcodebuild test-without-building -project Vistara.xcodeproj -scheme Vistara -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData \
+            -only-testing:'VistaraTests/SessionTabsTests/closingATabEndsOnlyItsSession()' \
+            -test-iterations 30 -run-tests-until-failure > build/repeat.log 2>&1 || status=$?
+          grep -E "Session\]|FreeRDP\]|✘|✔ Test|Test Suite|iteration" build/repeat.log | tail -80
+          echo "--- server log during the repeats"
+          tail -n +"$((before + 1))" "$log" | tail -150
+          echo "exit status $status"
+
       - name: Show test server log after the app tests
         if: always()
         run: |
