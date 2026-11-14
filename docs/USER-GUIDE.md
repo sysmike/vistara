@@ -68,6 +68,8 @@ Settings > General.
 
 There is no password field. Vistara asks for the password when you connect.
 
+![The Gateway section, signing in to the gateway as another account](images/editor-gateway.png)
+
 ## Connecting
 
 ### Signing in
