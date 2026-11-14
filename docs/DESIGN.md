@@ -698,6 +698,8 @@ password.
 | Network lost | The connection to "Build Server" was lost | Check your network connection, then reconnect. Your session keeps running on the computer. | Reconnect |
 | No license | "Build Server" has no Remote Desktop license for this connection | Ask the computer's administrator to check its Remote Desktop licensing. | Try Again |
 | Anything else | "Build Server" closed the connection unexpectedly | Try again. If it keeps happening, copy the details below into a bug report. | Try Again |
+| Printed document not a PDF | A document from "Build Server" can't be printed | Vistara prints only PDF documents. Print it again with the printer "Vistara", without changing its driver. | OK *(an alert on the session window; the session goes on)* |
+| Printed document too large | A document from "Build Server" can't be printed | It's larger than 512 MB, the most Vistara takes. | OK *(as above)* |
 
 On screen the quotes and apostrophes are typographic. Edit Connection joins
 Try Again where the address or port may be wrong, the gateway's included.

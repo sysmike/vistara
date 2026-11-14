@@ -356,33 +356,6 @@ extension LibraryModel {
     static let gatewayKeyPrefix = "gateway/"
 }
 
-extension SessionTarget {
-    /// What a session window needs from a saved connection.
-    init(connection: Connection) {
-        self.init(
-            name: connection.name.isEmpty ? connection.host : connection.name,
-            host: connection.host,
-            port: UInt16(clamping: connection.port),
-            username: connection.username,
-            domain: connection.domain.isEmpty ? nil : connection.domain
-        )
-        connectionID = connection.id
-        resolutionMode = connection.resolutionMode
-        fixedWidth = connection.fixedWidth
-        fixedHeight = connection.fixedHeight
-        usesHiDPI = connection.usesHiDPI
-        usesAllDisplays = connection.usesAllDisplays
-        gateway = connection.gateway.isUsed ? connection.gateway : nil
-        requiresNLA = connection.requiresNLA
-        certificatePolicy = connection.certificatePolicy
-        audioMode = connection.audioMode
-        sharesClipboard = connection.sharesClipboard
-        copiesFiles = connection.copiesFiles
-        reconnectsAutomatically = connection.reconnectsAutomatically
-        sharedFolders = connection.sharedFolders
-    }
-}
-
 extension LibraryModel {
     /// Saves fresh bookmarks of shared folders that moved, so the connection
     /// follows them. A folder the user removed or changed meanwhile is left

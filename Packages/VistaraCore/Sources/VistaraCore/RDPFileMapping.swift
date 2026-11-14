@@ -12,7 +12,7 @@ public enum RDPFileMapping {
     static let mappedKeys: Set<String> = Set([
         "full address", "server port", "username", "domain",
         "desktopwidth", "desktopheight", "smart sizing", "dynamic resolution", "desktopscalefactor", "use multimon",
-        "redirectclipboard", "audiomode", "autoreconnection enabled",
+        "redirectclipboard", "redirectprinters", "audiomode", "autoreconnection enabled",
         "enablecredsspsupport", "authentication level"
     ]).union(gatewayKeys)
 
@@ -52,6 +52,7 @@ public enum RDPFileMapping {
 
     private static func applyDeviceAndSecuritySettings(of file: RDPFile, to connection: inout Connection) {
         if let clipboard = file.integer("redirectclipboard") { connection.sharesClipboard = clipboard != 0 }
+        if let printers = file.integer("redirectprinters") { connection.printsOnThisMac = printers != 0 }
         switch file.integer("audiomode") {
         case 1: connection.audioMode = .playOnRemote
         case 2: connection.audioMode = .off
@@ -89,6 +90,7 @@ public enum RDPFileMapping {
         add("use multimon", flag(connection.usesAllDisplays))
 
         add("redirectclipboard", flag(connection.sharesClipboard))
+        add("redirectprinters", flag(connection.printsOnThisMac))
         switch connection.audioMode {
         case .playOnThisMac: add("audiomode", .integer(0))
         case .playOnRemote: add("audiomode", .integer(1))

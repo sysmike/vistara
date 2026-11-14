@@ -90,6 +90,17 @@ enum Screenshots {
         return try write(view, name: name)
     }
 
+    /// Captures a window where it is, as it is: a sheet on its parent, say,
+    /// which must not be moved or made key.
+    @discardableResult
+    static func writeAsShown(_ window: NSWindow, name: String) async throws -> Int {
+        if capturesWindows, let bytes = try await capture(window, name: name, cuttingOff: 0) {
+            return bytes
+        }
+        guard let view = window.contentView else { throw CocoaError(.fileWriteUnknown) }
+        return try write(view, name: name)
+    }
+
     /// Asks the CI helper for a picture of the window, and waits for it.
     private static func capture(_ window: NSWindow, name: String, cuttingOff titleBar: CGFloat) async throws -> Int? {
         let fileManager = FileManager.default

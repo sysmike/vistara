@@ -58,6 +58,8 @@ final class SessionModel {
     /// Whether the session window is the key window. Set by the window.
     @ObservationIgnored var isInFront: () -> Bool = { false }
     @ObservationIgnored private var clipboard: ClipboardBridge?
+    /// What the remote computer printed, shown by the window (SessionPrinter).
+    let printQueue = PrintQueue()
     /// The shared folders, open while a session runs.
     @ObservationIgnored private var folderAccess: SharedFolderAccess?
 
@@ -167,7 +169,9 @@ final class SessionModel {
         keepRenewedFolders(access.renewed)
         // The Mac's input source, as the layout a new remote session starts with.
         configuration.keyboard = MacKeyboardLayout.current
+        configuration.printing = target.printsOnThisMac ? printQueue.makePrinting() : nil
         let session = RDPSession(configuration: configuration, delegate: delegate)
+        if target.printsOnThisMac { printQueue.listen(to: session.printedDocuments) }
         self.session = session
         framebuffer = session.framebuffer
         Task { [weak self] in
@@ -272,6 +276,7 @@ final class SessionModel {
             let wasConnected = phase == .connected
             clipboard?.stop()
             clipboard = nil
+            printQueue.end()
             folderAccess?.stop()
             folderAccess = nil
             session = nil
