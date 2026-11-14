@@ -105,7 +105,8 @@ struct DisconnectMessage: Equatable {
             )
         case .starting:
             self.init("“\(name)” is still starting up", "Wait a moment, then try again.", tryAgain)
-        case .cannotConnect:
+        // Their own words come with #125.
+        case .cannotConnect, .gatewayUnreachable, .gatewaySignInRefused, .gatewayRefusedComputer:
             self.init(
                 "Can’t connect to “\(name)”",
                 "Check the computer’s name and your network connection, and that Remote Desktop is enabled there.",

@@ -70,12 +70,21 @@ typedef struct {
     /// as PEM text of `pem_length` bytes. Valid during the callback only.
     const char *pem;
     size_t pem_length;
+    /// The gateway's certificate; host and port are then the gateway's.
+    bool is_gateway;
 } vistara_certificate;
 
 /// Decides whether to continue with a certificate. Called on the thread that
 /// runs vistara_session_connect(), which blocks until this returns.
 typedef bool (*vistara_certificate_decider)(void *_Nullable context,
                                             const vistara_certificate *certificate);
+
+/// What a gateway shows before connecting: a notice, or terms to accept.
+/// `text` is UTF-16 of `length` code units, valid during the call only.
+/// Returns true to accept and connect. Called on the thread that runs
+/// vistara_session_connect().
+typedef bool (*vistara_gateway_message_decider)(void *_Nullable context, bool is_consent, bool must_be_shown,
+                                                bool requires_consent, const uint16_t *text, size_t length);
 
 /// A Mac folder shared with the remote computer as a drive.
 typedef struct {
@@ -128,10 +137,24 @@ typedef struct {
     uint32_t keyboard_type;
     uint32_t keyboard_subtype;
     uint32_t keyboard_function_keys;
-    /// Asked about every server certificate. With NULL, every certificate is
-    /// rejected: nothing is ever accepted silently.
+    /// Asked about every server certificate, the gateway's too. With NULL,
+    /// every certificate is rejected: nothing is ever accepted silently.
     vistara_certificate_decider _Nullable decide_certificate;
     void *_Nullable decide_certificate_context;
+    /// The RD Gateway to go through, or NULL to connect directly. Only its
+    /// HTTP transport is used, over WebSocket where offered.
+    const char *_Nullable gateway_host;
+    uint16_t gateway_port;
+    /// Sign in to the gateway with username, domain, and password above.
+    bool gateway_same_credentials;
+    /// The gateway's own account, when not gateway_same_credentials.
+    const char *_Nullable gateway_username;
+    const char *_Nullable gateway_domain;
+    const char *_Nullable gateway_password;
+    /// Asked about a message the gateway shows. With NULL, a notice is
+    /// accepted and consent declined.
+    vistara_gateway_message_decider _Nullable decide_gateway_message;
+    void *_Nullable decide_gateway_message_context;
 } vistara_connect_options;
 
 typedef enum {
@@ -217,9 +240,24 @@ typedef struct {
     uint32_t desktop_scale_factor;
     uint32_t keyboard_layout;
     uint32_t keyboard_type;
+    // The gateway.
+    bool gateway_enabled;
+    uint32_t gateway_usage_method;
+    bool gateway_bypass_local;
+    bool gateway_http_transport;
+    bool gateway_websockets;
+    bool gateway_rpc_transport;
+    bool gateway_udp_transport;
+    bool gateway_same_credentials;
+    uint32_t gateway_port;
 } vistara_security_settings;
 
 void vistara_session_read_settings(const vistara_session *session, vistara_security_settings *settings);
+
+/// Whether the connection goes through a gateway and never got past it: no
+/// certificate but the gateway's was seen. What went wrong was then the
+/// gateway's.
+bool vistara_session_failed_at_gateway(const vistara_session *session);
 
 /// FreeRDP's name for the last error, for example
 /// "FREERDP_ERROR_AUTHENTICATION_FAILED". Static storage.

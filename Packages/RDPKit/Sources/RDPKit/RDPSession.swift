@@ -106,6 +106,13 @@ public final class RDPSession: Sendable {
         redactor.add(configuration.host, as: .host)
         redactor.add(configuration.username, as: .user)
         redactor.add(configuration.domain ?? "", as: .user)
+        if let gateway = configuration.gateway {
+            redactor.add(gateway.host, as: .host)
+            if case .ownAccount(let username, let domain) = gateway.signIn {
+                redactor.add(username, as: .user)
+                redactor.add(domain ?? "", as: .user)
+            }
+        }
         Self.log.notice(
             "Connecting to \(self.configuration.host, privacy: .private):\(self.configuration.port, privacy: .public)"
         )
@@ -123,16 +130,29 @@ public final class RDPSession: Sendable {
         continuation.yield(.awaitingCredentials)
         let configuration = configuration
         let delegate = delegate
+        // A gateway with an account of its own is asked for first.
+        var gatewayCredentials: RDPCredentials?
+        if let gateway = configuration.gateway, case .ownAccount = gateway.signIn {
+            guard let answer = ask({ await delegate.gatewayCredentials(gateway) }), let account = answer else {
+                return .credentialsCancelled
+            }
+            gatewayCredentials = account
+        }
         guard let answer = ask({ await delegate.credentials(configuration) }), let credentials = answer else {
             return .credentialsCancelled
         }
-        // Kept out of FreeRDP's log lines. The password only while this
-        // session can use it.
+        // Kept out of FreeRDP's log lines. The passwords only while this
+        // session can use them.
         let redactor = RDPLogging.redactor
-        redactor.add(credentials.username, as: .user)
-        redactor.add(credentials.domain ?? "", as: .user)
-        redactor.add(credentials.password, as: .secret)
-        defer { redactor.remove(credentials.password) }
+        for account in [credentials, gatewayCredentials].compactMap({ $0 }) {
+            redactor.add(account.username, as: .user)
+            redactor.add(account.domain ?? "", as: .user)
+            redactor.add(account.password, as: .secret)
+        }
+        defer {
+            redactor.remove(credentials.password)
+            if let gatewayCredentials { redactor.remove(gatewayCredentials.password) }
+        }
         guard let handle = SessionHandle() else {
             return .connectionFailed(RDPFailure(kind: .cannotConnect, name: "out of memory"))
         }
@@ -145,11 +165,13 @@ public final class RDPSession: Sendable {
                 if control.stopRequested { abortToken.abort() }
             }
             defer { control.withLock { $0.abortToken = nil } }
-            return serve(handle, credentials: credentials)
+            return serve(handle, credentials: credentials, gatewayCredentials: gatewayCredentials)
         }
     }
 
-    private func serve(_ handle: SessionHandle, credentials: RDPCredentials) -> RDPDisconnectReason {
+    private func serve(
+        _ handle: SessionHandle, credentials: RDPCredentials, gatewayCredentials: RDPCredentials?
+    ) -> RDPDisconnectReason {
         continuation.yield(.connecting)
         let target = SessionHandle.Target(
             host: configuration.host,
@@ -165,7 +187,10 @@ public final class RDPSession: Sendable {
             sharesClipboard: configuration.sharesClipboard,
             sharedFolders: configuration.sharedFolders,
             keyboard: configuration.keyboard,
-            monitors: configuration.monitors
+            monitors: configuration.monitors,
+            gateway: configuration.gateway.map {
+                SessionHandle.Gateway(host: $0.host, port: $0.port, credentials: gatewayCredentials)
+            }
         )
         let delegate = delegate
 
@@ -177,6 +202,8 @@ public final class RDPSession: Sendable {
             let isAccepted = self.ask { await delegate.certificateDecision(certificate) } ?? false
             if isAccepted { self.continuation.yield(.connecting) }
             return isAccepted
+        } decideGatewayMessage: { message in
+            self.ask { await delegate.gatewayMessage(message) } ?? false
         }
         switch result {
         case .connected: break

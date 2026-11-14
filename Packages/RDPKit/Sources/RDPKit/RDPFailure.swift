@@ -32,6 +32,15 @@ public struct RDPFailure: Sendable, Equatable {
         case signedOut
         case networkLost
 
+        // Going through a gateway
+        /// The gateway cannot be found, reached, or does not answer.
+        case gatewayUnreachable
+        /// The gateway did not accept the user name or password.
+        case gatewaySignInRefused
+        /// The gateway does not allow a connection to this computer: its
+        /// resource authorization policy.
+        case gatewayRefusedComputer
+
         // Anything else
         case licensing
         case protocolError
@@ -59,8 +68,21 @@ public struct RDPFailure: Sendable, Equatable {
 
     /// Classifies a FreeRDP error. `whileConnected` says whether the session
     /// had been established, because the same transport error means "could
-    /// not connect" before and "the network went away" after.
-    public static func kind(code: UInt32, osError: Int32?, whileConnected: Bool) -> Kind {
+    /// not connect" before and "the network went away" after. `atGateway`
+    /// says that the connection never got past its gateway, so that what
+    /// went wrong is the gateway's: its address, its sign-in, or its policy.
+    public static func kind(code: UInt32, osError: Int32?, whileConnected: Bool, atGateway: Bool = false) -> Kind {
+        if let kind = gatewayKind(code) { return kind }
+        let kind = connectionKind(code: code, osError: osError, whileConnected: whileConnected)
+        guard atGateway, !whileConnected else { return kind }
+        switch kind {
+        case .hostNotFound, .unreachable, .notResponding, .refused, .cannotConnect: return .gatewayUnreachable
+        case .wrongCredentials, .accountRestricted: return .gatewaySignInRefused
+        default: return kind
+        }
+    }
+
+    private static func connectionKind(code: UInt32, osError: Int32?, whileConnected: Bool) -> Kind {
         let errorClass = code >> 16
         let error = code & 0xFFFF
         switch errorClass {
@@ -112,6 +134,17 @@ public struct RDPFailure: Sendable, Equatable {
         case 0x1D: return .starting  // TARGET_BOOTING
         case 0x07: return .protocolError  // MCS_CONNECT_INITIAL_ERROR
         default: return nil
+        }
+    }
+
+    /// What the gateway answered, E_PROXY_* from [MS-TSGU] 2.2.6, which
+    /// FreeRDP passes on as the error code itself.
+    private static func gatewayKind(_ code: UInt32) -> Kind? {
+        switch code {
+        case 0x8007_59DA, 0x0000_59FC: .gatewayRefusedComputer  // RAP_ACCESSDENIED, REAUTH_RAP_FAILED
+        case 0x8007_59F8, 0x0000_59FA: .gatewaySignInRefused  // COOKIE_AUTHENTICATION_ACCESS_DENIED,
+        // REAUTH_AUTHN_FAILED
+        default: nil
         }
     }
 
