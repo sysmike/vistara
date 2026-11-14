@@ -64,7 +64,7 @@ private func keys(in value: JSONValue) -> [String] {
 @Test func unknownFieldsSurviveLoadAndSave() throws {
     let json = """
         {"schemaVersion": 1, "futureSetting": {"enabled": true},
-         "connections": [{"id": "6F9619FF-8B86-D011-B42D-00C04FC964FF", "name": "A", "host": "a", "gateway": "gw"}],
+         "connections": [{"id": "6F9619FF-8B86-D011-B42D-00C04FC964FF", "name": "A", "host": "a", "remoteApp": "notepad"}],
          "folders": [{"id": "7F9619FF-8B86-D011-B42D-00C04FC964FF", "name": "F", "color": 3}]}
         """
     var library = try LibraryCodec.decode(Data(json.utf8))
@@ -72,7 +72,7 @@ private func keys(in value: JSONValue) -> [String] {
 
     let saved = try LibraryCodec.decode(LibraryCodec.encode(library))
     #expect(saved.unknownFields == ["futureSetting": .object(["enabled": .bool(true)])])
-    #expect(saved.connections[0].unknownFields == ["gateway": .string("gw")])
+    #expect(saved.connections[0].unknownFields == ["remoteApp": .string("notepad")])
     #expect(saved.connections[0].name == "Renamed")
     #expect(saved.folders[0].unknownFields == ["color": .integer(3)])
 }
