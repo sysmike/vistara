@@ -173,10 +173,14 @@ fetch "$FREERDP_URL" "$FREERDP_SHA256" "$WORK/src/freerdp"
 
 # Channels Vistara does not use in version 1. Fewer parsers of untrusted
 # server data means less attack surface. Kept: cliprdr, disp, drdynvc, drive,
-# rdpdr, rdpgfx, rdpsnd, and the small input and graphics helpers.
-DISABLED_CHANNELS=(AUDIN LOCATION PARALLEL PRINTER RDP2TCP RDPEAR RDPECAM REMDESK SERIAL SMARTCARD SSHAGENT TSMF URBDRC)
+# printer, rdpdr, rdpgfx, rdpsnd, and the small input and graphics helpers.
+DISABLED_CHANNELS=(AUDIN LOCATION PARALLEL RDP2TCP RDPEAR RDPECAM REMDESK SERIAL SMARTCARD SSHAGENT TSMF URBDRC)
 CHANNEL_FLAGS=()
 for channel in "${DISABLED_CHANNELS[@]}"; do CHANNEL_FLAGS+=("-DCHANNEL_$channel=OFF"); done
+# The printer channel's client is off by default without CUPS. Vistara gives
+# it a printer backend of its own (Packages/RDPKit/Sources/CFreeRDP/printer.c),
+# so CUPS stays off: no Mac printer is reached through it.
+CHANNEL_FLAGS+=("-DCHANNEL_PRINTER_CLIENT=ON")
 
 # FreeRDP picks its target from CMAKE_SYSTEM_PROCESSOR, which is the host's
 # unless cross compiling: building x86_64 on Apple silicon must say so.

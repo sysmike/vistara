@@ -82,6 +82,9 @@ final class SessionHandle {
             return .failed(RDPFailure(kind: .cannotConnect, name: "out of memory"))
         }
 
+        // Folders and the printer's folder, valid until connect returns.
+        let printFolder = target.printing.flatMap { strdup($0.folder.path) }
+        defer { free(printFolder) }
         let decider = decideCertificate.map(CertificateDecider.init)
         let messageDecider = decideGatewayMessage.map(GatewayMessageDecider.init)
         let folders = SharedFolderList(target.sharedFolders)
@@ -107,6 +110,7 @@ final class SessionHandle {
         // Valid while `folders` lives, which the call below ensures.
         options.shared_folders = folders.pointer.map { UnsafePointer($0) }
         options.shared_folder_count = folders.count
+        options.print_folder = printFolder.map { UnsafePointer($0) }
 
         let monitors = target.monitors.map(\.cMonitor)
         return withExtendedLifetime((decider, messageDecider, folders)) {
@@ -138,6 +142,7 @@ final class SessionHandle {
         var keyboardLayout: UInt32
         var keyboardType: UInt32
         var gateway: GivenGatewaySettings
+        var deviceRedirection: Bool
     }
 
     /// What FreeRDP was told, read back. For tests.
@@ -149,7 +154,7 @@ final class SessionHandle {
             tlsSecurityLevel: given.tls_security_level, remoteConsoleAudio: given.remote_console_audio,
             audioPlayback: given.audio_playback, desktopScaleFactor: given.desktop_scale_factor,
             keyboardLayout: given.keyboard_layout, keyboardType: given.keyboard_type,
-            gateway: GivenGatewaySettings(given)
+            gateway: GivenGatewaySettings(given), deviceRedirection: given.device_redirection
         )
     }
 

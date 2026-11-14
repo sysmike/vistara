@@ -108,6 +108,12 @@ and it logs what it receives as lines starting with `vistara-`. The clipboard:
   logged (`client-copied-during-fetch`) and not fetched. Last, it asks for a
   folder's contents and for an entry beyond the list, which the client must
   refuse (`client-refused`).
+- **Printing:** when a client announces a printer, the server logs its name
+  and driver (`vistara-printer announced`). It then prints two documents to
+  it, each opened, written, and closed as a print job: a small PDF in three
+  parts, and a short text that isn't a PDF (`wrote`, `printed`). The patch
+  also lets FreeRDP's server take a printer's open answer without its optional
+  last byte, which FreeRDP's own printer leaves out.
 - **Copying during a fetch:** after a client offers a file whose name holds
   "copy something else while I fetch", the server copies a new text in the
   middle of that client's next locked fetch of the report
