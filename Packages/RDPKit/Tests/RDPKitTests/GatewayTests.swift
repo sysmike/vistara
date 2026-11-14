@@ -77,18 +77,23 @@ struct GatewayFailureTests {
     /// Before the connection gets past the gateway, failing to reach it or to
     /// sign in is the gateway's.
     @Test func reachingAndSigningInBeforeTheComputerAreTheGateways() {
-        let atGateway: [(UInt32, Int32?, RDPFailure.Kind)] = [
-            (Self.connect(0x05), nil, .gatewayUnreachable),  // DNS_NAME_NOT_FOUND
-            (Self.connect(0x06), ECONNREFUSED, .gatewayUnreachable),  // CONNECT_FAILED
-            (Self.connect(0x06), ETIMEDOUT, .gatewayUnreachable),
-            (Self.connect(0x0D), nil, .gatewayUnreachable),  // CONNECT_TRANSPORT_FAILED
-            (Self.connect(0x16), nil, .gatewaySignInRefused),  // CONNECT_ACCESS_DENIED
-            (Self.connect(0x09), nil, .gatewaySignInRefused),  // AUTHENTICATION_FAILED
-            (Self.connect(0x1D), nil, .starting)  // TARGET_BOOTING stays the computer's
+        struct Case {
+            var code: UInt32
+            var osError: Int32?
+            var kind: RDPFailure.Kind
+        }
+        let cases = [
+            Case(code: Self.connect(0x05), kind: .gatewayUnreachable),  // DNS_NAME_NOT_FOUND
+            Case(code: Self.connect(0x06), osError: ECONNREFUSED, kind: .gatewayUnreachable),  // CONNECT_FAILED
+            Case(code: Self.connect(0x06), osError: ETIMEDOUT, kind: .gatewayUnreachable),
+            Case(code: Self.connect(0x0D), kind: .gatewayUnreachable),  // CONNECT_TRANSPORT_FAILED
+            Case(code: Self.connect(0x16), kind: .gatewaySignInRefused),  // CONNECT_ACCESS_DENIED
+            Case(code: Self.connect(0x09), kind: .gatewaySignInRefused),  // AUTHENTICATION_FAILED
+            Case(code: Self.connect(0x1D), kind: .starting)  // TARGET_BOOTING stays the computer's
         ]
-        for (code, osError, kind) in atGateway {
-            let classified = RDPFailure.kind(code: code, osError: osError, whileConnected: false, atGateway: true)
-            #expect(classified == kind, "\(RDPFailure.freeRDPName(code: code))")
+        for each in cases {
+            let kind = RDPFailure.kind(code: each.code, osError: each.osError, whileConnected: false, atGateway: true)
+            #expect(kind == each.kind, "\(RDPFailure.freeRDPName(code: each.code))")
         }
     }
 
