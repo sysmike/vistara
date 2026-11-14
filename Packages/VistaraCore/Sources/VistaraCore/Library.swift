@@ -11,10 +11,12 @@ protocol UnknownFieldPreserving: Codable {
 public struct Folder: Identifiable, Codable, Equatable, Sendable, UnknownFieldPreserving {
     public var id: UUID
     public var name: String
+    /// When the folder last changed, as for `Connection.modifiedAt`.
+    public var modifiedAt: Date?
     public var unknownFields: [String: JSONValue] = [:]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, name
+        case id, name, modifiedAt
     }
 
     public static var knownKeys: Set<String> {
@@ -190,6 +192,23 @@ public enum LibraryCodec {
             }
         }
         return (read, skippedIDs)
+    }
+
+    /// One connection or folder as a JSON object of its own, as a sync
+    /// folder keeps it: the entry's form in the library file.
+    static func entryData<Model: UnknownFieldPreserving>(_ model: Model) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(value(of: model))
+    }
+
+    /// An entry read from its own file, keeping its unknown fields; nil when
+    /// it can't be read.
+    static func entry<Model: UnknownFieldPreserving>(_ type: Model.Type, from data: Data) -> Model? {
+        guard let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+            let read = try? models(Model.self, in: .array([value]), key: "entry").read.first
+        else { return nil }
+        return read
     }
 
     private static func value<Model: UnknownFieldPreserving>(of model: Model) throws -> JSONValue {

@@ -80,6 +80,11 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
     /// as written so an export gives them back. Never holds a password.
     public var additionalRDPSettings: [String] = []
 
+    /// When the connection last changed, as a sync folder compares versions
+    /// (docs/DESIGN.md, Connections on several Macs). Nil until it is first
+    /// saved by a Vistara that keeps it.
+    public var modifiedAt: Date?
+
     public var unknownFields: [String: JSONValue] = [:]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -88,7 +93,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         case resolutionMode, fixedWidth, fixedHeight, usesHiDPI, usesAllDisplays
         case sharesClipboard, copiesFiles, printsOnThisMac, audioMode, sharedFolders
         case reconnectsAutomatically, requiresNLA, certificatePolicy, gateway
-        case additionalRDPSettings
+        case additionalRDPSettings, modifiedAt
     }
 
     public static var knownKeys: Set<String> {
@@ -133,5 +138,6 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         gateway = try values.decodeIfPresent(Gateway.self, forKey: .gateway) ?? gateway
         additionalRDPSettings =
             try values.decodeIfPresent([String].self, forKey: .additionalRDPSettings) ?? additionalRDPSettings
+        modifiedAt = try values.decodeIfPresent(Date.self, forKey: .modifiedAt)
     }
 }
