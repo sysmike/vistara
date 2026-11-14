@@ -61,6 +61,33 @@ struct SyncScreenshotTests {
         await model.keepOnThisMac()
     }
 
+    // TEMPORARY: which part keeps the library window from drawing.
+    @Test(arguments: ["notice-only", "folder-reachable", "watch-stopped"])
+    func debugLibrary(variant: String) async throws {
+        let model: LibraryModel
+        switch variant {
+        case "notice-only":
+            (model, _) = try await temporaryLibrary(SampleLibrary.library)
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Vistara-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            model.syncFolder = try SyncFolderChoice(for: folder)
+            model.syncState = .unreachable
+        case "folder-reachable":
+            (model, _) = try await libraryInAFolder()
+        default:
+            let folder: URL
+            (model, folder) = try await libraryInAFolder()
+            try FileManager.default.removeItem(at: folder)
+            await model.syncNow()
+            model.folderWatch?.cancel()
+        }
+        try await Screenshots.write(
+            ConnectionsView(model: model) { _, _ in }, size: NSSize(width: 780, height: 460),
+            name: "debug-library-\(variant)", frame: .window(title: "Connections")
+        )
+        await model.keepOnThisMac()
+    }
+
     @Test
     func theNoticeSaysWhatHappensToChanges() {
         let message = SyncNotice.message(folder: "Vistara", state: .unreachable)
