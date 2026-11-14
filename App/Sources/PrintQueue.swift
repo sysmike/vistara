@@ -7,14 +7,14 @@ import RDPKit
 @MainActor
 @Observable
 final class PrintQueue {
-    struct Item: Identifiable, Equatable {
-        enum Content: Equatable {
-            /// A PDF to show in the print panel.
-            case document(URL)
-            /// Something that can't be printed: not a PDF, or too large.
-            case refused(tooLarge: Bool)
-        }
+    enum Content: Equatable {
+        /// A PDF to show in the print panel.
+        case document(URL)
+        /// Something that can't be printed: not a PDF, or too large.
+        case refused(tooLarge: Bool)
+    }
 
+    struct Item: Identifiable, Equatable {
         let id = UUID()
         let content: Content
     }

@@ -217,10 +217,11 @@ struct PrintingTests {
         // The preview draws over a few frames.
         try await Task.sleep(for: .seconds(1))
 
-        let bytes = try await Screenshots.write(panel, name: dark ? "print-panel-dark" : "print-panel")
+        let bytes = try await Screenshots.writeAsShown(panel, name: dark ? "print-panel-dark" : "print-panel")
         #expect(bytes > 0)
         window.endSheet(panel, returnCode: .cancel)
         await waitUntil("the panel is gone") { model.printQueue.next == nil }
+        panel.orderOut(nil)
     }
 
     @Test(arguments: [false, true])
