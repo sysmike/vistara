@@ -93,7 +93,7 @@ without the app.
 
 Version 1 covers the connection library, per-connection settings, the session
 window, certificate trust on first use, and `.rdp` import and export.
-Session tabs came in milestone M4, multiple displays in M5, and RD Gateway
-follows in M6 (see Session tabs, Multiple displays, and RD Gateway in
-DESIGN.md). Smart cards, file clipboard, RemoteApp, printer redirection, and
-sync are tracked as issues labeled `later`.
+Session tabs came in milestone M4, multiple displays in M5, RD Gateway in
+M6, and copying files follows in M7 (see Session tabs, Multiple displays, RD
+Gateway, and Copying files in DESIGN.md). Smart cards, RemoteApp, printer
+redirection, and sync are tracked as issues labeled `later`.
