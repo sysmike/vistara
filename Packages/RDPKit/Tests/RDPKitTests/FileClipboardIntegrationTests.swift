@@ -133,18 +133,26 @@ struct FileClipboardIntegrationTests {
                 await first(of: session.remoteClipboardFiles, within: .seconds(10)) { !$0.isEmpty }
             )
             let report = list.files[0]
-            let (arrived, arrival) = AsyncStream.makeStream(of: Void.self)
-            let firstFolder = scratch.url.appendingPathComponent("First")
-            let fetch = Task {
-                try await session.fetchFiles([report], from: list, into: firstFolder) { progress in
-                    if progress.bytesReceived > 0 { arrival.yield() }
+            // The server takes about 300 ms for the report. The fetch is
+            // cancelled as soon as it has started; on a busy machine it may
+            // still finish first, so that is tried again.
+            var outcome: Result<[URL], any Error> = .success([])
+            var folder = scratch.url
+            for attempt in 1...3 {
+                folder = scratch.url.appendingPathComponent("Attempt \(attempt)")
+                let (started, start) = AsyncStream.makeStream(of: Void.self)
+                let destination = folder
+                let fetch = Task {
+                    try await session.fetchFiles([report], from: list, into: destination) { _ in start.yield() }
                 }
+                #expect(await first(of: started, within: .seconds(10)) { _ in true } != nil)
+                fetch.cancel()
+                outcome = await fetch.result
+                if case .failure = outcome { break }
             }
-            #expect(await first(of: arrived, within: .seconds(10)) { _ in true } != nil)
-            fetch.cancel()
 
-            await #expect(throws: CancellationError.self) { try await fetch.value }
-            let partial = scratch.url.appendingPathComponent("First/Server Report.bin")
+            #expect(throws: CancellationError.self) { try outcome.get() }
+            let partial = folder.appendingPathComponent("Server Report.bin")
             #expect(!FileManager.default.fileExists(atPath: partial.path))
 
             // The next fetch works.
