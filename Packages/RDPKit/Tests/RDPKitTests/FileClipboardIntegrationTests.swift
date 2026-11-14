@@ -54,7 +54,7 @@ struct FileClipboardIntegrationTests {
     /// Starts a session that shares the clipboard, runs `body` once it is
     /// connected, and ends it. Returns the ended session.
     @discardableResult
-    private func whileConnected(
+    func whileConnected(
         copiesFiles: Bool = true, _ body: (RDPSession) async throws -> Void
     ) async throws -> RDPSession {
         var configuration = TestHost.configuration

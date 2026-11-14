@@ -97,13 +97,21 @@ and it logs what it receives as lines starting with `vistara-`. The clipboard:
 - **Files it offers:** along with the text, a file list. It holds a 2.5 MiB report, larger
   than a client's part of 1 MiB; a folder with a file whose name is not ASCII;
   a file named with a "/" whose size the list leaves out; and an absolute path,
-  which a client must skip. Each contents request is logged
-  (`vistara-clipboard file-request`), and the report's parts are slowed
-  to 100 ms each, so a test can cancel in the middle.
+  which a client must skip. Each contents request is logged with the lock it
+  names (`vistara-clipboard file-request … lock=`), as are a client's locks
+  (`locked id=`, `unlocked id=`). The report's parts are slowed to 100 ms
+  each, so a test can cancel in the middle.
 - **Files a client offers:** it fetches the list, logs each entry with its name
-  in hex (`client-file`), then fetches every file in parts and logs its size and
-  FNV-1a checksum (`client-file-done`). Last, it asks for a folder's contents and
-  for an entry beyond the list, which the client must refuse (`client-refused`).
+  in hex (`client-file`), then locks the client's files (`client-lock=`) and
+  fetches every file in parts, 150 ms apart, logging its size and FNV-1a
+  checksum (`client-file-done`). Something the client copies meanwhile is
+  logged (`client-copied-during-fetch`) and not fetched. Last, it asks for a
+  folder's contents and for an entry beyond the list, which the client must
+  refuse (`client-refused`).
+- **Copying during a fetch:** after a client offers a file whose name holds
+  "copy something else while I fetch", the server copies a new text in the
+  middle of that client's next locked fetch of the report
+  (`copied-during-fetch`).
 
 ### Through an RD Gateway
 

@@ -219,7 +219,9 @@ typedef struct {
 /// Nothing is read until the remote computer asks for a file's contents, and
 /// then only from a regular file at `path` that is still the one listed;
 /// symbolic links are not followed. An empty list offers nothing. Returns
-/// false, offering nothing, when the connection does not copy files.
+/// false, offering nothing, when the connection does not copy files. While
+/// the remote computer holds a lock on an earlier offer, it keeps reading
+/// that offer's files.
 bool vistara_session_offer_local_files(vistara_session *session, const vistara_local_file *_Nullable files,
                                        size_t count);
 
@@ -259,7 +261,8 @@ typedef enum {
     VISTARA_FETCH_REFUSED = 4,
     /// A file could not be written here; see os_error.
     VISTARA_FETCH_WRITE_FAILED = 5,
-    /// The remote computer copied something else first.
+    /// The remote computer copied something else first, and could not lock
+    /// its files for the fetch.
     VISTARA_FETCH_LIST_CHANGED = 6,
     /// The clipboard channel closed.
     VISTARA_FETCH_CHANNEL_CLOSED = 7,
@@ -280,6 +283,8 @@ typedef struct {
 /// fetched: the caller creates them. Returns false, starting nothing, when a
 /// fetch is running, the list is no longer the current one, or an item is not
 /// a file in it. A file that fails is removed; files already fetched stay.
+/// Where the remote computer supports it, the fetch locks its files until it
+/// ends, so the remote computer copying something else does not end it.
 bool vistara_session_start_fetch(vistara_session *session, uint64_t list_id, const vistara_fetch_item *items,
                                  size_t count);
 

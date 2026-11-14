@@ -661,6 +661,24 @@ static UINT clipboard_server_file_contents_response(CliprdrClientContext *clipbo
     return CHANNEL_RC_OK;
 }
 
+/// The remote computer keeps what this Mac offers now for the requests that
+/// name this lock, until it unlocks it.
+static UINT clipboard_server_lock(CliprdrClientContext *clipboard, const CLIPRDR_LOCK_CLIPBOARD_DATA *lock) {
+    vistara_session *session = clipboard->custom;
+    pthread_mutex_lock(&session->clipboard_lock);
+    vistara_files_lock(&session->files, lock->clipDataId);
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return CHANNEL_RC_OK;
+}
+
+static UINT clipboard_server_unlock(CliprdrClientContext *clipboard, const CLIPRDR_UNLOCK_CLIPBOARD_DATA *unlock) {
+    vistara_session *session = clipboard->custom;
+    pthread_mutex_lock(&session->clipboard_lock);
+    vistara_files_unlock(&session->files, unlock->clipDataId);
+    pthread_mutex_unlock(&session->clipboard_lock);
+    return CHANNEL_RC_OK;
+}
+
 static void clipboard_connected(vistara_session *session, CliprdrClientContext *clipboard) {
     clipboard->custom = session;
     clipboard->MonitorReady = clipboard_monitor_ready;
@@ -671,6 +689,8 @@ static void clipboard_connected(vistara_session *session, CliprdrClientContext *
     clipboard->ServerFormatDataResponse = clipboard_server_format_data_response;
     clipboard->ServerFileContentsRequest = clipboard_server_file_contents_request;
     clipboard->ServerFileContentsResponse = clipboard_server_file_contents_response;
+    clipboard->ServerLockClipboardData = clipboard_server_lock;
+    clipboard->ServerUnlockClipboardData = clipboard_server_unlock;
     pthread_mutex_lock(&session->clipboard_lock);
     session->clipboard = clipboard;
     session->clipboard_ever_connected = true;
@@ -752,8 +772,10 @@ bool vistara_session_take_remote_files(vistara_session *session, vistara_remote_
 bool vistara_session_start_fetch(vistara_session *session, uint64_t list_id, const vistara_fetch_item *items,
                                  size_t count) {
     pthread_mutex_lock(&session->clipboard_lock);
-    const bool started = session->clipboard && session->copy_files &&
-                         vistara_files_start_fetch(&session->files, session->clipboard, list_id, items, count);
+    const bool can_lock = (session->server_clipboard_flags & CB_CAN_LOCK_CLIPDATA) != 0;
+    const bool started =
+        session->clipboard && session->copy_files &&
+        vistara_files_start_fetch(&session->files, session->clipboard, list_id, items, count, can_lock);
     pthread_mutex_unlock(&session->clipboard_lock);
     return started;
 }
