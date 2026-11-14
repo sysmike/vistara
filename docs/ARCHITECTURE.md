@@ -60,7 +60,9 @@ without the app.
 
 - Connections are stored as versioned JSON in
   `~/Library/Application Support/Vistara/` (inside the app's container when
-  sandboxed). The file holds no secrets.
+  sandboxed). The file holds no secrets. With a sync folder chosen, each
+  connection and folder is also a file of its own there, and the local file
+  is what Vistara last saw (DESIGN.md, Connections on several Macs).
 - Trusted certificate fingerprints are stored beside it.
 - Passwords live only in the Keychain, keyed by connection identifier.
 
@@ -94,6 +96,7 @@ without the app.
 Version 1 covers the connection library, per-connection settings, the session
 window, certificate trust on first use, and `.rdp` import and export.
 Session tabs came in milestone M4, multiple displays in M5, RD Gateway in
-M6, copying files in M7, and printing follows in M8 (see Session tabs,
-Multiple displays, RD Gateway, Copying files, and Printing in DESIGN.md).
-Smart cards, RemoteApp, and sync are tracked as issues labeled `later`.
+M6, copying files in M7, printing in M8, and keeping connections on several
+Macs follows in M9 (see Session tabs, Multiple displays, RD Gateway, Copying
+files, Printing, and Connections on several Macs in DESIGN.md). Smart cards
+and RemoteApp are tracked as issues labeled `later`.

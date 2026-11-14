@@ -470,6 +470,48 @@ connect.
   connections as `.rdp` files the way the Microsoft client writes them,
   never with a password.
 
+### Connections on several Macs
+
+The connections can live in a folder you choose instead of only on this Mac,
+such as one in iCloud Drive. Every Mac that chooses the same folder has the
+same connections, and a change on one shows on the others.
+
+- Settings > Sync chooses where: **On This Mac**, the default, or **In a
+  Folder…**, which asks for the folder with the open panel, starting in
+  iCloud Drive where there is one. Vistara keeps a folder of its own in it,
+  "Vistara Connections", and remembers the choice with a security-scoped
+  bookmark. *Judgment: a folder, not CloudKit. Any sync service works,
+  Vistara needs no account or server of its own, and the app keeps the
+  sandbox entitlements it has.*
+- In the folder, each connection and each folder of the library is a file of
+  its own, and a deleted one leaves a small marker for 90 days, so other
+  Macs learn of it. *Judgment: two Macs that change different connections
+  never write the same file, so a sync service never has to choose between
+  two whole libraries.*
+- When two Macs changed the same connection, the later change wins, all of
+  it. Each file says when it was changed; a sync service's own conflict
+  copies are read the same way, and the older copy goes.
+- Choosing a folder adds this Mac's connections to what is there; nothing is
+  deleted. Going back to On This Mac keeps the connections as they are, on
+  this Mac only, and leaves the folder alone.
+- What stays on each Mac: passwords (the Keychain), trusted certificates,
+  shared folders (a bookmark opens a folder only on the Mac that made it),
+  when a connection was last used, and Settings. A connection deleted on
+  another Mac takes its password on this one with it, as a delete here does.
+- Changes from other Macs show in the Connections window within seconds,
+  without a reload. An editor that is open keeps what you typed; saving it
+  is the later change.
+- When the folder can't be reached (iCloud Drive turned off, a disk
+  unplugged), Vistara works with the connections as it last saw them, keeps
+  your changes, and writes them when the folder is back. A notice above the
+  list says so.
+- The folder never holds a password, as the library file never does.
+  Whoever can change the folder can change a connection's address; the
+  certificate is still checked on each Mac, so another computer at that
+  address is a question, not a silent connection.
+- Not in this step: passwords through iCloud Keychain, trusted certificates,
+  and Settings.
+
 ### Clipboard
 
 - Text is shared both ways when the connection's Share clipboard is on; when
@@ -595,6 +637,7 @@ the title follows the pane, and the window reopens on the last pane.
 | --- | --- |
 | General | Defaults for new connections (resolution, Retina, displays, clipboard, copying files, printing, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
 | Keyboard | Translate editing shortcuts; Right Command as the Windows key |
+| Sync | Where the connections live: On This Mac, or in a folder shared with other Macs; that folder, and whether it can be reached |
 | Security | Trusted certificates: host, fingerprint, date trusted, Remove |
 
 Nothing here repeats a system setting such as appearance, accent color, or
