@@ -302,18 +302,8 @@ jobs:
                 command="$(cat "$request")"
                 answer="${request%.request}.json"
                 rm -f "$request"
-                # In the home folder, which the sandbox keeps the app out of.
                 work="$(mktemp -d "$HOME/vistara-pasteboard.XXXXXX")"
-                if [[ "$command" == "promise-roundtrip" ]]; then
-                  # Both sides outside the sandbox, to compare with the app's promise.
-                  build/pasteboard-helper offer-promise "$work" 2>/dev/null &
-                  offer=$!
-                  sleep 1
-                  build/pasteboard-helper receive "$work/received" > "$answer.part" 2>&1
-                  kill "$offer" 2>/dev/null || true
-                else
-                  build/pasteboard-helper "$command" "$work" > "$answer.part" 2>&1
-                fi
+                build/pasteboard-helper "$command" "$work" > "$answer.part" 2>&1
                 mv "$answer.part" "$answer"
               done
               sleep 0.1

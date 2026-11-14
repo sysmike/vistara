@@ -1,21 +1,15 @@
 // Stands in for the Finder in the file clipboard probes (#134): an app
 // outside the sandbox that copies files to the general pasteboard and pastes
-// promised files from it. CI runs it for the sandboxed app tests, which ask
+// files from it. CI runs it for the sandboxed app tests, which ask
 // through files in their container (see App/Tests/FileClipboardProbeTests.swift).
 //
 // Usage:
 //   pasteboard-helper copy <directory>       Makes a file and a folder with a
 //                                            file in <directory>, and copies the
 //                                            two to the pasteboard.
-//   pasteboard-helper receive <directory>    Pastes the promised files on the
-//                                            pasteboard into <directory>.
 //   pasteboard-helper read-urls <directory>  Reads the file URLs on the
 //                                            pasteboard, as a paste in the Finder
 //                                            asks for them, and checks each file.
-//   pasteboard-helper offer-promise <dir>    Puts a promised file on the
-//                                            pasteboard and fulfils it for 25
-//                                            seconds: a provider outside the
-//                                            sandbox, to compare with the app.
 // Prints one line of JSON with what happened.
 
 import AppKit
@@ -48,38 +42,6 @@ func copy(into directory: URL) -> Never {
     reply(["written": written, "file": file.path, "folder": folder.path, "control": control.path])
 }
 
-func receive(into directory: URL) -> Never {
-    let types = NSPasteboard.general.types?.map(\.rawValue) ?? []
-    let receivers = NSPasteboard.general.readObjects(forClasses: [NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver]
-    guard let receivers, !receivers.isEmpty else { reply(["error": "no file promise on the pasteboard", "types": types]) }
-    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let queue = OperationQueue()
-    var results: [[String: Any]] = []
-    var pending = receivers.count
-    let started = Date()
-    for receiver in receivers {
-        receiver.receivePromisedFiles(atDestination: directory, options: [:], operationQueue: queue) { url, error in
-            var result: [String: Any] = ["name": url.lastPathComponent]
-            if let error { result["error"] = "\(error)" }
-            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-            result["size"] = (attributes?[.size] as? NSNumber)?.intValue ?? -1
-            result["quarantined"] = getxattr(url.path, "com.apple.quarantine", nil, 0, 0, 0) > 0
-            DispatchQueue.main.async {
-                results.append(result)
-                pending -= 1
-            }
-        }
-    }
-    let deadline = Date().addingTimeInterval(30)
-    while pending > 0, Date() < deadline {
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-    }
-    reply([
-        "files": results, "seconds": Date().timeIntervalSince(started), "timedOut": pending > 0, "types": types,
-        "promisedTypes": receivers.flatMap(\.fileTypes)
-    ])
-}
-
 func readURLs() -> Never {
     let started = Date()
     let types = NSPasteboard.general.types?.map(\.rawValue) ?? []
@@ -88,46 +50,17 @@ func readURLs() -> Never {
     ) as? [URL] ?? []
     let files: [[String: Any]] = urls.map { url in
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber
-        return ["name": url.lastPathComponent, "size": size?.intValue ?? -1]
+        let quarantined = getxattr(url.path, "com.apple.quarantine", nil, 0, 0, 0) > 0
+        return ["name": url.lastPathComponent, "size": size?.intValue ?? -1, "quarantined": quarantined]
     }
     reply(["files": files, "seconds": Date().timeIntervalSince(started), "types": types])
 }
 
-final class PromiseWriter: NSObject, NSFilePromiseProviderDelegate {
-    func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
-        "Helper.bin"
-    }
-
-    func filePromiseProvider(
-        _ provider: NSFilePromiseProvider, writePromiseTo url: URL, completionHandler: @escaping (Error?) -> Void
-    ) {
-        do {
-            try Data(repeating: 0x42, count: 65_536).write(to: url)
-            completionHandler(nil)
-        } catch {
-            completionHandler(error)
-        }
-    }
-}
-
-func offerPromise() -> Never {
-    let writer = PromiseWriter()
-    let provider = NSFilePromiseProvider(fileType: "public.data", delegate: writer)
-    NSPasteboard.general.clearContents()
-    let written = NSPasteboard.general.writeObjects([provider])
-    FileHandle.standardError.write(Data("offered \(written)\n".utf8))
-    RunLoop.main.run(until: Date().addingTimeInterval(25))
-    withExtendedLifetime((writer, provider)) {}
-    exit(0)
-}
-
 let arguments = CommandLine.arguments
-guard arguments.count == 3 else { reply(["error": "usage: pasteboard-helper copy|receive <directory>"]) }
+guard arguments.count == 3 else { reply(["error": "usage: pasteboard-helper copy|read-urls <directory>"]) }
 let directory = URL(fileURLWithPath: arguments[2], isDirectory: true)
 switch arguments[1] {
 case "copy": copy(into: directory)
-case "receive": receive(into: directory)
 case "read-urls": readURLs()
-case "offer-promise": offerPromise()
 default: reply(["error": "unknown command \(arguments[1])"])
 }
