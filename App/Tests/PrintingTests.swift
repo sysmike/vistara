@@ -35,6 +35,16 @@ struct PrintingTests {
         )
     }
 
+    /// The print system may bring another process forward, which leaves no
+    /// window of Vistara key for the tests after these. Says what it found.
+    private func restoreFocus(_ test: String) async {
+        let note = "active=\(NSApp.isActive) modal=\(NSApp.modalWindow != nil) key=\(NSApp.keyWindow != nil)"
+        print("vistara-probe printing-focus \(test) \(note)")
+        if NSApp.modalWindow != nil { NSApp.abortModal() }
+        NSApp.activate(ignoringOtherApps: true)
+        await waitUntil("Vistara is active again", within: .seconds(5)) { NSApp.isActive }
+    }
+
     private func makeWindow(dark: Bool = false) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 700), styleMask: [.titled, .closable],
@@ -135,6 +145,7 @@ struct PrintingTests {
         #expect(document.pageCount == 1)
         #expect(document.string?.contains("Quarterly Report") == true)
         #expect(!FileManager.default.fileExists(atPath: source.path))
+        await restoreFocus("saved")
     }
 
     @Test(.timeLimit(.minutes(1)))
@@ -157,6 +168,7 @@ struct PrintingTests {
         #expect(model.printQueue.next?.content == .refused(tooLarge: false))
         if let alert = window.attachedSheet { window.endSheet(alert) }
         await waitUntil("nothing waits any more") { model.printQueue.next == nil && window.attachedSheet == nil }
+        await restoreFocus("panel")
     }
 
     // MARK: Against the test server
@@ -201,6 +213,7 @@ struct PrintingTests {
         model.disconnect()
         await waitUntil("the session has ended") { !model.isLive }
         #expect(!FileManager.default.fileExists(atPath: folder.path))
+        await restoreFocus("server")
     }
 
     // MARK: Screenshots
@@ -224,6 +237,7 @@ struct PrintingTests {
         window.endSheet(panel, returnCode: .cancel)
         await waitUntil("the panel is gone") { model.printQueue.next == nil }
         panel.orderOut(nil)
+        await restoreFocus("screenshot")
     }
 
     @Test(arguments: [false, true])
