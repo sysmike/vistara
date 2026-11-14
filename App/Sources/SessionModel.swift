@@ -72,22 +72,25 @@ final class SessionModel {
     /// The desktop size that fills the session window now. Set by the window.
     @ObservationIgnored var windowDesktopSize: (() -> DesktopSize?)?
 
-    /// Set while the credentials sheet should be shown.
-    private(set) var pendingCredentials: CredentialsRequest?
+    /// Set while the credentials sheet should be shown. This and the
+    /// credentials state below are set in SessionModel+Credentials.swift only.
+    var pendingCredentials: CredentialsRequest?
+    /// The gateway's questions (SessionModel+Gateway.swift).
+    var gatewayQuestions = GatewayQuestions()
 
-    @ObservationIgnored private let credentialStore: any CredentialStore
+    @ObservationIgnored let credentialStore: any CredentialStore
     @ObservationIgnored private let trustStore: CertificateTrustStore
     @ObservationIgnored private var session: RDPSession?
     @ObservationIgnored private var certificateAnswer: CheckedContinuation<Bool, Never>?
-    @ObservationIgnored private var credentialsAnswer: CheckedContinuation<RDPCredentials?, Never>?
+    @ObservationIgnored var credentialsAnswer: CheckedContinuation<RDPCredentials?, Never>?
     /// What the sheet returned for the attempt in progress. Held only until
     /// that attempt has connected or failed; a password is never kept longer.
-    @ObservationIgnored private var enteredCredentials: CredentialsAnswer?
+    @ObservationIgnored var enteredCredentials: CredentialsAnswer?
     /// The last attempt was refused: ask again instead of using what is saved.
-    @ObservationIgnored private var wasRefused = false
+    @ObservationIgnored var wasRefused = false
     /// The user asked to sign in with another account: ask once, without
     /// saying that anything was wrong.
-    @ObservationIgnored private var asksForAnotherAccount = false
+    @ObservationIgnored var asksForAnotherAccount = false
 
     init(
         target: SessionTarget,
@@ -145,7 +148,9 @@ final class SessionModel {
             credentials: { [weak self] _ in await self?.credentials() },
             certificateDecision: { [weak self] certificate in
                 await self?.decide(certificate) ?? false
-            }
+            },
+            gatewayCredentials: { [weak self] gateway in await self?.gatewayCredentials(for: gateway) },
+            gatewayMessage: { [weak self] message in await self?.decide(message) ?? false }
         )
         let desktop = startingDesktopSize()
         connectedScale = desktop.scalePercent
@@ -213,6 +218,7 @@ final class SessionModel {
         }
         answerCertificate(trust: false)
         answerCredentials(nil)
+        endGatewayQuestions()
     }
 
     /// Connects again and asks for credentials, even when some are saved.
@@ -232,28 +238,16 @@ final class SessionModel {
         if decision == .alwaysTrust, let certificate {
             // If this cannot be saved, the certificate is trusted this once
             // and the next connection asks again.
-            try? trustStore.add(host: certificate.host, port: certificate.port, fingerprint: certificate.fingerprint)
+            try? trustStore.add(
+                host: certificate.host, port: certificate.port, fingerprint: certificate.fingerprint,
+                isGateway: certificate.isGateway
+            )
         }
         answer.resume(returning: decision != .cancel)
     }
 
     func answerCertificate(trust: Bool) {
         answerCertificate(trust ? .trustOnce : .cancel)
-    }
-
-    /// Answers the credentials question, if one is open. Nil cancels the
-    /// connection.
-    func answerCredentials(_ answer: CredentialsAnswer?) {
-        let continuation = credentialsAnswer
-        credentialsAnswer = nil
-        pendingCredentials = nil
-        guard let continuation else { return }
-        enteredCredentials = answer
-        continuation.resume(
-            returning: answer.map {
-                RDPCredentials(username: $0.username, domain: $0.domainOrNil, password: $0.password)
-            }
-        )
     }
 
     private func apply(_ state: RDPSessionState, from source: RDPSession) {
@@ -265,6 +259,7 @@ final class SessionModel {
             endReconnection()
             startClipboard(for: source)
             keepOrForgetEnteredCredentials()
+            keepOrForgetEnteredGatewayCredentials()
             wasRefused = false
             phase = .connected
             // A session that connects where nobody can see it.
@@ -279,6 +274,7 @@ final class SessionModel {
             enteredCredentials = nil
             answerCertificate(trust: false)
             answerCredentials(nil)
+            endGatewayQuestions()
             if reason == .authenticationFailed {
                 // Back to the credentials sheet, with the reason.
                 wasRefused = true
@@ -296,54 +292,6 @@ final class SessionModel {
 // MARK: Questions for the user
 
 extension SessionModel {
-    /// The credentials for a connection attempt: what is saved, or else what
-    /// the user enters in the sheet. Returns nil when the user cancels or the
-    /// session is disconnected meanwhile.
-    private func credentials() async -> RDPCredentials? {
-        let saved = try? credentialStore.credentials(for: target.credentialKey)
-        let mustAsk = wasRefused || asksForAnotherAccount
-        asksForAnotherAccount = false
-        if !mustAsk, let saved {
-            return RDPCredentials(username: saved.username, domain: saved.domain, password: saved.password)
-        }
-        let request = CredentialsRequest(
-            username: saved?.username ?? target.username,
-            domain: saved?.domain ?? target.domain ?? "",
-            remember: saved != nil,
-            message: wasRefused ? "The user name or password is incorrect." : nil
-        )
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                guard !Task.isCancelled else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                answerCredentials(nil)
-                credentialsAnswer = continuation
-                pendingCredentials = request
-            }
-        } onCancel: {
-            Task { @MainActor [weak self] in
-                self?.answerCredentials(nil)
-            }
-        }
-    }
-
-    /// The server accepted what the user entered: save it if asked to, and
-    /// otherwise make sure nothing older stays saved.
-    private func keepOrForgetEnteredCredentials() {
-        guard let entered = enteredCredentials else { return }
-        enteredCredentials = nil
-        if entered.remember {
-            let credentials = StoredCredentials(
-                username: entered.username, domain: entered.domainOrNil, password: entered.password
-            )
-            try? credentialStore.save(credentials, for: target.credentialKey, label: "Vistara (\(target.name))")
-        } else {
-            try? credentialStore.remove(for: target.credentialKey)
-        }
-    }
-
     /// Decides about a certificate macOS does not trust on its own. One the
     /// user chose to always trust for this computer passes; anything else is
     /// shown, a changed certificate as a warning. Returns false at once when

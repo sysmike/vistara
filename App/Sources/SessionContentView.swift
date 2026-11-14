@@ -67,6 +67,7 @@ struct SessionContentView: View {
                 }
             }
         }
+        .modifier(GatewaySheets(model: model))
     }
 
     private func message(for reason: RDPDisconnectReason) -> DisconnectMessage {
@@ -258,5 +259,49 @@ struct RemoteDesktopView: NSViewRepresentable {
         view.usesHiDPI = usesHiDPI
         view.resizesDesktop = resizesDesktop
         view.region = region
+    }
+}
+
+/// The gateway's own credentials, asked before the computer's, and what it
+/// shows before connecting (docs/DESIGN.md, RD Gateway).
+private struct GatewaySheets: ViewModifier {
+    let model: SessionModel
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: credentialsArePresented) {
+                if let request = model.gatewayQuestions.pendingCredentials {
+                    CredentialsSheet(name: model.target.name, gateway: gatewayName, request: request) { answer in
+                        model.answerGatewayCredentials(answer)
+                    }
+                }
+            }
+            .sheet(isPresented: messageIsPresented) {
+                if let message = model.gatewayQuestions.pendingMessage {
+                    GatewayMessageSheet(message: message, gateway: gatewayName, name: model.target.name) { accepted in
+                        model.answerGatewayMessage(accepted: accepted)
+                    }
+                }
+            }
+    }
+
+    private var gatewayName: String { model.target.gateway?.host ?? "" }
+
+    private var credentialsArePresented: Binding<Bool> {
+        Binding(
+            get: { model.gatewayQuestions.pendingCredentials != nil },
+            set: { isPresented in
+                if !isPresented { model.answerGatewayCredentials(nil) }
+            }
+        )
+    }
+
+    private var messageIsPresented: Binding<Bool> {
+        Binding(
+            get: { model.gatewayQuestions.pendingMessage != nil },
+            set: { isPresented in
+                if !isPresented { model.answerGatewayMessage(accepted: false) }
+            }
+        )
     }
 }

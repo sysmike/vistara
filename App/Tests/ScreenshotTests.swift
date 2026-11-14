@@ -271,6 +271,8 @@ struct ScreenshotTests {
         try store.add(host: "build01.example.com", port: 3389, fingerprint: Self.certificate.fingerprint)
         let other = Self.certificate.fingerprint.replacing("3f", with: "77")
         try store.add(host: "10.0.0.5", port: 3390, fingerprint: other)
+        let gateway = Self.certificate.fingerprint.replacing("3f", with: "c2")
+        try store.add(host: "gateway.example.com", port: 443, fingerprint: gateway, isGateway: true)
         let view = SecuritySettingsView(trustStore: store, selection: "build01.example.com:3389")
         let size = NSSize(width: 620, height: 380)
         let bytes = try await Screenshots.write(view, size: size, name: "settings-security")

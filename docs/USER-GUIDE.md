@@ -84,6 +84,26 @@ computer refuses it, the same sheet comes back and says so.
 
 ![Signing in](images/credentials.png)
 
+Through a gateway that signs in as the computer's account, the same sheet
+asks once for both. One that signs in as another account asks first, in a
+sheet of its own that names the gateway and the connection:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/gateway-credentials-dark.png">
+  <img alt="Signing in to a gateway, in a sheet that names the gateway and the connection" src="images/gateway-credentials.png" width="420">
+</picture>
+
+A remembered gateway password belongs to the gateway and that user name, so
+every connection through the same gateway uses it.
+
+A gateway may show a message before it connects: a notice, or terms to
+accept. **Cancel** doesn't connect.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/gateway-consent-dark.png">
+  <img alt="Terms from a gateway, with Accept and Cancel" src="images/gateway-consent.png" width="480">
+</picture>
+
 ### Certificates
 
 Every Remote Desktop computer proves its identity with a certificate. Windows
@@ -102,6 +122,16 @@ Windows, in the Remote Desktop certificate's details). Then:
 
 Certificates your Mac already trusts, for example ones issued by your
 company's certificate authority, are accepted without a question.
+
+A gateway has a certificate too. Most gateways have one your Mac trusts;
+otherwise the same sheet asks about it first, naming the gateway, and
+**Always Trust** remembers it for the gateway's address. Settings > Security
+lists gateways beside computers, marked as gateways.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/gateway-certificate-dark.png">
+  <img alt="An unknown gateway certificate" src="images/gateway-certificate.png" width="520">
+</picture>
 
 If a computer you trusted presents a *different* certificate, Vistara warns
 you before anything else happens:
@@ -311,8 +341,6 @@ the architecture document.
 Vistara is new. It does not yet support:
 
 - using only some of your displays (All Displays uses every one);
-- signing in to a Remote Desktop Gateway as an account other than the
-  computer's;
 - RemoteApp, smart cards, printers, or USB devices;
 - copying files or images through the clipboard (text only);
 - the microphone (by design for now);

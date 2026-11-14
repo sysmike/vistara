@@ -120,4 +120,25 @@ struct CertificateTrustStoreTests {
         let permissions = try FileManager.default.attributesOfItem(atPath: fileURL.path)[.posixPermissions]
         #expect(permissions as? NSNumber == 0o600)
     }
+
+    /// A gateway's certificate is kept by the gateway's address, marked as a
+    /// gateway's for Settings > Security (#124).
+    @Test func aGatewaysCertificateIsMarkedAsOne() throws {
+        try makeStore().add(host: "Gateway.Example.com", port: 443, fingerprint: first, isGateway: true)
+        try makeStore().add(host: "build01", port: 3389, fingerprint: second)
+        let reloaded = makeStore()
+        #expect(reloaded.trust(forHost: "gateway.example.com", port: 443, fingerprint: first) == .trusted)
+        #expect(reloaded.certificates.map { $0.isGateway } == [false, true])
+    }
+
+    @Test func entriesFromBeforeGatewaysAreComputers() throws {
+        try writeFile("""
+            {"schemaVersion": 1, "certificates": [
+              {"host": "build01", "port": 3389, "fingerprint": "\(first)", "dateAdded": "2026-11-01T10:00:00Z"}
+            ]}
+            """)
+        let store = makeStore()
+        #expect(store.trust(forHost: "build01", port: 3389, fingerprint: first) == .trusted)
+        #expect(store.certificates.first?.isGateway == false)
+    }
 }
