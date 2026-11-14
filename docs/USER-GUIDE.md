@@ -68,7 +68,10 @@ Settings > General.
 
 There is no password field. Vistara asks for the password when you connect.
 
-![The Gateway section, signing in to the gateway as another account](images/editor-gateway.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/editor-gateway-dark.png">
+  <img alt="The Gateway section, signing in to the gateway as another account" src="images/editor-gateway.png" width="480">
+</picture>
 
 ## Connecting
 
