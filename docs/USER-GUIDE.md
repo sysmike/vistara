@@ -88,7 +88,10 @@ Through a gateway that signs in as the computer's account, the same sheet
 asks once for both. One that signs in as another account asks first, in a
 sheet of its own that names the gateway and the connection:
 
-![Signing in to a gateway](images/gateway-credentials.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/gateway-credentials-dark.png">
+  <img alt="Signing in to a gateway, in a sheet that names the gateway and the connection" src="images/gateway-credentials.png" width="420">
+</picture>
 
 A remembered gateway password belongs to the gateway and that user name, so
 every connection through the same gateway uses it.
