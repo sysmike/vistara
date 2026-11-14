@@ -14,7 +14,9 @@ extension SessionHandle {
 
     /// The C callback, which hands its arguments on to `decideGatewayMessage`.
     static let askGatewayMessageDecider: vistara_gateway_message_decider = {
-        SessionHandle.decideGatewayMessage(context: $0, isConsent: $1, mustBeShown: $2, requiresConsent: $3, text: $4, length: $5)
+        SessionHandle.decideGatewayMessage(
+            context: $0, isConsent: $1, mustBeShown: $2, requiresConsent: $3, text: $4, length: $5
+        )
     }
 
     /// Turns the gateway's UTF-16 text into a message and asks the Swift
