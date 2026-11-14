@@ -19,6 +19,8 @@ struct ConnectionDraft: Equatable {
     var usesAllDisplays = false
 
     var sharesClipboard = true
+    /// Kept while Share clipboard is off, but only used with it.
+    var copiesFiles = false
     var audioMode = Connection.AudioMode.playOnThisMac
     /// The only folders the remote computer sees.
     var sharedFolders: [Connection.SharedFolder] = []
@@ -56,6 +58,7 @@ struct ConnectionDraft: Equatable {
         usesHiDPI = connection.usesHiDPI
         usesAllDisplays = connection.usesAllDisplays
         sharesClipboard = connection.sharesClipboard
+        copiesFiles = connection.copiesFiles
         audioMode = connection.audioMode
         sharedFolders = connection.sharedFolders
         reconnectsAutomatically = connection.reconnectsAutomatically
@@ -170,6 +173,7 @@ struct ConnectionDraft: Equatable {
         connection.usesHiDPI = usesHiDPI
         connection.usesAllDisplays = usesAllDisplays
         connection.sharesClipboard = sharesClipboard
+        connection.copiesFiles = copiesFiles
         connection.audioMode = audioMode
         connection.sharedFolders = sharedFolders
         connection.reconnectsAutomatically = reconnectsAutomatically

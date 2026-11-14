@@ -46,6 +46,7 @@ struct GeneralSettingsView: View {
                     Text("All Displays").tag(true)
                 }
                 Toggle("Share clipboard", isOn: $defaults.sharesClipboard)
+                CopyFilesToggle(sharesClipboard: defaults.sharesClipboard, copiesFiles: $defaults.copiesFiles)
                 Picker("Sound", selection: $defaults.audioMode) {
                     Text("Play on This Mac").tag(Connection.AudioMode.playOnThisMac)
                     Text("Play on Remote Computer").tag(Connection.AudioMode.playOnRemote)

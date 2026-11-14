@@ -377,6 +377,7 @@ extension SessionTarget {
         certificatePolicy = connection.certificatePolicy
         audioMode = connection.audioMode
         sharesClipboard = connection.sharesClipboard
+        copiesFiles = connection.copiesFiles
         reconnectsAutomatically = connection.reconnectsAutomatically
         sharedFolders = connection.sharedFolders
     }

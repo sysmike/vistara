@@ -121,11 +121,15 @@ final class SessionModel {
     /// Shares the clipboard with a connected session, if the connection allows it.
     private func startClipboard(for session: RDPSession) {
         guard target.sharesClipboard, clipboard == nil else { return }
+        let files = target.copiesFiles ? RemoteFilePaste(computerName: target.name) { items, list, folder, progress in
+            try await session.fetchFiles(items, from: list, into: folder, progress: progress)
+        } : nil
         let bridge = ClipboardBridge(
             send: { [weak session] events in session?.send(events) },
-            isInFront: { [weak self] in self?.isInFront() ?? false }
+            isInFront: { [weak self] in self?.isInFront() ?? false },
+            files: files
         )
-        bridge.start(remote: session.remoteClipboard)
+        bridge.start(remote: session.remoteClipboard, remoteFiles: session.remoteClipboardFiles)
         clipboard = bridge
     }
 

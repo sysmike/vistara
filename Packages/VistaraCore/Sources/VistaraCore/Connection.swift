@@ -60,6 +60,10 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
     public var usesAllDisplays = false
 
     public var sharesClipboard = true
+    /// Files through the clipboard too, both ways. Needs `sharesClipboard`.
+    /// Off unless chosen; older files have none, and `.rdp` files have no
+    /// setting for it.
+    public var copiesFiles = false
     public var audioMode = AudioMode.playOnThisMac
     public var sharedFolders: [SharedFolder] = []
 
@@ -79,7 +83,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         case id, name, host, port, username, domain
         case folderID, tags, isFavorite, lastConnectedAt
         case resolutionMode, fixedWidth, fixedHeight, usesHiDPI, usesAllDisplays
-        case sharesClipboard, audioMode, sharedFolders
+        case sharesClipboard, copiesFiles, audioMode, sharedFolders
         case reconnectsAutomatically, requiresNLA, certificatePolicy, gateway
         case additionalRDPSettings
     }
@@ -114,6 +118,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         usesHiDPI = try values.decodeIfPresent(Bool.self, forKey: .usesHiDPI) ?? usesHiDPI
         usesAllDisplays = try values.decodeIfPresent(Bool.self, forKey: .usesAllDisplays) ?? usesAllDisplays
         sharesClipboard = try values.decodeIfPresent(Bool.self, forKey: .sharesClipboard) ?? sharesClipboard
+        copiesFiles = try values.decodeIfPresent(Bool.self, forKey: .copiesFiles) ?? copiesFiles
         audioMode = try values.decodeIfPresent(AudioMode.self, forKey: .audioMode) ?? audioMode
         sharedFolders = try values.decodeIfPresent([SharedFolder].self, forKey: .sharedFolders) ?? sharedFolders
         reconnectsAutomatically =

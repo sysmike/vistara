@@ -25,6 +25,8 @@ struct SessionTarget: Equatable, Sendable {
     var certificatePolicy = Connection.CertificatePolicy.askOnFirstUse
     var audioMode = Connection.AudioMode.playOnThisMac
     var sharesClipboard = true
+    /// Files through the clipboard too; only with `sharesClipboard`.
+    var copiesFiles = false
     var reconnectsAutomatically = true
     /// Opened for each session by SharedFolderAccess.
     var sharedFolders: [Connection.SharedFolder] = []
@@ -52,6 +54,7 @@ struct SessionTarget: Equatable, Sendable {
             requiresNLA: requiresNLA,
             audio: audio,
             sharesClipboard: sharesClipboard,
+            copiesFiles: sharesClipboard && copiesFiles,
             reconnectsAutomatically: reconnectsAutomatically
         )
         configuration.gateway = gateway.map(Self.rdpGateway)
