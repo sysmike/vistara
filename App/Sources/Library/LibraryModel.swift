@@ -230,13 +230,25 @@ final class LibraryModel {
         let skipped = skippedEntries.filter { $0.kind == .connection }
         guard skipped.allSatisfy({ $0.id != nil }) else { return }
         // A copy of the file kept next to it holds its connections too.
+        let keptCopies = identifiersInKeptCopies
         let kept = Set(library.connections.map(\.id.uuidString))
             .union(skipped.compactMap { $0.id?.uppercased() })
-            .union(identifiersInKeptCopies)
+            .union(keptCopies)
+        // A gateway's passwords stay while a connection uses the gateway. What
+        // an unreadable entry or a kept copy uses is unknown: keep them all.
+        let gateways = library.connections.map(\.gateway).filter(\.isUsed).map(\.credentialKeyPrefix)
+        let keepsEveryGateway = !skipped.isEmpty || !keptCopies.isEmpty
         for key in keys where !kept.contains(key.uppercased()) {
+            if key.hasPrefix(Self.gatewayKeyPrefix),
+                keepsEveryGateway || gateways.contains(where: { key.lowercased().hasPrefix($0) }) {
+                continue
+            }
             try? store.remove(for: key)
         }
     }
+
+    /// What every gateway's Keychain items start with.
+    static let gatewayKeyPrefix = "gateway/"
 
     /// Notes that a connection was just used.
     func recordConnection(_ id: Connection.ID, at date: Date = Date()) async {

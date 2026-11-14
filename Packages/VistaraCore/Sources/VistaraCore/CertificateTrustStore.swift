@@ -8,8 +8,32 @@ public struct TrustedCertificate: Codable, Equatable, Sendable, Identifiable {
     /// SHA-256 as colon-separated lowercase hex pairs.
     public var fingerprint: String
     public var dateAdded: Date
+    /// A gateway's certificate, kept by the gateway's address.
+    public var isGateway = false
 
     public var id: String { "\(host):\(port)" }
+
+    public init(host: String, port: UInt16, fingerprint: String, dateAdded: Date, isGateway: Bool = false) {
+        self.host = host
+        self.port = port
+        self.fingerprint = fingerprint
+        self.dateAdded = dateAdded
+        self.isGateway = isGateway
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case host, port, fingerprint, dateAdded, isGateway
+    }
+
+    /// Files from before gateways have no `isGateway`: computers.
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        host = try values.decode(String.self, forKey: .host)
+        port = try values.decode(UInt16.self, forKey: .port)
+        fingerprint = try values.decode(String.self, forKey: .fingerprint)
+        dateAdded = try values.decode(Date.self, forKey: .dateAdded)
+        isGateway = try values.decodeIfPresent(Bool.self, forKey: .isGateway) ?? false
+    }
 }
 
 /// What the trust store knows about a certificate a computer presented.
@@ -85,14 +109,18 @@ public final class CertificateTrustStore: Sendable {
         }
     }
 
-    /// Records the certificate for the computer, replacing an earlier one.
-    public func add(host: String, port: UInt16, fingerprint: String, date: Date = Date()) throws {
+    /// Records the certificate for the computer or gateway, replacing an
+    /// earlier one.
+    public func add(
+        host: String, port: UInt16, fingerprint: String, isGateway: Bool = false, date: Date = Date()
+    ) throws {
         try lock.withLock {
             loadIfNeeded()
             if let found = state.newerSchema { throw StoreError.newerSchema(found: found) }
             var certificates = state.certificates
             certificates[Self.key(host, port)] = TrustedCertificate(
-                host: host.lowercased(), port: port, fingerprint: Self.normalized(fingerprint), dateAdded: date
+                host: host.lowercased(), port: port, fingerprint: Self.normalized(fingerprint), dateAdded: date,
+                isGateway: isGateway
             )
             try write(certificates)
             state.certificates = certificates

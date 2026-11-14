@@ -1,9 +1,9 @@
 import SwiftUI
 import VistaraCore
 
-/// Settings > Security: the certificates the user chose to always trust.
-/// Removing one needs no confirmation, because the next connection to that
-/// computer simply asks again.
+/// Settings > Security: the certificates the user chose to always trust, for
+/// computers and gateways. Removing one needs no confirmation, because the
+/// next connection to that computer or gateway simply asks again.
 struct SecuritySettingsView: View {
     let trustStore: CertificateTrustStore
 
@@ -20,15 +20,30 @@ struct SecuritySettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Trusted Certificates")
                 .font(.headline)
-            Text("Vistara connects to these computers without asking, as long as they present the same certificate.")
+            Text(
+                "Vistara connects to these computers and gateways without asking, as long as they present "
+                    + "the same certificate."
+            )
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Table(certificates, selection: $selection) {
                 TableColumn("Computer") { certificate in
-                    Text(certificate.port == 3389 ? certificate.host : certificate.id)
+                    HStack(spacing: 6) {
+                        Text(Self.address(of: certificate))
+                        if certificate.isGateway {
+                            Text("Gateway")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .overlay(Capsule().strokeBorder(.secondary.opacity(0.5)))
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Self.accessibilityLabel(of: certificate))
                 }
-                .width(min: 120, ideal: 180)
+                .width(min: 140, ideal: 200)
                 TableColumn("SHA-256 Fingerprint") { certificate in
                     Text(certificate.fingerprint)
                         .font(.system(.body, design: .monospaced))
@@ -77,6 +92,15 @@ struct SecuritySettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             reload()
         }
+    }
+
+    /// The host alone on the usual port: 3389 for a computer, 443 for a gateway.
+    static func address(of certificate: TrustedCertificate) -> String {
+        certificate.port == (certificate.isGateway ? 443 : 3389) ? certificate.host : certificate.id
+    }
+
+    static func accessibilityLabel(of certificate: TrustedCertificate) -> String {
+        certificate.isGateway ? "\(address(of: certificate)), gateway" : address(of: certificate)
     }
 
     private func reload() {

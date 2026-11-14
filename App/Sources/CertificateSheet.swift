@@ -2,21 +2,20 @@ import RDPKit
 import SwiftUI
 
 /// Asks whether to continue with a certificate macOS does not trust on its
-/// own, for a computer with no trusted certificate on record. Trusting takes
-/// a deliberate click: Return and Escape both cancel.
+/// own, for a computer or gateway with no trusted certificate on record.
+/// Trusting takes a deliberate click: Return and Escape both cancel.
 struct CertificateSheet: View {
     let certificate: RDPCertificate
     let answer: (CertificateDecision) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Vistara can’t verify the identity of “\(certificate.host)”.")
+            Text(Self.headline(for: certificate))
                 .font(.headline)
-            Text(
-                "Its certificate isn’t signed by an authority your Mac trusts. Compare the fingerprint with the "
-                    + "one shown on that computer before you continue."
-            )
-            .fixedSize(horizontal: false, vertical: true)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Text(Self.explanation(for: certificate))
+                .fixedSize(horizontal: false, vertical: true)
 
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
                 row("Issued to:", certificate.commonName.isEmpty ? certificate.subject : certificate.commonName)
@@ -40,6 +39,20 @@ struct CertificateSheet: View {
         .padding(20)
         .frame(width: 520)
         .onExitCommand { answer(.cancel) }
+    }
+
+    /// Names a gateway as one (docs/DESIGN.md, RD Gateway).
+    static func headline(for certificate: RDPCertificate) -> String {
+        certificate.isGateway
+            ? "Vistara can’t verify the identity of the gateway “\(certificate.host)”."
+            : "Vistara can’t verify the identity of “\(certificate.host)”."
+    }
+
+    static func explanation(for certificate: RDPCertificate) -> String {
+        let compare = certificate.isGateway
+            ? "Compare the fingerprint with the one given by whoever runs the gateway before you continue."
+            : "Compare the fingerprint with the one shown on that computer before you continue."
+        return "Its certificate isn’t signed by an authority your Mac trusts. " + compare
     }
 
     /// "12 Nov 2026 to 14 Dec 2027", with a note when today is outside.

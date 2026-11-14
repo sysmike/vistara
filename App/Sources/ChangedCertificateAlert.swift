@@ -1,8 +1,8 @@
 import AppKit
 import RDPKit
 
-/// The one alert in Vistara: a computer presents a different certificate
-/// from the one the user chose to always trust for it.
+/// The one alert in Vistara: a computer or gateway presents a different
+/// certificate from the one the user chose to always trust for it.
 ///
 /// No button is the default, so Return does nothing and the alert has to be
 /// read. Escape cancels. Continuing is marked as destructive, and applies to
@@ -16,9 +16,12 @@ enum ChangedCertificateAlert {
     static func make(certificate: RDPCertificate, name: String) -> NSAlert {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "The identity of “\(name)” has changed."
+        let which = certificate.isGateway ? "gateway" : "computer"
+        alert.messageText = certificate.isGateway
+            ? "The identity of the gateway “\(certificate.host)” has changed."
+            : "The identity of “\(name)” has changed."
         alert.informativeText =
-            "This computer presents a different certificate from the one you trusted. It may have been "
+            "This \(which) presents a different certificate from the one you trusted. It may have been "
             + "reinstalled, or someone may be intercepting the connection. If you expected the change, remove "
             + "the old certificate in Settings > Security and trust the new one."
 

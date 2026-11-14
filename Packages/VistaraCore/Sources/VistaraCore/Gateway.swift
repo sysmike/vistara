@@ -54,6 +54,19 @@ public struct ConnectionGateway: Codable, Equatable, Sendable {
         RDPFileMapping.joinAddress(host: host, port: port, defaultPort: Self.defaultPort)
     }
 
+    /// What every Keychain item for this gateway's passwords starts with:
+    /// there is one per user name, shared by the connections that use the
+    /// gateway (docs/DESIGN.md, RD Gateway).
+    public var credentialKeyPrefix: String {
+        "gateway/\(host.lowercased()):\(port)/"
+    }
+
+    /// The Keychain item for one account on this gateway, "DOMAIN\user" or
+    /// the user name alone.
+    public func credentialKey(account: String) -> String {
+        credentialKeyPrefix + account.lowercased()
+    }
+
     /// Splits `host`, `host:port`, `[v6]`, or `[v6]:port`. The port is nil
     /// when none was given.
     public static func split(address: String) -> (host: String, port: Int?) {

@@ -1,9 +1,12 @@
 import SwiftUI
 
-/// Asks for the account to sign in with. The password field always starts
-/// empty, and what is typed leaves this view only through `answer`.
+/// Asks for the account to sign in with: the computer's, or a gateway's own.
+/// The password field always starts empty, and what is typed leaves this view
+/// only through `answer`.
 struct CredentialsSheet: View {
     let name: String
+    /// The gateway's name when asking for the gateway's own account.
+    var gateway: String?
     let request: CredentialsRequest
     /// Nil when the user cancels.
     let answer: (CredentialsAnswer?) -> Void
@@ -18,8 +21,12 @@ struct CredentialsSheet: View {
     @State private var remember: Bool
     @FocusState private var focus: Field?
 
-    init(name: String, request: CredentialsRequest, answer: @escaping (CredentialsAnswer?) -> Void) {
+    init(
+        name: String, gateway: String? = nil, request: CredentialsRequest,
+        answer: @escaping (CredentialsAnswer?) -> Void
+    ) {
         self.name = name
+        self.gateway = gateway
         self.request = request
         self.answer = answer
         _username = State(initialValue: request.username)
@@ -29,9 +36,10 @@ struct CredentialsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Enter your user name and password for “\(name)”.")
+            Text(Self.headline(name: name, gateway: gateway))
                 .font(.headline)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
             if let message = request.message {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .fixedSize(horizontal: false, vertical: true)
@@ -58,6 +66,13 @@ struct CredentialsSheet: View {
         .padding(20)
         .frame(width: 420)
         .onAppear { focus = username.isEmpty ? .username : .password }
+    }
+
+    /// What the sheet asks for, naming the gateway and the connection when it
+    /// is the gateway's account (docs/DESIGN.md, RD Gateway).
+    static func headline(name: String, gateway: String?) -> String {
+        guard let gateway else { return "Enter your user name and password for “\(name)”." }
+        return "Enter your user name and password for the gateway “\(gateway)”, to connect to “\(name)”."
     }
 
     /// "DOMAIN\user" typed into the user name field counts as both.
