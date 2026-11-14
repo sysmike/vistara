@@ -143,6 +143,7 @@ private let sampleText = """
     connection.resolutionMode = .scaleToFit
     connection.usesHiDPI = false
     connection.sharesClipboard = false
+    connection.printsOnThisMac = false
     connection.audioMode = .playOnRemote
     connection.reconnectsAutomatically = false
     connection.requiresNLA = false
@@ -188,4 +189,17 @@ private let sampleText = """
     let without = RDPFileMapping.file(from: connection).text
     connection.copiesFiles = true
     #expect(RDPFileMapping.file(from: connection).text == without)
+}
+
+@Test func printingIsImportedAndExported() throws {
+    // Without the key, as in the sample, printing stays on.
+    let sample = try RDPFileMapping.connection(from: RDPFile(text: sampleText), name: "Build Server")
+    #expect(sample.printsOnThisMac)
+    let text = "full address:s:pc\nredirectprinters:i:0\n"
+    let off = try RDPFileMapping.connection(from: RDPFile(text: text), name: "PC")
+    #expect(!off.printsOnThisMac)
+    #expect(off.additionalRDPSettings.isEmpty)
+
+    #expect(RDPFileMapping.file(from: Connection(name: "PC", host: "pc")).text.contains("redirectprinters:i:1"))
+    #expect(RDPFileMapping.file(from: off).text.contains("redirectprinters:i:0"))
 }

@@ -27,6 +27,8 @@ struct SessionTarget: Equatable, Sendable {
     var sharesClipboard = true
     /// Files through the clipboard too; only with `sharesClipboard`.
     var copiesFiles = false
+    /// The remote computer gets the printer "Vistara" (docs/DESIGN.md, Printing).
+    var printsOnThisMac = true
     var reconnectsAutomatically = true
     /// Opened for each session by SharedFolderAccess.
     var sharedFolders: [Connection.SharedFolder] = []
@@ -110,4 +112,32 @@ enum CertificateDecision {
     case trustOnce
     /// Continue, and remember the certificate for this computer.
     case alwaysTrust
+}
+
+extension SessionTarget {
+    /// What a session window needs from a saved connection.
+    init(connection: Connection) {
+        self.init(
+            name: connection.name.isEmpty ? connection.host : connection.name,
+            host: connection.host,
+            port: UInt16(clamping: connection.port),
+            username: connection.username,
+            domain: connection.domain.isEmpty ? nil : connection.domain
+        )
+        connectionID = connection.id
+        resolutionMode = connection.resolutionMode
+        fixedWidth = connection.fixedWidth
+        fixedHeight = connection.fixedHeight
+        usesHiDPI = connection.usesHiDPI
+        usesAllDisplays = connection.usesAllDisplays
+        gateway = connection.gateway.isUsed ? connection.gateway : nil
+        requiresNLA = connection.requiresNLA
+        certificatePolicy = connection.certificatePolicy
+        audioMode = connection.audioMode
+        sharesClipboard = connection.sharesClipboard
+        copiesFiles = connection.copiesFiles
+        printsOnThisMac = connection.printsOnThisMac
+        reconnectsAutomatically = connection.reconnectsAutomatically
+        sharedFolders = connection.sharedFolders
+    }
 }

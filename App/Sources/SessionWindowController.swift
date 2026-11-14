@@ -17,6 +17,8 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     var onMainChange: ((Bool) -> Void)?
     var onClose: (() -> Void)?
     private var changedCertificateAlert: NSAlert?
+    /// Shows what the remote computer prints, as sheets on this window.
+    private(set) var printer: SessionPrinter?
 
     init(model: SessionModel) {
         self.model = model
@@ -65,6 +67,8 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
             )
         }
         updateTitle()
+        printer = SessionPrinter(window: window, model: model)
+        printer?.start()
         window.tab.accessoryView = tabState.makeView()
         observePhase()
         if target.usesAllDisplays {

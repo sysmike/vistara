@@ -14,6 +14,7 @@ struct NewConnectionDefaults: Codable, Equatable {
     var usesAllDisplays = false
     var sharesClipboard = true
     var copiesFiles = false
+    var printsOnThisMac = true
     var audioMode = Connection.AudioMode.playOnThisMac
     var reconnectsAutomatically = true
     var requiresNLA = true
@@ -31,6 +32,7 @@ struct NewConnectionDefaults: Codable, Equatable {
         usesAllDisplays = try values.decodeIfPresent(Bool.self, forKey: .usesAllDisplays) ?? usesAllDisplays
         sharesClipboard = try values.decodeIfPresent(Bool.self, forKey: .sharesClipboard) ?? sharesClipboard
         copiesFiles = try values.decodeIfPresent(Bool.self, forKey: .copiesFiles) ?? copiesFiles
+        printsOnThisMac = try values.decodeIfPresent(Bool.self, forKey: .printsOnThisMac) ?? printsOnThisMac
         audioMode = try values.decodeIfPresent(Connection.AudioMode.self, forKey: .audioMode) ?? audioMode
         reconnectsAutomatically =
             try values.decodeIfPresent(Bool.self, forKey: .reconnectsAutomatically) ?? reconnectsAutomatically
@@ -63,6 +65,7 @@ extension ConnectionDraft {
         usesAllDisplays = defaults.usesAllDisplays
         sharesClipboard = defaults.sharesClipboard
         copiesFiles = defaults.copiesFiles
+        printsOnThisMac = defaults.printsOnThisMac
         audioMode = defaults.audioMode
         reconnectsAutomatically = defaults.reconnectsAutomatically
         requiresNLA = defaults.requiresNLA

@@ -23,6 +23,12 @@ struct EntitlementsTests {
         #expect(entitlement("com.apple.security.files.bookmarks.app-scope") as? Bool == true)
     }
 
+    /// What the remote computer prints goes through the print panel.
+    @Test
+    func theAppMayPrint() {
+        #expect(entitlement("com.apple.security.print") as? Bool == true)
+    }
+
     /// Sound from the remote computer plays through the output only.
     @Test
     func theMicrophoneIsNeverAskedFor() {

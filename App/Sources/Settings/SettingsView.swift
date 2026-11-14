@@ -47,6 +47,7 @@ struct GeneralSettingsView: View {
                 }
                 Toggle("Share clipboard", isOn: $defaults.sharesClipboard)
                 CopyFilesToggle(sharesClipboard: defaults.sharesClipboard, copiesFiles: $defaults.copiesFiles)
+                Toggle("Print on this Mac", isOn: $defaults.printsOnThisMac)
                 Picker("Sound", selection: $defaults.audioMode) {
                     Text("Play on This Mac").tag(Connection.AudioMode.playOnThisMac)
                     Text("Play on Remote Computer").tag(Connection.AudioMode.playOnRemote)

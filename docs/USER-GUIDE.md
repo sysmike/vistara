@@ -8,7 +8,7 @@ the short version.
 - [Connecting](#connecting)
 - [The session window](#the-session-window)
 - [Keyboard](#keyboard)
-- [Clipboard, sound, and shared folders](#clipboard-sound-and-shared-folders)
+- [Clipboard, printing, sound, and shared folders](#clipboard-printing-sound-and-shared-folders)
 - [When the connection drops](#when-the-connection-drops)
 - [Importing and exporting .rdp files](#importing-and-exporting-rdp-files)
 - [Settings](#settings)
@@ -60,7 +60,7 @@ Settings > General.
   *Displays: All Displays* spreads the remote desktop across every display of
   your Mac; see below.
 - **Devices and Audio**: whether to share the clipboard and copy files
-  through it, and where sound plays.
+  through it, whether to print on this Mac, and where sound plays.
 - **Shared Folders**: Mac folders the remote computer may use. See below.
 - **Security**: whether to reconnect when the connection drops, whether to
   require Network Level Authentication, and how to treat certificates. A
@@ -249,9 +249,9 @@ Windows Key, or turn on *Use Right Command as the Windows key* in Settings >
 Keyboard. Right Command then works as the Windows key, so Right Command-R
 opens Run; Left Command stays with the Mac.
 
-## Clipboard, sound, and shared folders
+## Clipboard, printing, sound, and shared folders
 
-All three are set per connection in the editor.
+All of these are set per connection in the editor.
 
 **Clipboard.** With *Share clipboard* on, text copied on the remote computer
 is on your Mac's clipboard right away, and text you copy on the Mac can be
@@ -283,6 +283,25 @@ the other. A folder brings everything in it; symbolic links are left out.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/file-paste-progress-dark.png">
   <img alt="A paste of a file from the remote computer in progress, with Cancel" src="images/file-paste-progress.png" width="380">
+</picture>
+
+**Printing.** With *Print on this Mac* on, which it is unless you turn it
+off, the remote computer has a printer named **Vistara**. Print to it, and
+the Mac's print panel opens on that session's window with a preview of the
+document. Choose any of your Mac's printers, or save the document as a PDF
+from the panel's PDF menu; Cancel throws it away. Documents printed while a
+panel is open wait their turn, and if Vistara isn't in front, its Dock icon
+bounces once.
+
+- The Vistara printer uses Windows' Microsoft Print to PDF driver, which
+  Windows 10, Windows Server 2016, and newer have. Keep that driver: Vistara
+  prints only PDF documents, and says so if anything else arrives.
+- Documents are kept only until you print or cancel them, or the session
+  ends. A document larger than 512 MB isn't shown.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/print-panel-dark.png">
+  <img alt="The print panel on a session window, with a document from the remote computer" src="images/print-panel.png" width="560">
 </picture>
 
 **Sound.** *Play on This Mac* plays the remote computer's sound through your
@@ -358,7 +377,8 @@ settings; it has no settings of its own for them.
   explained in the editor.
 - **Your Mac** shares only what a connection allows: the clipboard while the
   session window is in front (files only with *Copy files*), sound, and the
-  folders you chose.
+  folders you chose. A printed document only comes to your Mac; nothing is
+  printed until you choose to in the print panel.
 - Vistara runs in the **App Sandbox** with the hardened runtime. It contacts
   only the computers you connect to; Help opens this guide in your browser.
 
@@ -370,7 +390,9 @@ the architecture document.
 Vistara is new. It does not yet support:
 
 - using only some of your displays (All Displays uses every one);
-- RemoteApp, smart cards, printers, or USB devices;
+- RemoteApp, smart cards, or USB devices;
+- choosing which of your Mac's printers the remote computer sees (it sees
+  one, Vistara, which is the print panel);
 - copying images through the clipboard, or dragging files into a session;
 - pasting files that one session copied straight into another session (paste
   them on the Mac first);

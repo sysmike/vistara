@@ -64,6 +64,9 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
     /// Off unless chosen; older files have none, and `.rdp` files have no
     /// setting for it.
     public var copiesFiles = false
+    /// Offers the remote computer a printer whose documents come out on this
+    /// Mac (docs/DESIGN.md, Printing). On, also when an older file has none.
+    public var printsOnThisMac = true
     public var audioMode = AudioMode.playOnThisMac
     public var sharedFolders: [SharedFolder] = []
 
@@ -83,7 +86,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         case id, name, host, port, username, domain
         case folderID, tags, isFavorite, lastConnectedAt
         case resolutionMode, fixedWidth, fixedHeight, usesHiDPI, usesAllDisplays
-        case sharesClipboard, copiesFiles, audioMode, sharedFolders
+        case sharesClipboard, copiesFiles, printsOnThisMac, audioMode, sharedFolders
         case reconnectsAutomatically, requiresNLA, certificatePolicy, gateway
         case additionalRDPSettings
     }
@@ -119,6 +122,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         usesAllDisplays = try values.decodeIfPresent(Bool.self, forKey: .usesAllDisplays) ?? usesAllDisplays
         sharesClipboard = try values.decodeIfPresent(Bool.self, forKey: .sharesClipboard) ?? sharesClipboard
         copiesFiles = try values.decodeIfPresent(Bool.self, forKey: .copiesFiles) ?? copiesFiles
+        printsOnThisMac = try values.decodeIfPresent(Bool.self, forKey: .printsOnThisMac) ?? printsOnThisMac
         audioMode = try values.decodeIfPresent(AudioMode.self, forKey: .audioMode) ?? audioMode
         sharedFolders = try values.decodeIfPresent([SharedFolder].self, forKey: .sharedFolders) ?? sharedFolders
         reconnectsAutomatically =
