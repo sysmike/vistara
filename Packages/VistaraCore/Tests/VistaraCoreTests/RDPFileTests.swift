@@ -178,3 +178,14 @@ private let sampleText = """
     single.usesAllDisplays = false
     #expect(RDPFileMapping.file(from: single).integer("use multimon") == 0)
 }
+
+@Test func copyingFilesIsNeitherImportedNorExported() throws {
+    // .rdp files have no setting for it: imports leave it off, exports write nothing for it.
+    let imported = try RDPFileMapping.connection(from: RDPFile(text: sampleText), name: "Build Server")
+    #expect(!imported.copiesFiles)
+
+    var connection = Connection(name: "Lab", host: "lab")
+    let without = RDPFileMapping.file(from: connection).text
+    connection.copiesFiles = true
+    #expect(RDPFileMapping.file(from: connection).text == without)
+}

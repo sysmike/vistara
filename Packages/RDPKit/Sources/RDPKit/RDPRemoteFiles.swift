@@ -20,6 +20,12 @@ public struct RDPRemoteFiles: Sendable, Equatable {
         self.listIndices = listIndices
     }
 
+    /// A list of these files that no session sent, for tests and previews.
+    /// Fetching it from a session fails with `noLongerOnClipboard`.
+    public init(files: [RDPClipboardFile]) {
+        self.init(files: files, skippedCount: 0, listID: .max, listIndices: files.indices.map { UInt32($0) })
+    }
+
     /// No files: the remote computer copied something else.
     public var isEmpty: Bool { files.isEmpty }
 

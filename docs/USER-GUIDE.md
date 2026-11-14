@@ -59,8 +59,8 @@ Settings > General.
   desktop every pixel and tells Windows to scale it up, so text stays sharp.
   *Displays: All Displays* spreads the remote desktop across every display of
   your Mac; see below.
-- **Devices and Audio**: whether to share the clipboard, and where sound
-  plays.
+- **Devices and Audio**: whether to share the clipboard and copy files
+  through it, and where sound plays.
 - **Shared Folders**: Mac folders the remote computer may use. See below.
 - **Security**: whether to reconnect when the connection drops, whether to
   require Network Level Authentication, and how to treat certificates. A
@@ -257,8 +257,33 @@ All three are set per connection in the editor.
 is on your Mac's clipboard right away, and text you copy on the Mac can be
 pasted there. Line endings are converted. Your Mac's clipboard is offered
 only while the session window is in front, and items your password manager
-marks as concealed are never shared. Only text is shared, not files or
-images. With the option off, nothing is shared in either direction.
+marks as concealed are never shared. Images are not shared. With the option
+off, nothing is shared in either direction.
+
+**Copying files.** With *Copy files* on as well, files and folders go through
+the clipboard both ways, as in the Finder: copy them on one side and paste on
+the other. A folder brings everything in it; symbolic links are left out.
+
+- Files the remote computer copied are fetched only when you paste them. A
+  large paste shows its progress in a small panel, where you can cancel it.
+  Vistara keeps working meanwhile, and so do your other sessions.
+- Pasted files are marked as downloaded, so macOS checks them before anything
+  in them runs. Vistara removes its own copies when the session ends or
+  something else is copied.
+- *Copy files* is off unless you turn it on, because while the session window
+  is in front, the remote computer can read whatever you copy on the Mac
+  without anyone pasting it there. For text that is usually what you meant to
+  share; for a file it is all of the file, which is often more.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/editor-copy-files-dark.png">
+  <img alt="Copy files beneath Share clipboard in the editor" src="images/editor-copy-files.png" width="480">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/file-paste-progress-dark.png">
+  <img alt="A paste of a file from the remote computer in progress, with Cancel" src="images/file-paste-progress.png" width="380">
+</picture>
 
 **Sound.** *Play on This Mac* plays the remote computer's sound through your
 Mac's current output, and follows you when you switch to headphones. *Play on
@@ -300,6 +325,9 @@ Passwords are never imported or exported. A notice above the list says what
 an import did, including any password it left out and any line it didn't
 understand.
 
+`.rdp` files have no setting for *Copy files*: an import leaves it off, and
+an export writes nothing for it.
+
 A file's gateway comes with it. Vistara uses a gateway always or never: a
 file that uses its gateway only when the computer can't be reached directly,
 or not for local addresses, imports as Always, and the notice says so.
@@ -329,7 +357,8 @@ settings; it has no settings of its own for them.
   default. Turning NLA off for an older computer is a per-connection choice,
   explained in the editor.
 - **Your Mac** shares only what a connection allows: the clipboard while the
-  session window is in front, sound, and the folders you chose.
+  session window is in front (files only with *Copy files*), sound, and the
+  folders you chose.
 - Vistara runs in the **App Sandbox** with the hardened runtime. It contacts
   only the computers you connect to; Help opens this guide in your browser.
 
@@ -342,7 +371,9 @@ Vistara is new. It does not yet support:
 
 - using only some of your displays (All Displays uses every one);
 - RemoteApp, smart cards, printers, or USB devices;
-- copying files or images through the clipboard (text only);
+- copying images through the clipboard, or dragging files into a session;
+- pasting files that one session copied straight into another session (paste
+  them on the Mac first);
 - the microphone (by design for now);
 - keeping sessions across a restart of Vistara.
 

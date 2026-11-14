@@ -161,6 +161,7 @@ struct ConnectionEditor: View {
     private var devices: some View {
         Section("Devices and Audio") {
             Toggle("Share clipboard", isOn: $draft.sharesClipboard)
+            CopyFilesToggle(sharesClipboard: draft.sharesClipboard, copiesFiles: $draft.copiesFiles)
             Picker("Sound", selection: $draft.audioMode) {
                 Text("Play on This Mac").tag(Connection.AudioMode.playOnThisMac)
                 Text("Play on Remote Computer").tag(Connection.AudioMode.playOnRemote)

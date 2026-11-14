@@ -18,6 +18,7 @@ private func fullyPopulatedLibrary() -> Library {
     connection.fixedHeight = 1440
     connection.usesHiDPI = false
     connection.sharesClipboard = false
+    connection.copiesFiles = true
     connection.audioMode = .off
     connection.sharedFolders = [.init(path: "/Users/alice/Transfer", bookmark: Data([1, 2, 3]), isReadOnly: true)]
     connection.reconnectsAutomatically = false
