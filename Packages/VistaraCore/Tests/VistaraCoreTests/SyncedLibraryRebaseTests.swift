@@ -7,6 +7,13 @@ import Testing
 /// and noticing it changed: what the app's library needs (#149).
 @Suite
 struct SyncedLibraryRebaseTests {
+    /// Where a connection is: a library's order follows identifiers, which are random.
+    private func index(of connection: Connection, in library: Library) throws -> Int {
+        try #require(library.connections.firstIndex { $0.id == connection.id })
+    }
+
+    private func names(_ library: Library) -> [String] { library.connections.map(\.name).sorted() }
+
     @Test func aSaveBasedOnAnOlderLibraryKeepsWhatAnotherMacChangedMeanwhile() async throws {
         let macs = try TwoMacs()
         defer { macs.cleanUp() }
@@ -18,7 +25,7 @@ struct SyncedLibraryRebaseTests {
 
         macs.clock.advance()
         var mine = try await macs.first.sync().library
-        mine.connections[0].name = "Build Server 2"
+        mine.connections[try index(of: build, in: mine)].name = "Build Server 2"
         _ = try await macs.first.save(mine)
         _ = try await macs.second.sync()
 
@@ -26,15 +33,15 @@ struct SyncedLibraryRebaseTests {
         // both on top of what it showed before the first Mac's change.
         macs.clock.advance()
         var changed = base
-        changed.connections[1].name = "Jump Host 2"
-        changed.connections[0].lastConnectedAt = macs.clock.now()
+        changed.connections[try index(of: jump, in: changed)].name = "Jump Host 2"
+        changed.connections[try index(of: build, in: changed)].lastConnectedAt = macs.clock.now()
         let theirs = try await macs.second.save(changed, basedOn: base).library
 
-        #expect(theirs.connections.map(\.name) == ["Build Server 2", "Jump Host 2"])
-        #expect(theirs.connections[0].lastConnectedAt == macs.clock.now())
+        #expect(names(theirs) == ["Build Server 2", "Jump Host 2"])
+        #expect(theirs.connections[try index(of: build, in: theirs)].lastConnectedAt == macs.clock.now())
         let both = try await macs.first.sync().library
-        #expect(both.connections.map(\.name) == ["Build Server 2", "Jump Host 2"])
-        #expect(both.connections[0].lastConnectedAt == nil)
+        #expect(names(both) == ["Build Server 2", "Jump Host 2"])
+        #expect(both.connections[try index(of: build, in: both)].lastConnectedAt == nil)
     }
 
     @Test func aSaveBasedOnAnOlderLibraryKeepsWhatAnotherMacAddedAndDeleted() async throws {
@@ -53,14 +60,14 @@ struct SyncedLibraryRebaseTests {
         // A per-Mac change to the deleted one doesn't bring it back; an edit would.
         macs.clock.advance()
         var changed = base
-        changed.connections[1].lastConnectedAt = macs.clock.now()
+        changed.connections[try index(of: jump, in: changed)].lastConnectedAt = macs.clock.now()
         let theirs = try await macs.second.save(changed, basedOn: base).library
-        #expect(theirs.connections.map(\.name) == ["Build Server", "Lab"])
+        #expect(names(theirs) == ["Build Server", "Lab"])
 
         var edited = changed
-        edited.connections[1].name = "Jump Host 2"
+        edited.connections[try index(of: jump, in: edited)].name = "Jump Host 2"
         let back = try await macs.second.save(edited, basedOn: changed).library
-        #expect(back.connections.map(\.name) == ["Build Server", "Jump Host 2", "Lab"])
+        #expect(names(back) == ["Build Server", "Jump Host 2", "Lab"])
     }
 
     @Test func joiningKeepsWhatTheFolderMarksDeleted() async throws {
@@ -78,8 +85,8 @@ struct SyncedLibraryRebaseTests {
         macs.clock.advance()
         let joined = try await second.join()
 
-        #expect(joined.library.connections.map(\.name) == ["Build Server"])
-        #expect(try await macs.first.sync().library.connections.map(\.name) == ["Build Server"])
+        #expect(names(joined.library) == ["Build Server"])
+        #expect(try await names(macs.first.sync().library) == ["Build Server"])
     }
 
     @Test func aChangeInTheFolderIsNoticed() async throws {
@@ -118,5 +125,19 @@ struct SyncedLibraryRebaseTests {
         #expect(await !store.needsSync())
         #expect(written != nil)
         #expect(modified() == written)
+    }
+
+    @Test func aChangeWithinTheSameSecondIsStillTheLaterOne() async throws {
+        let macs = try TwoMacs()
+        defer { macs.cleanUp() }
+        let build = Connection(name: "Build Server", host: "build01")
+        _ = try await macs.first.save(Library(connections: [build]))
+        var theirs = try await macs.second.sync().library
+
+        theirs.connections[0].name = "Build Server 2"
+        theirs = try await macs.second.save(theirs).library
+
+        #expect(names(theirs) == ["Build Server 2"])
+        #expect(try await names(macs.first.sync().library) == ["Build Server 2"])
     }
 }

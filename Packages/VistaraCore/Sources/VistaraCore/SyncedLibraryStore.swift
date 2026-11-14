@@ -177,22 +177,38 @@ public actor SyncedLibraryStore {
         var stamped = library
         let knownConnections = Dictionary(known.connections.map { ($0.id, $0) }) { first, _ in first }
         let knownFolders = Dictionary(known.folders.map { ($0.id, $0) }) { first, _ in first }
-        stamped.connections = library.connections.map { Self.stamp($0, was: knownConnections[$0.id], at: time) }
-        stamped.folders = library.folders.map { Self.stamp($0, was: knownFolders[$0.id], at: time) }
+        let deletions = pendingDeletions
+        stamped.connections = library.connections.map {
+            Self.stamp($0, was: knownConnections[$0.id], deletedAt: deletions[$0.id], at: time)
+        }
+        stamped.folders = library.folders.map {
+            Self.stamp($0, was: knownFolders[$0.id], deletedAt: deletions[$0.id], at: time)
+        }
         let present = Set(library.connections.map(\.id)).union(library.folders.map(\.id))
         for id in Set(knownConnections.keys).union(knownFolders.keys) where !present.contains(id) {
-            pendingDeletions[id] = time
+            let changed = knownConnections[id]?.modifiedAt ?? knownFolders[id]?.modifiedAt
+            pendingDeletions[id] = Self.later(than: changed, at: time)
         }
         // Back again, as after an undo: no longer deleted.
         for id in present { pendingDeletions[id] = nil }
         return stamped
     }
 
-    private static func stamp<Entry: SyncedEntry>(_ entry: Entry, was old: Entry?, at time: Date) -> Entry {
+    private static func stamp<Entry: SyncedEntry>(
+        _ entry: Entry, was old: Entry?, deletedAt: Date?, at time: Date
+    ) -> Entry {
         if let old, entry.hasSameSharedPart(as: old) { return entry }
         var stamped = entry
-        stamped.modifiedAt = time
+        stamped.modifiedAt = later(than: old?.modifiedAt ?? deletedAt, at: time)
         return stamped
+    }
+
+    /// Now, or a second after what it follows if that is as late: a change
+    /// made within the same second as the version it changes is still the
+    /// later one, and a tie would go to the folder.
+    private static func later(than previous: Date?, at time: Date) -> Date {
+        guard let previous, previous >= time else { return time }
+        return previous.addingTimeInterval(1)
     }
 
     // MARK: State
