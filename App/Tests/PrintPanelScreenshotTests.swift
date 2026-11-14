@@ -1,6 +1,7 @@
 import AppKit
 import RDPKit
 import Testing
+import VistaraCore
 @testable import Vistara
 
 /// The real print panel on a session window, for its screenshots. It looks
