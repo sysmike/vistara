@@ -63,8 +63,8 @@ static UINT encode_list(const vistara_local_file *offer, size_t count, bool huge
     return result;
 }
 
-/// Reads a packed file list. FreeRDP refuses the whole list if a name holds
-/// ".." as a part.
+/// Reads a packed file list. Names are passed on as sent: RDPKit checks each
+/// one before it becomes a path (RDPClipboardFileName.fromRemote).
 static bool decode_list(const BYTE *data, UINT32 length, vistara_remote_file **out, vistara_listed_file **listed,
                         size_t *count) {
     *out = NULL;

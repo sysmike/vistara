@@ -211,10 +211,16 @@ struct ClipboardFileTests {
         #expect(decoded.skippedCount == 1)
     }
 
-    @Test func aRemoteListWithAPathOutOfTheFolderIsRefusedWhole() {
-        // FreeRDP refuses the list as soon as one name climbs out with "..".
-        let list = fileList([fileDescriptor("Fine.txt", size: 1), fileDescriptor("..\\Outside.txt", size: 1)])
-        #expect(SessionHandle.decodeFileList(list) == nil)
+    @Test func aRemoteNameThatClimbsOutOfTheFolderIsLeftOut() throws {
+        let list = fileList([
+            fileDescriptor("Fine.txt", size: 1),
+            fileDescriptor("..\\Outside.txt", size: 1),
+            fileDescriptor("Folder\\..\\..\\Outside.txt", size: 1)
+        ])
+        let decoded = try #require(SessionHandle.decodeFileList(list))
+        #expect(decoded.files == [RDPClipboardFile(path: "Fine.txt", size: 1, isFolder: false)])
+        #expect(decoded.skippedCount == 2)
+        // A list cut short is not read at all.
         #expect(SessionHandle.decodeFileList(Data([1, 0, 0, 0, 7])) == nil)
     }
 
