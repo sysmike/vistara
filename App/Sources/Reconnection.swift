@@ -27,13 +27,16 @@ struct ReconnectionPolicy {
     }
 
     /// Whether an attempt that ended this way is worth another. Only when the
-    /// computer could not be reached: a refused password, a certificate
-    /// question answered no, or anything the server decided ends reconnecting.
+    /// computer or its gateway could not be reached: a refused password, the
+    /// gateway's too, a certificate question answered no, or anything the
+    /// server or the gateway decided ends reconnecting.
     static func retries(after reason: RDPDisconnectReason) -> Bool {
         switch reason {
         case .connectionFailed(let failure):
-            [.hostNotFound, .unreachable, .notResponding, .refused, .starting, .cannotConnect, .networkLost]
-                .contains(failure.kind)
+            [
+                .hostNotFound, .unreachable, .notResponding, .refused, .starting, .cannotConnect, .networkLost,
+                .gatewayUnreachable
+            ].contains(failure.kind)
         case .connectionLost(let failure):
             failure.kind == .networkLost
         default:
