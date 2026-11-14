@@ -9,10 +9,13 @@
 # The same timer sends a steady tone, and the patch adds a clipboard and logs
 # the input and clipboard text it receives.
 #
+# The build also has FreeRDP's minimal client, sfreerdp, which checks the test
+# gateway with a client that is not Vistara (scripts/check-test-gateway.sh).
+#
 # Requires scripts/build-freerdp.sh to have run (for OpenSSL).
 #
 # Usage: scripts/build-test-server.sh [--force] [--print-key]
-# Output: build/test-server/prefix/bin/{freerdp-shadow-cli,winpr-hash}
+# Output: build/test-server/prefix/bin/{freerdp-shadow-cli,winpr-hash,sfreerdp}
 
 set -euo pipefail
 
@@ -49,6 +52,13 @@ if [[ $FORCE -eq 0 && -f "$STAMP" && "$(cat "$STAMP")" == "$BUILD_KEY" ]]; then
 fi
 [[ -f "$DEPS/lib/libssl.3.dylib" ]] || die "OpenSSL not found in $DEPS. Run scripts/build-freerdp.sh first."
 
+# The client side of the channels the app leaves out (scripts/build-freerdp.sh);
+# the server keeps its side of each.
+CLIENT_CHANNEL_FLAGS=()
+for channel in AUDIN LOCATION PARALLEL PRINTER RDP2TCP RDPEAR RDPECAM REMDESK SERIAL SMARTCARD SSHAGENT TSMF URBDRC; do
+  CLIENT_CHANNEL_FLAGS+=("-DCHANNEL_${channel}_CLIENT=OFF")
+done
+
 GENERATOR=()
 if command -v ninja >/dev/null; then GENERATOR=(-G Ninja); fi
 
@@ -84,8 +94,9 @@ cmake -S "$WORK/src" -B "$WORK/obj" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DWITH_PROXY=OFF \
   -DWITH_PLATFORM_SERVER=OFF \
   -DWITH_WINPR_TOOLS=ON \
-  -DWITH_CLIENT=OFF \
-  -DWITH_SAMPLE=OFF \
+  -DWITH_CLIENT=ON \
+  -DWITH_CLIENT_SDL=OFF \
+  -DWITH_SAMPLE=ON \
   -DWITH_X11=OFF \
   -DWITH_MANPAGES=OFF \
   -DWITH_FFMPEG=OFF \
@@ -102,7 +113,8 @@ cmake -S "$WORK/src" -B "$WORK/obj" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DWITH_INTERNAL_MD4=ON \
   -DWITH_INTERNAL_MD5=ON \
   -DWITH_INTERNAL_RC4=ON \
-  -DCHANNEL_URBDRC=OFF
+  -DCHANNEL_URBDRC=OFF \
+  "${CLIENT_CHANNEL_FLAGS[@]}"
 cmake --build "$WORK/obj" --parallel "$(sysctl -n hw.ncpu)"
 cmake --install "$WORK/obj"
 
@@ -110,7 +122,7 @@ cmake --install "$WORK/obj"
 cp -f "$DEPS/lib/libssl.3.dylib" "$DEPS/lib/libcrypto.3.dylib" "$PREFIX/lib/"
 
 ls "$PREFIX/bin"
-for tool in freerdp-shadow-cli winpr-hash; do
+for tool in freerdp-shadow-cli winpr-hash sfreerdp; do
   [[ -x "$PREFIX/bin/$tool" ]] || die "expected $tool in $PREFIX/bin"
 done
 # Proves the binary loads its libraries. /version exits non-zero by design.

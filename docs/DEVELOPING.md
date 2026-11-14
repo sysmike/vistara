@@ -71,6 +71,68 @@ The test server is a build of FreeRDP's own server with a 1024x768
 screen filled with one colour. It checks the protocol path (TLS, Network Level Authentication,
 graphics updates). It is not a substitute for testing against Windows.
 
+### Through an RD Gateway
+
+CI also runs [rdpgw](https://github.com/bolkedebruin/rdpgw), an open-source
+RD Gateway, in front of the test server. It is built from the source pinned in
+`scripts/RDPGW_VERSION` and needs Go (`brew install go`):
+
+```bash
+scripts/build-test-gateway.sh
+```
+
+Start it after the test server, in the same shell:
+
+```bash
+set -a && eval "$(scripts/run-test-server.sh)" && eval "$(scripts/run-test-gateway.sh)" && set +a
+```
+
+The gateway listens on `localhost:34443` with the HTTP transport and NTLM. Each
+start makes a new certificate authority and a gateway certificate it signs,
+and one gateway user with a new password. That user may reach the test server
+and nothing else. The environment it prints:
+
+| Variable | What it is |
+| --- | --- |
+| `VISTARA_TEST_GATEWAY_HOST`, `VISTARA_TEST_GATEWAY_PORT` | Where the gateway listens |
+| `VISTARA_TEST_GATEWAY_USER`, `VISTARA_TEST_GATEWAY_PASSWORD` | The gateway user. Any other name or password fails |
+| `VISTARA_TEST_GATEWAY_CA` | The authority that signed the gateway's certificate. Without it the certificate is untrusted |
+| `VISTARA_TEST_GATEWAY_REFUSED_HOST` | An address the gateway refuses to reach (port 3389) |
+| `VISTARA_TEST_GATEWAY_LOG` | The gateway's log. It names the user it accepted, the host it reached, and the hosts it refused |
+
+The gateway log lines tests can wait for:
+
+| Line | When |
+| --- | --- |
+| `NTLM: User <name> authenticated` | The gateway accepted the user |
+| `Failed to process NTLM authenticate message` | A wrong password |
+| `NTLM: unknown username specified: <name>` | A user the gateway does not know |
+| `Establishing connection to RDP server: <host>:<port>` | The gateway reaches the server for the client |
+| `Not allowed to connect to <host>:<port> by policy handler` | The policy refused the address |
+
+To check the gateway setup on its own, with FreeRDP's minimal client instead
+of Vistara:
+
+```bash
+scripts/check-test-gateway.sh
+```
+
+CI runs this before the tests, so a broken gateway setup is not taken for a
+fault in Vistara.
+
+Two files beside the pin keep the build reproducible on macOS:
+
+- `scripts/test-gateway/go.sum`: rdpgw's release has none, so this one pins
+  every Go module it uses.
+- `scripts/test-gateway/no-pam.patch`: rdpgw's authentication helper also
+  checks passwords with PAM, which does not build against macOS's PAM. The
+  patch takes that mode out; the gateway tests use NTLM only.
+
+To move to a newer rdpgw, change `scripts/RDPGW_VERSION`, check that the patch
+still applies, and delete the `go.sum`. The next build resolves the modules
+with `go mod tidy`, which checks them against Go's checksum database, prints
+the new `go.sum`, and stops. Review it, commit it, and build again.
+
 ### Against a Windows host
 
 The same tests run against any RDP host. Use a computer you may test
