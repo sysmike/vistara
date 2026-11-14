@@ -284,7 +284,11 @@ jobs:
           # Screenshots of real windows: the sandboxed tests cannot capture the
           # screen, so they ask this step, which can. See App/Tests/Screenshots.swift.
           TEST_RUNNER_VISTARA_SCREEN_CAPTURE: "1"
+          # The file clipboard probes (#134): a helper outside the sandbox
+          # copies and pastes files for them. See App/Tests/FileClipboardProbeTests.swift.
+          TEST_RUNNER_VISTARA_PASTEBOARD_HELPER: "1"
         run: |
+          swiftc -swift-version 5 -O scripts/test-pasteboard/pasteboard-helper.swift -o build/pasteboard-helper
           capture_windows() {
             shopt -s nullglob
             while true; do
@@ -293,6 +297,14 @@ jobs:
                 screencapture -x -o -l"$(cat "$request")" "$picture.part.png" &&
                   mv "$picture.part.png" "$picture"
                 rm -f "$request"
+              done
+              for request in "$HOME"/Library/Containers/*/Data/tmp/vistara-pasteboard/*.request; do
+                command="$(cat "$request")"
+                answer="${request%.request}.json"
+                rm -f "$request"
+                work="$(mktemp -d "$HOME/vistara-pasteboard.XXXXXX")"
+                build/pasteboard-helper "$command" "$work" > "$answer.part" 2>&1
+                mv "$answer.part" "$answer"
               done
               sleep 0.1
             done

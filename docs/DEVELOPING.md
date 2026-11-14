@@ -50,6 +50,24 @@ of their window (`VISTARA_SCREEN_CAPTURE=1`; see `App/Tests/Screenshots.swift`).
 Locally, and for a window taller than the runner's screen, they draw offscreen.
 The images in `docs/images` come from that artifact.
 
+### Files on the pasteboard
+
+The file clipboard probes (`App/Tests/FileClipboardProbeTests.swift`) need an
+app outside the sandbox that copies and pastes files the way the Finder does:
+`scripts/test-pasteboard/pasteboard-helper.swift`. The CI test step builds it
+and runs it when a test writes a request into
+`vistara-pasteboard` in the app's container, as it does for screenshots, and
+sets `TEST_RUNNER_VISTARA_PASTEBOARD_HELPER=1`. Without that variable the
+probes are skipped. To run them locally, build the helper and serve requests
+the same way:
+
+```bash
+swiftc -swift-version 5 -O scripts/test-pasteboard/pasteboard-helper.swift -o build/pasteboard-helper
+```
+
+What the probes found, and why Vistara provides the remote computer's files
+as it does, is on issue #134.
+
 ## Integration tests
 
 Tests that need an RDP server run only when `VISTARA_TEST_RDP_HOST` is set.

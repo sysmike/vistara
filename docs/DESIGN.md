@@ -500,9 +500,9 @@ side, paste on the other.
   links are not followed.
 - **Remote computer to Mac**: files copied there can be pasted in the Finder
   or any app that takes files. They are fetched only when pasted, into a
-  folder of Vistara's own, and the app that pastes copies them from there.
-  Vistara stays responsive while they arrive, and a large paste shows its
-  progress and can be cancelled.
+  folder of Vistara's own, and the app that pastes copies them from there; it
+  waits until they are there. Vistara stays responsive while they arrive, and
+  a large paste shows its progress and can be cancelled.
 - Files from the remote computer are marked as downloaded (quarantined), so
   macOS checks them before anything in them runs. Fetched files are removed
   when the session ends or something else is copied.
