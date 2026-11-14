@@ -38,11 +38,19 @@ struct PrintingTests {
     /// The print system may bring another process forward, which leaves no
     /// window of Vistara key for the tests after these. Says what it found.
     private func restoreFocus(_ test: String) async {
-        let note = "active=\(NSApp.isActive) modal=\(NSApp.modalWindow != nil) key=\(NSApp.keyWindow != nil)"
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"
+        let note = "active=\(NSApp.isActive) modal=\(NSApp.modalWindow != nil) key=\(NSApp.keyWindow != nil) "
+            + "front=\(front)"
         print("vistara-probe printing-focus \(test) \(note)")
         if NSApp.modalWindow != nil { NSApp.abortModal() }
         NSApp.activate(ignoringOtherApps: true)
         await waitUntil("Vistara is active again", within: .seconds(5)) { NSApp.isActive }
+    }
+
+    /// Where focus is now, for finding what takes it.
+    private static func note(_ step: String) {
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"
+        print("vistara-probe printing-step \(step) active=\(NSApp.isActive) front=\(front)")
     }
 
     private func makeWindow(dark: Bool = false) -> NSWindow {
@@ -196,12 +204,15 @@ struct PrintingTests {
         }
         controller.show()
 
+        Self.note("shown")
         model.connect()
         await waitUntil("the certificate question is open") { model.pendingCertificate != nil }
+        Self.note("certificate")
         model.answerCertificate(.trustOnce)
         await waitUntil("the PDF is saved and the refusal is on the window", within: .seconds(30)) {
             FileManager.default.fileExists(atPath: saved.path) && controller.window.attachedSheet != nil
         }
+        Self.note("saved")
 
         // Printing lays the page out on the print info's paper, so only the page count stays.
         let document = try #require(PDFDocument(url: saved))
@@ -209,9 +220,11 @@ struct PrintingTests {
         #expect(model.printQueue.next?.content == .refused(tooLarge: false))
         if let alert = controller.window.attachedSheet { controller.window.endSheet(alert) }
         await waitUntil("nothing waits any more") { model.printQueue.next == nil }
+        Self.note("alert")
         let folder = try #require(model.printQueue.folder)
         model.disconnect()
         await waitUntil("the session has ended") { !model.isLive }
+        Self.note("ended")
         #expect(!FileManager.default.fileExists(atPath: folder.path))
         await restoreFocus("server")
     }
