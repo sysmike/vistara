@@ -139,9 +139,10 @@ final class ProgramWindowController: NSObject, NSWindowDelegate {
     }
 
     /// The displays are changing: the window stays at `frame` on the Mac.
+    /// A window being dragged follows the drag, which sends where it ends.
     func holdPlace(at frame: CGRect) {
         holdsPlace = true
-        if frame != window.frame { window.setFrame(frame, display: true) }
+        if window.localDrag == nil, frame != window.frame { window.setFrame(frame, display: true) }
     }
 
     /// The displays have changed, and the remote desktop follows `space`:
