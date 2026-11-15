@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VistaraCore
 
@@ -7,19 +8,21 @@ import VistaraCore
 struct SyncNotice: View {
     let folder: SyncFolderChoice
     let state: SyncedLibraryStore.FolderState
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
-            Text(Self.message(folder: folder.name, state: state))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            // Laid out as the other notices are: a text that fixes its own
+            // height kept the whole window from drawing.
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Self.message(folder: folder.name, state: state))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Button("Sync Settings…") {
                 UserDefaults.standard.set(SettingsView.Pane.sync.rawValue, forKey: SettingsView.paneKey)
-                openSettings()
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
         }
         .noticeBackground()
