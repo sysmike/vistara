@@ -7,8 +7,9 @@
 # A patch gives it one fixed 1024x768 monitor filled with a known colour and a
 # timer that pushes pending updates, so clients receive a predictable picture.
 # The same timer sends a steady tone, and the patch adds a clipboard that
-# offers text and files and fetches the files a client offers, and logs the
-# input and clipboard data it receives.
+# offers text and files and fetches the files a client offers, a printer
+# client documents, and a RemoteApp host whose programs open known windows,
+# and logs the input, clipboard data, and RemoteApp orders it receives.
 #
 # The build also has FreeRDP's minimal client, sfreerdp, which checks the test
 # gateway with a client that is not Vistara (scripts/check-test-gateway.sh).

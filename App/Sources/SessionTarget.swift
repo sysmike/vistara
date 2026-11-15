@@ -38,7 +38,8 @@ struct SessionTarget: Equatable, Sendable {
     /// The gateway to go through, when the connection uses one.
     var gateway: Connection.Gateway?
     /// The program to open in place of the desktop, when the connection opens
-    /// one (docs/DESIGN.md, RemoteApp). RDPKit starts it from #154 on.
+    /// one (docs/DESIGN.md, RemoteApp). Not passed to RDPKit until the app can
+    /// show program windows (#155); until then the desktop opens.
     var program: Connection.Program?
 
     /// What RDPKit is told about this target, for a desktop of the given size.

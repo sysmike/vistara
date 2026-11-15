@@ -111,6 +111,8 @@ final class SessionHandle {
         options.shared_folders = folders.pointer.map { UnsafePointer($0) }
         options.shared_folder_count = folders.count
         options.print_folder = printFolder.map { UnsafePointer($0) }
+        options.remote_app_program = strings.programPath.map { UnsafePointer($0) }
+        options.remote_app_arguments = strings.programArguments.map { UnsafePointer($0) }
 
         let monitors = target.monitors.map(\.cMonitor)
         return withExtendedLifetime((decider, messageDecider, folders)) {
@@ -209,12 +211,22 @@ final class SessionHandle {
             vistara_session_request_size(session, UInt32(width), UInt32(height), UInt32(scalePercent))
         case .clipboardText, .clipboardFiles:
             offerClipboard(event)
+        case .displayUpdates, .monitorLayout, .remoteApp:
+            sendDisplayOrOrder(event)
+        }
+    }
+
+    /// What is not input from the keyboard or pointer, or the clipboard.
+    private func sendDisplayOrOrder(_ event: RDPInputEvent) -> Bool {
+        switch event {
         case .displayUpdates(let allowed): vistara_session_set_display_updates(session, allowed)
         case .monitorLayout(let monitors):
             monitors.map(\.cMonitor).withUnsafeBufferPointer { buffer in
                 guard let first = buffer.baseAddress else { return false }
                 return vistara_session_request_layout(session, first, buffer.count)
             }
+        case .remoteApp(let order): send(order)
+        default: false
         }
     }
 
