@@ -91,6 +91,13 @@ without the app.
 - Releases are signed with a Developer ID, notarized, and stapled by a
   workflow that runs for version tags only (docs/RELEASING.md).
 
+- Smart cards (DESIGN.md, Smart cards) go through FreeRDP's smart card
+  channel, which reaches the Mac's readers through WinPR's PC/SC layer and
+  macOS's PC/SC framework. The app adds the App Sandbox's smart card
+  entitlement, `com.apple.security.smartcard`, and nothing else. Tests use
+  FreeRDP's emulated card, made from a test certificate and key, in place of
+  a reader.
+
 ## Testing and CI
 
 - Unit tests cover the connection store, the `.rdp` parser, keyboard mapping,
@@ -106,7 +113,6 @@ Version 1 covers the connection library, per-connection settings, the session
 window, certificate trust on first use, and `.rdp` import and export.
 Session tabs came in milestone M4, multiple displays in M5, RD Gateway in
 M6, copying files in M7, printing in M8, and keeping connections on several
-Macs in M9, and RemoteApp follows in M10 (see Session tabs, Multiple
-displays, RD Gateway, Copying files, Printing, Connections on several Macs,
-and RemoteApp in DESIGN.md). Smart cards are tracked as an issue labeled
-`later`.
+Macs in M9, RemoteApp in M10, and smart cards follow in M11 (see Session
+tabs, Multiple displays, RD Gateway, Copying files, Printing, Connections on
+several Macs, RemoteApp, and Smart cards in DESIGN.md).
