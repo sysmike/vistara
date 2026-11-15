@@ -75,6 +75,12 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
     public var certificatePolicy = CertificatePolicy.askOnFirstUse
     /// Never, unless the connection says otherwise; older files have none.
     public var gateway = Gateway()
+    /// The desktop, unless the connection opens a program; older files have
+    /// none.
+    public var program = Program()
+    /// The program's icon as a PNG, once it was opened on this Mac. Kept on
+    /// this Mac only, as `lastConnectedAt` is.
+    public var programIcon: Data?
 
     /// Lines from an imported `.rdp` file that Vistara has no setting for, kept
     /// as written so an export gives them back. Never holds a password.
@@ -92,7 +98,7 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         case folderID, tags, isFavorite, lastConnectedAt
         case resolutionMode, fixedWidth, fixedHeight, usesHiDPI, usesAllDisplays
         case sharesClipboard, copiesFiles, printsOnThisMac, audioMode, sharedFolders
-        case reconnectsAutomatically, requiresNLA, certificatePolicy, gateway
+        case reconnectsAutomatically, requiresNLA, certificatePolicy, gateway, program, programIcon
         case additionalRDPSettings, modifiedAt
     }
 
@@ -136,6 +142,8 @@ public struct Connection: Identifiable, Codable, Equatable, Sendable, UnknownFie
         certificatePolicy =
             try values.decodeIfPresent(CertificatePolicy.self, forKey: .certificatePolicy) ?? certificatePolicy
         gateway = try values.decodeIfPresent(Gateway.self, forKey: .gateway) ?? gateway
+        program = try values.decodeIfPresent(Program.self, forKey: .program) ?? program
+        programIcon = try values.decodeIfPresent(Data.self, forKey: .programIcon)
         additionalRDPSettings =
             try values.decodeIfPresent([String].self, forKey: .additionalRDPSettings) ?? additionalRDPSettings
         modifiedAt = try values.decodeIfPresent(Date.self, forKey: .modifiedAt)

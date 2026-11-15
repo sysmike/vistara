@@ -24,11 +24,12 @@ extension SyncedEntry {
 
 extension Connection: SyncedEntry {
     /// Shared folders open only on the Mac whose bookmarks they hold, and the
-    /// last use is each Mac's own.
+    /// last use and the program's icon are each Mac's own.
     var shared: Connection {
         var shared = self
         shared.sharedFolders = []
         shared.lastConnectedAt = nil
+        shared.programIcon = nil
         return shared
     }
 
@@ -36,6 +37,7 @@ extension Connection: SyncedEntry {
         var joined = self
         joined.sharedFolders = local?.sharedFolders ?? []
         joined.lastConnectedAt = local?.lastConnectedAt
+        joined.programIcon = local?.programIcon
         return joined
     }
 }

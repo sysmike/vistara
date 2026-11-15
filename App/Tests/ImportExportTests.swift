@@ -58,6 +58,28 @@ struct ImportExportTests {
     }
 
     @Test
+    func aProgramIsImportedUnderItsOwnNameAndOneMissingIsSaid() async throws {
+        let (model, _) = try await temporaryLibrary()
+        let report = await model.importRDPFiles(try files([
+            "Word.rdp": """
+                full address:s:apps01
+                remoteapplicationmode:i:1
+                remoteapplicationprogram:s:||WINWORD
+                remoteapplicationname:s:Microsoft Word
+                """,
+            "Broken App.rdp": "full address:s:apps01\nremoteapplicationmode:i:1\n"
+        ]))
+
+        let word = try #require(model.library.connections.first { $0.name == "Microsoft Word" })
+        #expect(word.program.isUsed)
+        #expect(report.imported.sorted() == ["Broken App", "Microsoft Word"])
+        #expect(report.programsMissing == ["Broken App"])
+        #expect(report.sentences.contains(
+            "“Broken App” asks for a program without naming one, so the desktop opens instead."
+        ))
+    }
+
+    @Test
     func theNoticeSaysWhatHappenedInWords() {
         let report = ImportReport(
             imported: ["Build Server", "Jump Host"], droppedPasswords: ["Build Server"], skippedLines: 3, failures: []
