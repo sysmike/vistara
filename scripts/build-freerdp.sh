@@ -1,8 +1,10 @@
 #!/bin/bash
 #
 # Builds the pinned FreeRDP release (libfreerdp, libfreerdp-client, WinPR) and
-# its one external dependency, OpenSSL, into a self-contained prefix that the
-# app bundles.
+# its one external dependency, OpenSSL, into a self-contained prefix. The app
+# links them statically: it carries no libraries of its own, so library
+# validation has nothing to refuse, ad hoc signed or not (docs/RELEASING.md).
+# OpenSSL is also built shared, for the test server only.
 #
 # Pins:
 #   FREERDP_VERSION          "<version> <sha256 of the release tarball>"
@@ -17,7 +19,8 @@
 #   VISTARA_ARCH        one architecture, as VISTARA_ARCHS with one entry
 #   VISTARA_BUILD_DIR   work directory (default: <repo>/build/freerdp)
 #
-# Output: $VISTARA_BUILD_DIR/prefix/{include,lib}
+# Output: $VISTARA_BUILD_DIR/prefix/{include,lib}, with every static library
+# the app links joined in lib/libvistara-freerdp.a
 
 set -euo pipefail
 
@@ -55,7 +58,7 @@ log() { printf '\n==> %s\n' "$*"; }
 die() { echo "error: $*" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || die "this script builds for macOS and must run on macOS"
-for tool in cmake curl shasum tar make install_name_tool otool lipo xcrun; do
+for tool in cmake curl shasum tar make install_name_tool otool lipo libtool nm xcrun; do
   command -v "$tool" >/dev/null || die "missing required tool: $tool"
 done
 
@@ -95,7 +98,7 @@ if [[ ${#ARCH_LIST[@]} -gt 1 ]]; then
     slices=()
     for arch in "${ARCH_LIST[@]}"; do slices+=("$WORK/$arch/prefix/$name"); done
     lipo -create "${slices[@]}" -output "$PREFIX/$name"
-  done < <(find "$first/lib" -maxdepth 1 -type f -name '*.dylib')
+  done < <(find "$first/lib" -maxdepth 1 -type f \( -name '*.dylib' -o -name '*.a' \))
 
   status=0
   while IFS= read -r lib; do
@@ -103,7 +106,7 @@ if [[ ${#ARCH_LIST[@]} -gt 1 ]]; then
     for arch in "${ARCH_LIST[@]}"; do
       [[ " $archs " == *" $arch "* ]] || { echo "$lib: expected $arch, found $archs" >&2; status=1; }
     done
-  done < <(find "$PREFIX/lib" -maxdepth 1 -type f -name '*.dylib')
+  done < <(find "$PREFIX/lib" -maxdepth 1 -type f \( -name '*.dylib' -o -name '*.a' \))
   [[ $status -eq 0 ]] || die "verification failed"
   for arch in "${ARCH_LIST[@]}"; do
     echo "$arch slice: $(du -sk "$WORK/$arch/prefix/lib" | cut -f1) KiB of libraries"
@@ -159,8 +162,8 @@ fetch "$OPENSSL_URL" "$OPENSSL_SHA256" "$WORK/src/openssl"
   make install_sw
 )
 
-# OpenSSL records absolute install names. Make them relative before FreeRDP
-# links against them, so FreeRDP's libraries record @rpath references.
+# OpenSSL records absolute install names. Make them relative, so the test
+# server's FreeRDP libraries record @rpath references.
 chmod u+w "$PREFIX"/lib/libssl.3.dylib "$PREFIX"/lib/libcrypto.3.dylib
 install_name_tool -id @rpath/libcrypto.3.dylib "$PREFIX/lib/libcrypto.3.dylib"
 install_name_tool -id @rpath/libssl.3.dylib \
@@ -219,7 +222,8 @@ cmake -S "$WORK/src/freerdp" -B "$WORK/obj/freerdp" ${GENERATOR[@]+"${GENERATOR[
   -DCMAKE_PREFIX_PATH="$PREFIX" \
   -DCMAKE_IGNORE_PREFIX_PATH="/opt/homebrew;/usr/local;/opt/local" \
   -DOPENSSL_ROOT_DIR="$PREFIX" \
-  -DBUILD_SHARED_LIBS=ON \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DOPENSSL_USE_STATIC_LIBS=ON \
   -DBUILD_TESTING=OFF \
   -DWITH_CLIENT_COMMON=ON \
   -DWITH_CLIENT=OFF \
@@ -247,12 +251,30 @@ cmake -S "$WORK/src/freerdp" -B "$WORK/obj/freerdp" ${GENERATOR[@]+"${GENERATOR[
 cmake --build "$WORK/obj/freerdp" --parallel "$JOBS"
 cmake --install "$WORK/obj/freerdp"
 
+# One archive for the app to link: FreeRDP, WinPR, and OpenSSL's static
+# libraries. The linker takes only the objects it needs from it.
+archives=()
+while IFS= read -r archive; do archives+=("$archive"); done < <(
+  find "$PREFIX/lib" -maxdepth 1 -type f -name 'lib*.a' ! -name 'libvistara-freerdp.a' | sort
+)
+echo "Joining ${#archives[@]} static libraries: ${archives[*]##*/}"
+libtool -static -no_warning_for_no_symbols -o "$PREFIX/lib/libvistara-freerdp.a" "${archives[@]}"
+
 # ---------------------------------------------------------------------------
 log "Verifying $PREFIX"
 status=0
-for name in freerdp3 freerdp-client3 winpr3 ssl crypto; do
-  compgen -G "$PREFIX/lib/lib$name.*dylib" >/dev/null || { echo "missing library: lib$name" >&2; status=1; }
+for name in freerdp3 freerdp-client3 winpr3 ssl crypto vistara-freerdp; do
+  [[ -f "$PREFIX/lib/lib$name.a" ]] || { echo "missing static library: lib$name.a" >&2; status=1; }
 done
+# FreeRDP must not be shared: the linker would take a dylib over the archive.
+for name in freerdp3 freerdp-client3 winpr3; do
+  ! compgen -G "$PREFIX/lib/lib$name*.dylib" >/dev/null || { echo "unexpected shared lib$name" >&2; status=1; }
+done
+for name in ssl crypto; do
+  [[ -f "$PREFIX/lib/lib$name.3.dylib" ]] || { echo "missing lib$name.3.dylib for the test server" >&2; status=1; }
+done
+archs="$(lipo -archs "$PREFIX/lib/libvistara-freerdp.a")"
+[[ " $archs " == *" $ARCH "* ]] || { echo "libvistara-freerdp.a: expected $ARCH, found $archs" >&2; status=1; }
 while IFS= read -r lib; do
   archs="$(lipo -archs "$lib")"
   [[ " $archs " == *" $ARCH "* ]] || { echo "$lib: expected $ARCH, found $archs" >&2; status=1; }
@@ -270,10 +292,11 @@ grep -q "FREERDP_VERSION_FULL \"$FREERDP_VERSION\"" "$PREFIX/include/freerdp3/fr
 # The runtime-check option is off, and the asserts are still compiled in:
 # assert() calls __assert_rtn, which NDEBUG would have removed. (Not grep -q:
 # under pipefail, a grep that stops reading early can fail the pipeline.)
-strings "$PREFIX/lib/libfreerdp3.3.dylib" | grep "WITH_VERBOSE_WINPR_ASSERT=OFF" >/dev/null ||
+# The build configuration the library reports is the generated buildflags.h.
+grep -F "WITH_VERBOSE_WINPR_ASSERT=OFF" "$PREFIX/include/freerdp3/freerdp/buildflags.h" >/dev/null ||
   { echo "libfreerdp3 does not report WITH_VERBOSE_WINPR_ASSERT=OFF" >&2; status=1; }
 for name in freerdp3 winpr3; do
-  nm -u "$PREFIX/lib/lib$name.3.dylib" | grep "___assert_rtn" >/dev/null ||
+  nm -u "$PREFIX/lib/lib$name.a" 2>/dev/null | grep "___assert_rtn" >/dev/null ||
     { echo "lib$name: asserts are compiled out" >&2; status=1; }
 done
 [[ $status -eq 0 ]] || die "verification failed"

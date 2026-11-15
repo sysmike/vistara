@@ -1,10 +1,11 @@
 name: Release
 
-# A tag such as v0.1.0 builds, signs, notarizes, and staples Vistara, and
-# creates a draft release with the DMG and its checksums. Any other run (a
-# manual one, or a pull request that changes the release itself), and a tag
-# without the signing secrets, is a dry run: signed ad hoc, not notarized,
-# uploaded as an artifact only. See docs/RELEASING.md.
+# A tag such as v0.1.0 builds Vistara and creates a draft release with the
+# DMG and its checksums. With the signing secrets, the app is signed with a
+# Developer ID, notarized, and stapled; without them, it is signed ad hoc and
+# opens after Open Anyway in System Settings. Any other run (a manual one, or
+# a pull request that changes the release itself) is a dry run: signed ad
+# hoc, uploaded as an artifact only. See docs/RELEASING.md.
 
 on:
   push:
@@ -14,7 +15,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - scripts/release/**
-      - scripts/embed-freerdp.sh
+      - scripts/build-freerdp.sh
 
 permissions:
   contents: read
@@ -60,7 +61,12 @@ jobs:
             echo "Signed run: Developer ID, notarized."
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "Dry run: signed ad hoc, not notarized, no release."
+            if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo "::warning::No signing secrets: $GITHUB_REF_NAME is signed ad hoc and not notarized." \
+                "It opens only after Open Anyway in System Settings."
+            else
+              echo "Dry run: signed ad hoc, not notarized, no release."
+            fi
           fi
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF#refs/tags/v}"
@@ -115,10 +121,9 @@ jobs:
           VISTARA_TEAM_ID: ${{ secrets.DEVELOPER_ID_TEAM_ID }}
         run: scripts/release/build-app.sh
 
-      - name: Check that the bundled libraries load
+      - name: Check that the app starts
         run: |
-          # Hide the build prefix: the app may load only its embedded copies,
-          # and with a Developer ID signature only under library validation.
+          # Hide the build prefix: FreeRDP is linked in, nothing is loaded.
           mv build/freerdp/prefix build/freerdp/prefix.hidden
           open "$VISTARA_RELEASE_DIR/Vistara.app"
           sleep 8
@@ -176,10 +181,17 @@ jobs:
             ${{ env.VISTARA_RELEASE_DIR }}/SHA256SUMS
 
       - name: Create a draft release
-        if: steps.mode.outputs.signed == 'true' && startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.mode.outputs.signed }}
         run: |
+          if [[ "$SIGNED" == "true" ]]; then
+            title="Vistara $VISTARA_VERSION"
+            notes="Signed with Developer ID and notarized by Apple. See SHA256SUMS for the checksum."
+          else
+            title="Vistara $VISTARA_VERSION (not notarized)"
+            notes="$(cat scripts/release/unsigned-notes.md)"
+          fi
           gh release create "$GITHUB_REF_NAME" "$DMG" "$VISTARA_RELEASE_DIR/SHA256SUMS" \
-            --draft --verify-tag --title "Vistara $VISTARA_VERSION" \
-            --notes "Signed with Developer ID and notarized by Apple. See SHA256SUMS for the checksum."
+            --draft --verify-tag --title "$title" --notes "$notes"

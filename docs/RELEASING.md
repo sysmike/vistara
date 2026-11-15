@@ -1,13 +1,25 @@
 # Releasing Vistara
 
 A tag such as `v0.1.0` runs `.github/workflows/release.yml`. It builds the
-universal app, signs it and every bundled library with a Developer ID, has
-Apple notarize the app and the DMG, staples both, and creates a **draft**
-GitHub release with the DMG and `SHA256SUMS`. A person publishes the draft.
+universal app and creates a **draft** GitHub release with the DMG and
+`SHA256SUMS`. A person publishes the draft.
 
-Every other run is a dry run: a manual run from the Actions tab, a pull
-request that changes the release scripts, and a tag while the secrets below
-are missing. The app is signed ad hoc and not notarized, and the DMG is
+- **With the secrets below**, the app is signed with a Developer ID, and Apple
+  notarizes the app and the DMG; both are stapled. It opens like any app.
+- **Without them**, the app is signed ad hoc and not notarized. The release
+  is titled "(not notarized)", and its notes
+  ([`scripts/release/unsigned-notes.md`](../scripts/release/unsigned-notes.md))
+  say how to open it: once, with Open Anyway in System Settings › Privacy &
+  Security.
+
+Both open on any Mac because the app carries no libraries of its own: FreeRDP,
+WinPR, and OpenSSL are linked into its binary. Under the hardened runtime,
+library validation loads a library only when it is signed by the app's own
+team, and an ad hoc build has no team, so 0.5.0-beta, which still carried
+them, did not start on another Mac.
+
+Every other run is a dry run: a manual run from the Actions tab, or a pull
+request that changes the release scripts. It is signed ad hoc, and the DMG is
 uploaded as a workflow artifact only. Only a `v*` tag uses the `release`
 environment, so a run on a branch never sees the signing secrets.
 
@@ -62,15 +74,16 @@ The version comes from the tag; the build number is the workflow run number.
 
 - **Toolchain:** the same pinned Xcode as CI (`XCODE_VERSION`), on the
   `macos-26` runner, so the release is built the way it was tested.
-- **App and libraries:** both have an arm64 and an x86_64 slice.
-- **Signature:** it verifies deeply and strictly. The app carries the hardened
-  runtime flag, a Developer ID authority, and a secure timestamp.
-- **Libraries:** every bundled library is signed by the same team, so it loads
-  under library validation. The app is started with the build's FreeRDP prefix
-  hidden, so it can only load its own copies.
+- **App:** it has an arm64 and an x86_64 slice.
+- **Signature:** it verifies deeply and strictly. Signed with a Developer ID,
+  the app carries the hardened runtime flag, that team, and a secure
+  timestamp.
+- **Libraries:** the app has no `Frameworks` folder and loads nothing but
+  macOS's own libraries (`otool -L`). It is started with the build's FreeRDP
+  prefix hidden.
 - **Entitlements:** the app is sandboxed and has no hardened runtime exception,
   no `com.apple.security.cs.*` entitlement. Vistara needs none: FreeRDP and
-  OpenSSL are linked and signed with the app, nothing is generated or loaded at
+  OpenSSL are linked into the app, nothing is generated or loaded at
   run time, and no debugger attaches to a release.
 - **Notarization:** the app and the DMG are notarized and stapled.
   `spctl --assess` accepts both.
