@@ -153,19 +153,24 @@ struct RemoteAppEventTests {
         let start = ContinuousClock.now
         let window = RDPRemoteWindow(id: 1, frame: RDPRect(x: 0, y: 0, width: 1, height: 1))
         // Nothing before the first window.
-        #expect(!watch.isDue(at: start + .seconds(10), grace: .seconds(3)))
+        let due1 = watch.isDue(at: start + .seconds(10), grace: .seconds(3))
+        #expect(!due1)
 
         watch.note([window], at: start)
         watch.note([window.with { $0.isDeleted = true }], at: start + .seconds(1))
-        #expect(!watch.isDue(at: start + .seconds(2), grace: .seconds(3)))
-        #expect(watch.isDue(at: start + .seconds(4), grace: .seconds(3)))
-        #expect(!watch.isDue(at: start + .seconds(9), grace: .seconds(3)))
+        let due2 = watch.isDue(at: start + .seconds(2), grace: .seconds(3))
+        #expect(!due2)
+        let due3 = watch.isDue(at: start + .seconds(4), grace: .seconds(3))
+        #expect(due3)
+        let due4 = watch.isDue(at: start + .seconds(9), grace: .seconds(3))
+        #expect(!due4)
 
         // A window that comes back in time stops the clock.
         watch.note([window], at: start + .seconds(10))
         watch.note([window.with { $0.isDeleted = true }], at: start + .seconds(11))
         watch.note([window.with { $0.id = 2 }], at: start + .seconds(12))
-        #expect(!watch.isDue(at: start + .seconds(20), grace: .seconds(3)))
+        let due5 = watch.isDue(at: start + .seconds(20), grace: .seconds(3))
+        #expect(!due5)
     }
 }
 
