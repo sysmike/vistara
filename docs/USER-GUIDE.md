@@ -378,6 +378,8 @@ same connections, and a change on one shows on the others within seconds.
   off or a disk unplugged, you keep working with your connections as this Mac
   last saw them. A notice above the list says so, and your changes are written
   to the folder when it's back.
+
+  ![The notice when the folder can't be reached](images/library-sync-unreachable.png)
 - **Choosing On This Mac** keeps the connections you have, on this Mac only,
   and leaves the folder as it is.
 
