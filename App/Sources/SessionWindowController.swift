@@ -107,6 +107,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
 
     private func phaseChanged() {
         let phase = model.phase
+        showOrHideForProgram(phase)
         let state = SessionTabState.of(model)
         if state != tabState {
             tabState = state
@@ -122,6 +123,19 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         let isInFront = window.isVisible && (window.tabGroup?.selectedWindow ?? window) === window
         if !isInFront, !text.contains(name) { text = "\(name): \(text)" }
         SessionAnnouncement.post(text)
+    }
+
+    /// A program's windows take over once it runs: this window shows only
+    /// connecting, its questions, and what went wrong (docs/DESIGN.md,
+    /// RemoteApp).
+    private func showOrHideForProgram(_ phase: SessionModel.Phase) {
+        guard model.opensProgram else { return }
+        switch phase {
+        case .connected, .reconnecting:
+            window.orderOut(nil)
+        case .connecting, .disconnected:
+            if !window.isVisible { show() }
+        }
     }
 
     /// The connection's name, and the host when that says something more.

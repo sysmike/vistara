@@ -294,7 +294,12 @@ jobs:
             while true; do
               for request in "$HOME"/Library/Containers/*/Data/tmp/vistara-capture/*.request; do
                 picture="${request%.request}.png"
-                screencapture -x -o -l"$(cat "$request")" "$picture.part.png" &&
+                spec="$(cat "$request")"
+                # A window by number, or "rect:x,y,width,height" of the screen.
+                case "$spec" in
+                  rect:*) screencapture -x -R"${spec#rect:}" "$picture.part.png" ;;
+                  *) screencapture -x -o -l"$spec" "$picture.part.png" ;;
+                esac &&
                   mv "$picture.part.png" "$picture"
                 rm -f "$request"
               done

@@ -99,18 +99,22 @@ struct RemoteAppIntegrationTests {
         var reported = Reported()
         Self.pump(handle, into: &reported) { $0.windows[0x101] != nil }
 
-        // The first activation makes the server pretend its title bar was dragged.
+        // The first activation makes the server pretend its title bar was
+        // pressed; the move that follows ends the drag.
         #expect(handle.send(.remoteApp(.activate(windowID: 0x100, isActive: true))))
         Self.pump(handle, into: &reported) { reported in
-            reported.events.contains { if case .moveSizeEnded = $0 { true } else { false } }
+            reported.events.contains { if case .moveSizeBegan = $0 { true } else { false } }
         }
-        #expect(reported.events.contains(.moveSizeBegan(windowID: 0x100, isMove: true, x: 150, y: 90)))
-        #expect(reported.events.contains(.moveSizeEnded(windowID: 0x100, x: 130, y: 110)))
+        #expect(reported.events.contains(.moveSizeBegan(windowID: 0x100, kind: .move, x: 150, y: 90)))
 
         let frame = RDPRect(x: 300, y: 200, width: 400, height: 300)
         #expect(handle.send(.remoteApp(.move(windowID: 0x100, frame: frame))))
-        Self.pump(handle, into: &reported) { $0.windows[0x100]?.frame == frame }
+        Self.pump(handle, into: &reported) { reported in
+            reported.windows[0x100]?.frame == frame
+                && reported.events.contains { if case .moveSizeEnded = $0 { true } else { false } }
+        }
         #expect(reported.windows[0x100]?.frame == frame)
+        #expect(reported.events.contains(.moveSizeEnded(windowID: 0x100, x: 300, y: 200)))
 
         #expect(handle.send(.remoteApp(.command(.minimize, windowID: 0x100))))
         #expect(handle.send(.remoteApp(.workArea(RDPRect(x: 0, y: 25, width: 1024, height: 675)))))

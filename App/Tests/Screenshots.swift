@@ -103,15 +103,32 @@ enum Screenshots {
 
     /// Asks the CI helper for a picture of the window, and waits for it.
     private static func capture(_ window: NSWindow, name: String, cuttingOff titleBar: CGFloat) async throws -> Int? {
+        let number = "\(window.windowNumber)"
+        return try await capture(request: number, name: name, cuttingOff: titleBar, height: window.frame.height)
+    }
+
+    /// A picture of part of the screen as it is, windows and all: `rect` in
+    /// points from the main display's top left. Zero bytes where the CI
+    /// helper is not there to take it.
+    @discardableResult
+    static func write(screenRect rect: CGRect, name: String) async throws -> Int {
+        guard capturesWindows else { return 0 }
+        let spec = "rect:\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))"
+        return try await capture(request: spec, name: name, cuttingOff: 0, height: rect.height) ?? 0
+    }
+
+    private static func capture(
+        request: String, name: String, cuttingOff titleBar: CGFloat, height: CGFloat
+    ) async throws -> Int? {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: captureDirectory, withIntermediateDirectories: true)
         let picture = captureDirectory.appendingPathComponent("\(name).png")
         try? fileManager.removeItem(at: picture)
-        try Data("\(window.windowNumber)".utf8).write(to: captureDirectory.appendingPathComponent("\(name).request"))
+        try Data(request.utf8).write(to: captureDirectory.appendingPathComponent("\(name).request"))
         let deadline = ContinuousClock.now + .seconds(10)
         while ContinuousClock.now < deadline {
             if let data = try? Data(contentsOf: picture), !data.isEmpty {
-                let png = try cut(titleBar, from: data, windowHeight: window.frame.height)
+                let png = try cut(titleBar, from: data, windowHeight: height)
                 try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
                 try png.write(to: directory.appendingPathComponent("\(name).png"))
                 return png.count

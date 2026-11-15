@@ -93,16 +93,14 @@ extension RDPRemoteWindow.ShowState {
 }
 
 extension RDPRemoteAppEvent {
-    /// WMSZ_MOVE ([MS-RDPERP] 2.2.2.7.2): a move, not a resize.
-    private static let moveKind: UInt32 = 9
-
     init(_ event: vistara_remote_app_event) {
         switch event.kind {
         case VISTARA_REMOTE_APP_STARTED:
             self = RDPProgramFailure(code: event.code).map { .programFailed($0) } ?? .programStarted
         case VISTARA_REMOTE_APP_MOVE_SIZE_BEGAN:
             self = .moveSizeBegan(
-                windowID: event.window_id, isMove: event.code == Self.moveKind, x: Int(event.x), y: Int(event.y)
+                windowID: event.window_id, kind: RDPMoveSizeKind(rawValue: event.code) ?? .move,
+                x: Int(event.x), y: Int(event.y)
             )
         case VISTARA_REMOTE_APP_MOVE_SIZE_ENDED:
             self = .moveSizeEnded(windowID: event.window_id, x: Int(event.x), y: Int(event.y))
