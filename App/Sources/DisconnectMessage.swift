@@ -13,12 +13,15 @@ struct DisconnectMessage: Equatable {
         case useAnotherGatewayAccount
         /// Open the saved connection in the editor.
         case editConnection
+        /// Put the message away; the session carries on.
+        case dismiss
 
         var title: String {
             switch self {
             case .connect(let title): title
             case .useAnotherAccount, .useAnotherGatewayAccount: "Use Another Account"
             case .editConnection: "Edit Connection"
+            case .dismiss: "OK"
             }
         }
     }
@@ -247,5 +250,44 @@ extension SessionModel {
             refusedByPolicy: refusedCertificateByPolicy,
             gaveUpReconnecting: didGiveUpReconnecting
         )
+    }
+}
+
+extension DisconnectMessage {
+    /// Why a program did not start (docs/DESIGN.md, RemoteApp), naming it as
+    /// its connection does. In a session that carries on with other
+    /// programs, OK puts the message away; otherwise the session has ended.
+    static func programFailed(
+        _ failure: RDPProgramFailure, program: String, computer: String, sessionContinues: Bool
+    ) -> DisconnectMessage {
+        let tryAgain: Action = sessionContinues ? .dismiss : .connect("Try Again")
+        var message: DisconnectMessage
+        switch failure {
+        case .notPublished:
+            message = DisconnectMessage(
+                "“\(program)” isn’t published on “\(computer)”",
+                "Check the program in the connection, or ask whoever runs the computer to publish it.",
+                .editConnection
+            )
+            message.secondaryAction = tryAgain
+        case .notFound:
+            message = DisconnectMessage(
+                "“\(computer)” can’t find “\(program)”",
+                "The program is published, but its file isn’t there. Ask whoever runs the computer.", tryAgain
+            )
+            message.secondaryAction = .editConnection
+        case .sessionLocked:
+            message = DisconnectMessage(
+                "Your session on “\(computer)” is locked",
+                "Unlock it or sign out of it from another computer, then try again.", tryAgain
+            )
+        case .failed(let code):
+            message = DisconnectMessage(
+                "“\(program)” couldn’t start on “\(computer)”", "Try again, or ask whoever runs the computer.", tryAgain
+            )
+            message.secondaryAction = .editConnection
+            message.detail = "RemoteApp exec result \(code)"
+        }
+        return message
     }
 }

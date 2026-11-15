@@ -132,7 +132,7 @@ struct ConnectionTable: View {
     private func nameColumn(ideal: CGFloat) -> some TableColumnContent<Connection, KeyPathComparator<Connection>> {
         TableColumn("Name", value: \Connection.name, comparator: .localizedStandard) { connection in
             HStack(spacing: 4) {
-                Label(SessionTarget(connection: connection).name, systemImage: "desktopcomputer")
+                ConnectionLabel(connection: connection)
                 if connection.isFavorite {
                     // A shape, not a colour, says favorite.
                     Image(systemName: "star.fill")
@@ -240,4 +240,30 @@ struct ConnectionReference: Codable, Transferable {
 extension UTType {
     /// Declared in App/Info.plist.
     static let vistaraConnection = UTType(exportedAs: "io.github.sysmike.vistara.connection")
+}
+
+/// A connection's name with what it opens: a computer for the desktop, an
+/// app for a program, or the program's own icon once it was opened on this
+/// Mac (docs/DESIGN.md, RemoteApp).
+struct ConnectionLabel: View {
+    let connection: Connection
+
+    var body: some View {
+        let name = SessionTarget(connection: connection).name
+        if !connection.program.isUsed {
+            Label(name, systemImage: "desktopcomputer")
+        } else if let data = connection.programIcon, let icon = NSImage(data: data) {
+            Label {
+                Text(name)
+            } icon: {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 16, height: 16)
+                    .accessibilityHidden(true)
+            }
+        } else {
+            Label(name, systemImage: "app")
+        }
+    }
 }

@@ -12,6 +12,12 @@ struct ConnectionDraft: Equatable {
     var folderID: UUID?
     var tags: [String] = []
 
+    /// The desktop, or one program (docs/DESIGN.md, RemoteApp). The program
+    /// is kept while The Desktop is chosen.
+    var opens = Connection.Program.Opens.desktop
+    var programPath = ""
+    var programArguments = ""
+
     var resolutionMode = Connection.ResolutionMode.matchWindow
     var fixedWidth = "1920"
     var fixedHeight = "1080"
@@ -53,6 +59,9 @@ struct ConnectionDraft: Equatable {
         domain = connection.domain
         folderID = connection.folderID
         tags = connection.tags
+        opens = connection.program.opens
+        programPath = connection.program.path
+        programArguments = connection.program.arguments
         resolutionMode = connection.resolutionMode
         fixedWidth = String(connection.fixedWidth)
         fixedHeight = String(connection.fixedHeight)
@@ -122,8 +131,16 @@ struct ConnectionDraft: Equatable {
 
     private static let sides = 200...8192
 
+    var opensProgram: Bool { opens == .program }
+
+    var programProblem: String? {
+        guard opensProgram, programPath.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return "Enter the program as the computer publishes it, such as ||WINWORD."
+    }
+
     var sizeProblem: String? {
-        guard resolutionMode == .fixed else { return nil }
+        // A program's windows have their own sizes.
+        guard resolutionMode == .fixed, !opensProgram else { return nil }
         let width = Int(fixedWidth.trimmingCharacters(in: .whitespaces))
         let height = Int(fixedHeight.trimmingCharacters(in: .whitespaces))
         guard let width, let height, Self.sides.contains(width), Self.sides.contains(height) else {
@@ -132,7 +149,9 @@ struct ConnectionDraft: Equatable {
         return nil
     }
 
-    var isValid: Bool { hostProblem == nil && portProblem == nil && sizeProblem == nil && gatewayProblem == nil }
+    var isValid: Bool {
+        hostProblem == nil && portProblem == nil && sizeProblem == nil && gatewayProblem == nil && programProblem == nil
+    }
 
     /// One line under a choice that makes the connection less safe.
     var nlaWarning: String? {
@@ -167,6 +186,10 @@ struct ConnectionDraft: Equatable {
         connection.domain = typedDomain.isEmpty ? user.domain ?? "" : typedDomain
         connection.folderID = folderID
         connection.tags = Self.normalizedTags(tags)
+        connection.program = Connection.Program(
+            opens: opens, path: programPath.trimmingCharacters(in: .whitespaces),
+            arguments: programArguments.trimmingCharacters(in: .whitespaces)
+        )
         connection.resolutionMode = resolutionMode
         if resolutionMode == .fixed, let width = Int(fixedWidth), let height = Int(fixedHeight) {
             connection.fixedWidth = width

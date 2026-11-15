@@ -81,6 +81,15 @@ struct SessionTarget: Equatable, Sendable {
     /// The saved connection this target comes from, if any.
     var connectionID: UUID?
 
+    /// Whether a program of `other` runs in this target's session: the same
+    /// computer, user, and gateway (docs/DESIGN.md, RemoteApp).
+    func sharesSession(with other: SessionTarget) -> Bool {
+        host.lowercased() == other.host.lowercased() && port == other.port
+            && username.lowercased() == other.username.lowercased()
+            && (domain ?? "").lowercased() == (other.domain ?? "").lowercased()
+            && gateway?.host.lowercased() == other.gateway?.host.lowercased() && gateway?.port == other.gateway?.port
+    }
+
     /// Identifies this target's item in the credential store: the saved
     /// connection's identifier, or else the computer's address.
     var credentialKey: String {

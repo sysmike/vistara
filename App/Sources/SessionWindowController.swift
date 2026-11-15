@@ -9,6 +9,9 @@ import SwiftUI
 final class SessionWindowController: NSObject, NSWindowDelegate {
     static let defaultContentSize = NSSize(width: 1280, height: 800)
     static let minimumContentSize = NSSize(width: 480, height: 320)
+    /// A program's Connecting panel (docs/DESIGN.md, RemoteApp).
+    static let panelContentSize = NSSize(width: 440, height: 240)
+    static let windowStyle: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
     /// Shared by every session window and no other.
     static let tabbingIdentifier = "io.github.sysmike.vistara.session"
 
@@ -22,9 +25,10 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
 
     init(model: SessionModel) {
         self.model = model
+        let isPanel = model.opensProgram
         window = SessionWindow(
-            contentRect: NSRect(origin: .zero, size: Self.defaultContentSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(origin: .zero, size: isPanel ? Self.panelContentSize : Self.defaultContentSize),
+            styleMask: isPanel ? [.titled, .closable, .miniaturizable] : Self.windowStyle,
             backing: .buffered,
             defer: false
         )
@@ -37,22 +41,28 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         // Session windows group as tabs with each other, and only with each
         // other (docs/DESIGN.md, Session tabs).
         window.tabbingIdentifier = Self.tabbingIdentifier
-        window.tabbingMode = .automatic
+        // A program's panel is never a tab and has no full screen.
+        window.tabbingMode = isPanel ? .disallowed : .automatic
         // The system's own full screen: the green button, View > Enter Full
         // Screen, and its shortcut. The window gets a Space of its own, the
         // menu bar appears at the top edge, and the system keeps clear of a
         // camera housing. The desktop follows the new size like any resize.
-        window.collectionBehavior.insert(.fullScreenPrimary)
+        if !isPanel { window.collectionBehavior.insert(.fullScreenPrimary) }
 
         let content = NSHostingView(rootView: SessionContentView(model: model))
         // The window decides its size, not the content.
         content.sizingOptions = []
         window.contentView = content
-        window.contentMinSize = Self.minimumContentSize
-        window.setContentSize(Self.fittingContentSize(on: window.screen ?? NSScreen.main))
-        window.center()
-        // Restores size and position from the last window for this computer.
-        window.setFrameAutosaveName("Session \(target.host):\(target.port)")
+        if isPanel {
+            window.setContentSize(Self.panelContentSize)
+            window.center()
+        } else {
+            window.contentMinSize = Self.minimumContentSize
+            window.setContentSize(Self.fittingContentSize(on: window.screen ?? NSScreen.main))
+            window.center()
+            // Restores size and position from the last window for this computer.
+            window.setFrameAutosaveName("Session \(target.host):\(target.port)")
+        }
         window.delegate = self
         model.isInFront = { [weak self] in
             guard let self else { return false }
@@ -71,7 +81,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         printer?.start()
         window.tab.accessoryView = tabState.makeView()
         observePhase()
-        if target.usesAllDisplays {
+        if target.usesAllDisplays, !isPanel {
             startSpanIfPossible()
             observeDisplays()
         }
@@ -97,6 +107,7 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
     private func observePhase() {
         withObservationTracking {
             _ = model.phase
+            _ = model.programFailure
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.phaseChanged()
@@ -125,16 +136,16 @@ final class SessionWindowController: NSObject, NSWindowDelegate {
         SessionAnnouncement.post(text)
     }
 
-    /// A program's windows take over once it runs: this window shows only
-    /// connecting, its questions, and what went wrong (docs/DESIGN.md,
-    /// RemoteApp).
+    /// A program's windows take over once it runs: this panel shows only
+    /// connecting, its questions, reconnecting, and what went wrong
+    /// (docs/DESIGN.md, RemoteApp).
     private func showOrHideForProgram(_ phase: SessionModel.Phase) {
         guard model.opensProgram else { return }
-        switch phase {
-        case .connected, .reconnecting:
+        let shows = phase != .connected || model.programFailure != nil
+        if shows, !window.isVisible {
+            show()
+        } else if !shows {
             window.orderOut(nil)
-        case .connecting, .disconnected:
-            if !window.isVisible { show() }
         }
     }
 

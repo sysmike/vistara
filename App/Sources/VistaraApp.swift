@@ -31,6 +31,9 @@ struct VistaraApp: App {
                 coordinator.renewSharedFolders = { id, renewals in
                     Task { await library.renewSharedFolders(of: id, renewals) }
                 }
+                coordinator.programIconArrived = { id, png in
+                    Task { await library.setProgramIcon(of: id, to: png) }
+                }
             }
         }
         .defaultSize(width: 780, height: 480)

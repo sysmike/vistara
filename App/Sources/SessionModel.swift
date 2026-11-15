@@ -53,6 +53,13 @@ final class SessionModel {
     @ObservationIgnored var programSpace: RemoteAppSpace?
     /// The program's last window has gone: the session can end.
     @ObservationIgnored var onLastProgramWindowClosed: (() -> Void)?
+    /// Why a program did not start; the panel says so (SessionModel+Programs.swift).
+    var programFailure: ProgramFailure?
+    @ObservationIgnored var programStarts = ProgramStarts()
+    /// A program's icon arrived, as a PNG, for its saved connection.
+    @ObservationIgnored var onProgramIcon: ((UUID, Data) -> Void)?
+    /// Opens the editor for a saved connection, such as a program's that failed.
+    @ObservationIgnored var onEditConnectionWithID: ((UUID) -> Void)?
 
     /// The last session ended because the connection accepts only trusted
     /// certificates and this one was not.
@@ -149,6 +156,7 @@ final class SessionModel {
     func connect() {
         guard session == nil else { return }
         endedByUser = false
+        if opensProgram { beginPrograms() }
         // A reconnection attempt keeps showing the reconnecting state.
         if !phase.isReconnecting {
             phase = .connecting

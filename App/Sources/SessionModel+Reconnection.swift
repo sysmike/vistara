@@ -28,7 +28,8 @@ extension SessionModel {
         else {
             return false
         }
-        lastFrame = framebuffer?.snapshot().flatMap(Self.image)
+        // A program's windows stay, dimmed, in place of a last picture.
+        lastFrame = opensProgram ? nil : framebuffer?.snapshot().flatMap(Self.image)
         phase = .reconnecting(Reconnection(lost: reason))
         reconnectionTriggers = ReconnectionTriggers { [weak self] in self?.reconnectNow() }
         scheduleAttempt(0)

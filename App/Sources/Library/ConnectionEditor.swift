@@ -31,6 +31,7 @@ struct ConnectionEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                ProgramSection(draft: $draft, problem: showsProblems ? draft.programProblem : nil)
                 general
                 gateway
                 display
@@ -112,40 +113,49 @@ struct ConnectionEditor: View {
 
     private var display: some View {
         Section("Display") {
-            Picker("Resolution", selection: $draft.resolutionMode) {
-                Text("Match Window").tag(Connection.ResolutionMode.matchWindow)
-                Text("Keep Size, Scale to Fit").tag(Connection.ResolutionMode.scaleToFit)
-                Text("Fixed Size").tag(Connection.ResolutionMode.fixed)
-            }
-            if draft.resolutionMode == .fixed {
-                LabeledContent("Size") {
-                    HStack(spacing: 6) {
-                        TextField("Width", text: $draft.fixedWidth)
-                            .labelsHidden()
-                            .frame(width: 64)
-                            .accessibilityLabel("Width")
-                        Text("×")
-                            .foregroundStyle(.secondary)
-                        TextField("Height", text: $draft.fixedHeight)
-                            .labelsHidden()
-                            .frame(width: 64)
-                            .accessibilityLabel("Height")
-                    }
-                }
-                problem(draft.sizeProblem)
-            }
+            // A program's windows have their own sizes and go to any display.
+            if !draft.opensProgram { desktopSize }
             Toggle("Optimize for Retina displays", isOn: $draft.usesHiDPI)
-            Picker("Displays", selection: $draft.usesAllDisplays) {
-                Text("This Display").tag(false)
-                Text("All Displays").tag(true)
+            if !draft.opensProgram { displays }
+        }
+    }
+
+    @ViewBuilder private var desktopSize: some View {
+        Picker("Resolution", selection: $draft.resolutionMode) {
+            Text("Match Window").tag(Connection.ResolutionMode.matchWindow)
+            Text("Keep Size, Scale to Fit").tag(Connection.ResolutionMode.scaleToFit)
+            Text("Fixed Size").tag(Connection.ResolutionMode.fixed)
+        }
+        if draft.resolutionMode == .fixed {
+            LabeledContent("Size") {
+                HStack(spacing: 6) {
+                    TextField("Width", text: $draft.fixedWidth)
+                        .labelsHidden()
+                        .frame(width: 64)
+                        .accessibilityLabel("Width")
+                    Text("×")
+                        .foregroundStyle(.secondary)
+                    TextField("Height", text: $draft.fixedHeight)
+                        .labelsHidden()
+                        .frame(width: 64)
+                        .accessibilityLabel("Height")
+                }
             }
-            if let explanation = Self.displaysExplanation(
-                allDisplays: draft.usesAllDisplays, separateSpaces: NSScreen.screensHaveSeparateSpaces
-            ) {
-                Text(explanation)
-                    .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            problem(draft.sizeProblem)
+        }
+    }
+
+    @ViewBuilder private var displays: some View {
+        Picker("Displays", selection: $draft.usesAllDisplays) {
+            Text("This Display").tag(false)
+            Text("All Displays").tag(true)
+        }
+        if let explanation = Self.displaysExplanation(
+            allDisplays: draft.usesAllDisplays, separateSpaces: NSScreen.screensHaveSeparateSpaces
+        ) {
+            Text(explanation)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

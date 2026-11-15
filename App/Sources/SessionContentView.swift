@@ -16,8 +16,13 @@ struct SessionContentView: View {
             case .connecting:
                 ConnectingView(name: model.target.name, cancel: { model.disconnect() })
             case .connected:
-                // A program's windows show it, each in a window of its own.
-                if model.target.program == nil, let framebuffer = model.framebuffer {
+                // A program's windows show it, each in a window of its own;
+                // the panel shows only why another program did not start.
+                if model.opensProgram {
+                    if let message = model.programFailureMessage {
+                        DisconnectedView(message: message, perform: perform)
+                    }
+                } else if let framebuffer = model.framebuffer {
                     RemoteDesktopView(
                         framebuffer: framebuffer,
                         name: model.target.name,
@@ -41,17 +46,7 @@ struct SessionContentView: View {
                     reconnectNow: { model.reconnectNow() }
                 )
             case .disconnected(let reason):
-                DisconnectedView(
-                    message: message(for: reason),
-                    perform: { action in
-                        switch action {
-                        case .connect: model.reconnect()
-                        case .useAnotherAccount: model.reconnectWithAnotherAccount()
-                        case .useAnotherGatewayAccount: model.reconnectWithAnotherGatewayAccount()
-                        case .editConnection: model.onEditConnection?()
-                        }
-                    }
-                )
+                DisconnectedView(message: model.programFailureMessage ?? message(for: reason), perform: perform)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -70,6 +65,16 @@ struct SessionContentView: View {
             }
         }
         .modifier(GatewaySheets(model: model))
+    }
+
+    private func perform(_ action: DisconnectMessage.Action) {
+        switch action {
+        case .connect: model.reconnect()
+        case .useAnotherAccount: model.reconnectWithAnotherAccount()
+        case .useAnotherGatewayAccount: model.reconnectWithAnotherGatewayAccount()
+        case .editConnection: model.editConnection()
+        case .dismiss: model.programFailure = nil
+        }
     }
 
     private func message(for reason: RDPDisconnectReason) -> DisconnectMessage {
