@@ -306,7 +306,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,1417 @@
+@@ -37,6 +37,1458 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -449,6 +449,7 @@
 +}
 +
 +static const char vistara_copy_during_fetch[] = "copy something else while I fetch";
++static const char vistara_wait_for_copy[] = "wait for my next copy";
 +static const char vistara_clipboard_new_text[] = "Neuer Text aus dem Testserver";
 +static const char vistara_clipboard_text[] = "Gr\xc3\xbc\xc3\x9f" "e aus dem Testserver \xe2\x9c\x93\r\nZweite Zeile";
 +
@@ -518,7 +519,16 @@
 +	 * locked fetch of the report, and whether it did. */
 +	BOOL copyDuringFetch;
 +	BOOL copied;
++	/* A client file asks the server to wait, after the first part of its
++	 * locked fetch, until the client copies something else; the fetch goes
++	 * on then, or after VISTARA_WAIT_FOR_COPY_MS. Set while waiting, and
++	 * cleared by whichever resumes it first. */
++	BOOL waitForCopy;
++	volatile LONG waiting;
++	UINT64 waitingSince;
 +} vistaraClipboard;
++
++#define VISTARA_WAIT_FOR_COPY_MS 5000
 +
 +static UINT vistara_clip_client_caps(CliprdrServerContext* context,
 +                                     WINPR_ATTR_UNUSED const CLIPRDR_CAPABILITIES* capabilities)
@@ -650,8 +660,28 @@
 +	(void)fprintf(stderr, "vistara-clipboard client-part index=%u offset=%llu\n", (unsigned)state->index,
 +	              (unsigned long long)state->offset);
 +	(void)fflush(stderr);
++	if (state->waitForCopy && (state->index == 0) && (state->offset == response->cbRequested))
++	{
++		state->waitingSince = GetTickCount64();
++		(void)InterlockedExchange(&state->waiting, 1);
++		(void)fprintf(stderr, "vistara-clipboard client-fetch-waits\n");
++		(void)fflush(stderr);
++		return CHANNEL_RC_OK;
++	}
 +	/* Slow enough that a client can copy something else in the middle. */
 +	Sleep(150);
++	return vistara_clip_fetch_next(context, state);
++}
++
++/* Goes on with a fetch that waits, once: from the clipboard's thread when
++ * the client copies something else, or from the client's thread when it
++ * waited long enough. */
++static UINT vistara_clip_resume(CliprdrServerContext* context, vistaraClipboard* state, const char* why)
++{
++	if (InterlockedCompareExchange(&state->waiting, 0, 1) != 1)
++		return CHANNEL_RC_OK;
++	(void)fprintf(stderr, "vistara-clipboard client-fetch-resumes after=%s\n", why);
++	(void)fflush(stderr);
 +	return vistara_clip_fetch_next(context, state);
 +}
 +
@@ -773,7 +803,7 @@
 +	{
 +		(void)fprintf(stderr, "vistara-clipboard client-copied-during-fetch\n");
 +		(void)fflush(stderr);
-+		return CHANNEL_RC_OK;
++		return vistara_clip_resume(context, state, "copy");
 +	}
 +	UINT32 wanted = 0;
 +	for (UINT32 i = 0; i < list->numFormats; i++)
@@ -839,6 +869,7 @@
 +		return CHANNEL_RC_OK;
 +	}
 +	(void)fprintf(stderr, "vistara-clipboard client-list count=%u\n", (unsigned)state->clientCount);
++	state->waitForCopy = FALSE;
 +	for (UINT32 i = 0; i < state->clientCount; i++)
 +	{
 +		const FILEDESCRIPTORW* file = &state->clientFiles[i];
@@ -852,6 +883,8 @@
 +		vistara_log_hex(prefix, (const BYTE*)(name ? name : ""), name ? strlen(name) : 0);
 +		if (name && strstr(name, vistara_copy_during_fetch))
 +			state->copyDuringFetch = TRUE;
++		if (name && strstr(name, vistara_wait_for_copy))
++			state->waitForCopy = TRUE;
 +		free(name);
 +	}
 +	(void)fflush(stderr);
@@ -935,6 +968,14 @@
 +		return;
 +	}
 +	state->cliprdr = cliprdr;
++}
++
++/* Runs on the client's own thread: a fetch that waited long enough goes on. */
++static void vistara_clipboard_service(vistaraClipboard* state)
++{
++	if (state->cliprdr && state->waiting &&
++	    (GetTickCount64() - state->waitingSince >= VISTARA_WAIT_FOR_COPY_MS))
++		(void)vistara_clip_resume(state->cliprdr, state, "timeout");
 +}
 +
 +static void vistara_clipboard_close(vistaraClipboard* state)
@@ -1724,7 +1765,7 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -303,6 +1714,11 @@
+@@ -303,6 +1755,11 @@
  		return FALSE;
  	if (!freerdp_settings_set_bool(settings, FreeRDP_FrameMarkerCommandEnabled, TRUE))
  		return FALSE;
@@ -1736,7 +1777,7 @@
  	if (!freerdp_settings_set_bool(settings, FreeRDP_SurfaceFrameMarkerEnabled, TRUE))
  		return FALSE;
  	if (!freerdp_settings_set_bool(
-@@ -574,6 +1990,32 @@
+@@ -574,6 +2031,32 @@
  	subsystem = server->subsystem;
  	WINPR_ASSERT(subsystem);
  
@@ -1769,7 +1810,7 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -735,6 +2177,8 @@
+@@ -735,6 +2218,8 @@
  	WINPR_ASSERT(client);
  
  	client->suppressOutput = !(allow);
@@ -1778,7 +1819,7 @@
  
  	if (allow)
  	{
-@@ -2845,6 +4289,10 @@
+@@ -2845,6 +4330,10 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -1789,7 +1830,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2885,6 +4333,9 @@
+@@ -2885,6 +4374,9 @@
  
  	ChannelEvent = WTSVirtualChannelManagerGetEventHandle(client->vcm);
  	WINPR_ASSERT(ChannelEvent);
@@ -1799,7 +1840,7 @@
  
  	rc = freerdp_settings_set_bool(settings, FreeRDP_UnicodeInput, TRUE);
  	WINPR_ASSERT(rc);
-@@ -2935,6 +4386,8 @@
+@@ -2935,6 +4427,8 @@
  		}
  		events[nCount++] = ChannelEvent;
  		events[nCount++] = MessageQueue_Event(MsgQueue);
@@ -1808,12 +1849,13 @@
  
  #if defined(CHANNEL_RDPGFX_SERVER)
  		HANDLE gfxevent = rdpgfx_server_get_event_handle(client->rdpgfx);
-@@ -2950,6 +4403,13 @@
+@@ -2950,6 +4444,14 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
 +		vistara_disp_send_caps(&vistara_disp);
 +		vistara_clipboard_open(client, &vistara_clipboard);
++		vistara_clipboard_service(&vistara_clipboard);
 +		vistara_drives_open(client, &vistara_drives);
 +		vistara_rail_open(client, &vistara_rail);
 +		vistara_rail_service(client, &vistara_rail);
@@ -1822,7 +1864,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +4497,8 @@
+@@ -3037,6 +4539,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -1831,7 +1873,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +4652,16 @@
+@@ -3190,6 +4694,16 @@
  
  fail:
  
