@@ -212,8 +212,12 @@ RUNTIME_CHECK_FLAGS=(
   -DCMAKE_CXX_FLAGS_RELEASE=-O3
 )
 
+# The version is the release's own. By default FreeRDP asks git for a tag,
+# and the source is unpacked inside Vistara's checkout: a Vistara tag such as
+# v0.5.1-beta would make it FreeRDP 0.5.1, with libraries named libwinpr0.
 cmake -S "$WORK/src/freerdp" -B "$WORK/obj/freerdp" ${GENERATOR[@]+"${GENERATOR[@]}"} \
   -DCMAKE_BUILD_TYPE=Release \
+  -DUSE_VERSION_FROM_GIT_TAG=OFF \
   "${RUNTIME_CHECK_FLAGS[@]}" \
   -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
   -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
