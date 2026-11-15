@@ -16,6 +16,12 @@ extension RDPSession {
     /// Whether the program started, moves and resizes the remote computer
     /// asks for, and when the last window has gone. Ends with the session.
     public var remoteAppEvents: AsyncStream<RDPRemoteAppEvent> { remoteApp.events }
+
+    /// What was printed, and the program's windows. Runs on the session thread.
+    func publishDocumentsAndWindows(from handle: SessionHandle) {
+        printed.publish(handle.takePrinted())
+        remoteApp.publish(windows: handle.takeRemoteWindows(), events: handle.takeRemoteAppEvents())
+    }
 }
 
 /// Passes on what a RemoteApp session's thread takes from the shim.

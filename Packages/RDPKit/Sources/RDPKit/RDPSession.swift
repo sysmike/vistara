@@ -265,8 +265,7 @@ public final class RDPSession: Sendable {
             if let text = handle.takeRemoteClipboardText() { remoteClipboardContinuation.yield(text) }
             if let files = handle.takeRemoteFiles() { remoteFilesContinuation.yield(files) }
             fetcher.service(handle)
-            printed.publish(handle.takePrinted())
-            remoteApp.publish(windows: handle.takeRemoteWindows(), events: handle.takeRemoteAppEvents())
+            publishDocumentsAndWindows(from: handle)
         }
         handle.disconnect()
         return .userRequested

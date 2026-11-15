@@ -23,9 +23,7 @@ extension SessionHandle {
     func send(_ order: RDPRemoteAppOrder) -> Bool {
         switch order {
         case .start(let program):
-            program.arguments.isEmpty
-                ? vistara_session_start_program(session, program.path, nil)
-                : vistara_session_start_program(session, program.path, program.arguments)
+            vistara_session_start_program(session, program.path, program.arguments.isEmpty ? nil : program.arguments)
         case .activate(let id, let isActive):
             vistara_session_activate_window(session, id, isActive)
         case .move(let id, let frame):

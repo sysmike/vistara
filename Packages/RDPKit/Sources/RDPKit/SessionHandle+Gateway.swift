@@ -39,6 +39,9 @@ extension SessionHandle {
         let gatewayUsername: UnsafeMutablePointer<CChar>?
         let gatewayDomain: UnsafeMutablePointer<CChar>?
         let gatewayPassword: UnsafeMutablePointer<CChar>?
+        /// The program to start in place of the desktop, if any.
+        let programPath: UnsafeMutablePointer<CChar>?
+        let programArguments: UnsafeMutablePointer<CChar>?
 
         init(_ target: Target) {
             host = strdup(target.host)
@@ -50,6 +53,8 @@ extension SessionHandle {
             gatewayUsername = account.flatMap { strdup($0.username) }
             gatewayDomain = account?.domain.flatMap { strdup($0) }
             gatewayPassword = account.flatMap { strdup($0.password) }
+            programPath = target.program.flatMap { strdup($0.path) }
+            programArguments = target.program.flatMap { $0.arguments.isEmpty ? nil : strdup($0.arguments) }
         }
 
         func erase() {
@@ -59,7 +64,7 @@ extension SessionHandle {
                 memset_s(secret, length, 0, length)
             }
             let all = [host, username, domain, password, gatewayHost, gatewayUsername, gatewayDomain, gatewayPassword]
-            for pointer in all { free(pointer) }
+            for pointer in all + [programPath, programArguments] { free(pointer) }
         }
     }
 }

@@ -85,13 +85,6 @@ final class SessionHandle {
         // Folders and the printer's folder, valid until connect returns.
         let printFolder = target.printing.flatMap { strdup($0.folder.path) }
         defer { free(printFolder) }
-        // The program to start in place of the desktop, if any.
-        let programPath = target.program.flatMap { strdup($0.path) }
-        let programArguments = target.program.flatMap { $0.arguments.isEmpty ? nil : strdup($0.arguments) }
-        defer {
-            free(programPath)
-            free(programArguments)
-        }
         let decider = decideCertificate.map(CertificateDecider.init)
         let messageDecider = decideGatewayMessage.map(GatewayMessageDecider.init)
         let folders = SharedFolderList(target.sharedFolders)
@@ -118,8 +111,8 @@ final class SessionHandle {
         options.shared_folders = folders.pointer.map { UnsafePointer($0) }
         options.shared_folder_count = folders.count
         options.print_folder = printFolder.map { UnsafePointer($0) }
-        options.remote_app_program = programPath.map { UnsafePointer($0) }
-        options.remote_app_arguments = programArguments.map { UnsafePointer($0) }
+        options.remote_app_program = strings.programPath.map { UnsafePointer($0) }
+        options.remote_app_arguments = strings.programArguments.map { UnsafePointer($0) }
 
         let monitors = target.monitors.map(\.cMonitor)
         return withExtendedLifetime((decider, messageDecider, folders)) {
@@ -218,6 +211,14 @@ final class SessionHandle {
             vistara_session_request_size(session, UInt32(width), UInt32(height), UInt32(scalePercent))
         case .clipboardText, .clipboardFiles:
             offerClipboard(event)
+        case .displayUpdates, .monitorLayout, .remoteApp:
+            sendDisplayOrOrder(event)
+        }
+    }
+
+    /// What is not input from the keyboard or pointer, or the clipboard.
+    private func sendDisplayOrOrder(_ event: RDPInputEvent) -> Bool {
+        switch event {
         case .displayUpdates(let allowed): vistara_session_set_display_updates(session, allowed)
         case .monitorLayout(let monitors):
             monitors.map(\.cMonitor).withUnsafeBufferPointer { buffer in
@@ -225,6 +226,7 @@ final class SessionHandle {
                 return vistara_session_request_layout(session, first, buffer.count)
             }
         case .remoteApp(let order): send(order)
+        default: false
         }
     }
 
