@@ -134,7 +134,11 @@ struct RemoteAppIntegrationTests {
         Self.pump(handle, into: &reported) { $0.windows[0x100] != nil }
 
         #expect(handle.send(.remoteApp(.start(RDPProgram(path: "||vistara-calc", arguments: "/scientific")))))
-        Self.pump(handle, into: &reported) { $0.windows[0x200] != nil }
+        // The answer to the start comes on the RAIL channel, the window as an
+        // update: either may be first.
+        Self.pump(handle, into: &reported) { reported in
+            reported.windows[0x200] != nil && reported.events.filter { $0 == .programStarted }.count == 2
+        }
 
         #expect(reported.windows[0x200]?.title == "Vistara Calculator")
         #expect(reported.events.filter { $0 == .programStarted }.count == 2)
