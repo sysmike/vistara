@@ -38,8 +38,7 @@ struct SessionTarget: Equatable, Sendable {
     /// The gateway to go through, when the connection uses one.
     var gateway: Connection.Gateway?
     /// The program to open in place of the desktop, when the connection opens
-    /// one (docs/DESIGN.md, RemoteApp). Not passed to RDPKit until the app can
-    /// show program windows (#155); until then the desktop opens.
+    /// one (docs/DESIGN.md, RemoteApp). Its windows are Mac windows of their own.
     var program: Connection.Program?
 
     /// What RDPKit is told about this target, for a desktop of the given size.
@@ -64,6 +63,7 @@ struct SessionTarget: Equatable, Sendable {
             reconnectsAutomatically: reconnectsAutomatically
         )
         configuration.gateway = gateway.map(Self.rdpGateway)
+        configuration.program = program.map { RDPProgram(path: $0.path, arguments: $0.arguments) }
         return configuration
     }
 

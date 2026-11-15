@@ -16,7 +16,8 @@ struct SessionContentView: View {
             case .connecting:
                 ConnectingView(name: model.target.name, cancel: { model.disconnect() })
             case .connected:
-                if let framebuffer = model.framebuffer {
+                // A program's windows show it, each in a window of its own.
+                if model.target.program == nil, let framebuffer = model.framebuffer {
                     RemoteDesktopView(
                         framebuffer: framebuffer,
                         name: model.target.name,

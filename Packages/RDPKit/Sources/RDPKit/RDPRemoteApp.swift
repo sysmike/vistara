@@ -126,6 +126,15 @@ public struct RDPWindowSizeLimits: Sendable, Equatable {
     public var maximumHeight: Int
 }
 
+/// What the remote computer moves or resizes for the user ([MS-RDPERP]
+/// 2.2.2.7.2): the window, or the edge or corner being dragged.
+public enum RDPMoveSizeKind: UInt32, Sendable, Hashable {
+    case left = 1, right, top, topLeft, topRight, bottom, bottomLeft, bottomRight
+    case move
+    /// With the keyboard, from the window's menu: the Mac does not follow.
+    case keyboardMove, keyboardSize
+}
+
 /// What a RemoteApp session reports besides its windows.
 public enum RDPRemoteAppEvent: Sendable, Equatable {
     /// The program started; its windows follow.
@@ -133,7 +142,7 @@ public enum RDPRemoteAppEvent: Sendable, Equatable {
     case programFailed(RDPProgramFailure)
     /// The remote computer moves or resizes a window for the user, as when
     /// its title bar is dragged: the Mac follows the pointer until it ends.
-    case moveSizeBegan(windowID: UInt32, isMove: Bool, x: Int, y: Int)
+    case moveSizeBegan(windowID: UInt32, kind: RDPMoveSizeKind, x: Int, y: Int)
     case moveSizeEnded(windowID: UInt32, x: Int, y: Int)
     case sizeLimits(windowID: UInt32, RDPWindowSizeLimits)
     /// The programs' last window has been gone for

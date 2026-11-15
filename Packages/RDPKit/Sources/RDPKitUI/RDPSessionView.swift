@@ -66,13 +66,21 @@ public final class RDPSessionView: MTKView {
 
     private let framebuffer: RDPFramebuffer
     private let renderer: FrameRenderer?
+    /// Draws from this desktop's renderer, which uploads the pixels once for
+    /// every view, instead of following the framebuffer itself.
+    private let shared: RDPSharedDesktop?
     private var observation: Task<Void, Never>?
 
-    public init(framebuffer: RDPFramebuffer, connectionName: String) {
+    public convenience init(framebuffer: RDPFramebuffer, connectionName: String) {
+        self.init(framebuffer: framebuffer, connectionName: connectionName, shared: nil)
+    }
+
+    init(framebuffer: RDPFramebuffer, connectionName: String, shared: RDPSharedDesktop?) {
         self.framebuffer = framebuffer
         self.connectionName = connectionName
-        let device = MTLCreateSystemDefaultDevice()
-        renderer = device.flatMap { try? FrameRenderer(device: $0) }
+        self.shared = shared
+        let device = shared?.device ?? MTLCreateSystemDefaultDevice()
+        renderer = shared.map(\.renderer) ?? device.flatMap { try? FrameRenderer(device: $0) }
         super.init(frame: .zero, device: device)
 
         colorPixelFormat = FrameRenderer.pixelFormat
@@ -113,6 +121,10 @@ public final class RDPSessionView: MTKView {
         // The desktop is the window's content, so typing goes to it.
         window.makeFirstResponder(self)
         desktopSizeMayHaveChanged()
+        if shared != nil {
+            needsDisplay = true
+            return
+        }
 
         consumeUpdate()
         let changes = framebuffer.changes
@@ -235,7 +247,7 @@ public final class RDPSessionView: MTKView {
         CursorFactory.cursor(for: remoteCursor, pointsPerPixel: pointsPerPixel)
     }
 
-    private func showRemoteCursor(_ cursor: RDPCursor) {
+    func showRemoteCursor(_ cursor: RDPCursor) {
         remoteCursor = cursor
         guard let window else { return }
         window.invalidateCursorRects(for: self)

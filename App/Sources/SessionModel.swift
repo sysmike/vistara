@@ -46,8 +46,13 @@ final class SessionModel {
     /// The user ended the session; set by disconnect(), read when it ends.
     @ObservationIgnored var endedByUser = false
     @ObservationIgnored var isVisible = true {
-        didSet { if isVisible != oldValue, isConnected { send([.displayUpdates(isVisible)]) } }
+        didSet { if isVisible != oldValue, isConnected, !opensProgram { send([.displayUpdates(isVisible)]) } }
     }
+    /// A program's windows, while it runs (SessionModel+Programs.swift).
+    @ObservationIgnored var programs: ProgramWindows?
+    @ObservationIgnored var programSpace: RemoteAppSpace?
+    /// The program's last window has gone: the session can end.
+    @ObservationIgnored var onLastProgramWindowClosed: (() -> Void)?
 
     /// The last session ended because the connection accepts only trusted
     /// certificates and this one was not.
@@ -162,7 +167,7 @@ final class SessionModel {
         connectedScale = desktop.scalePercent
         refusedCertificateByPolicy = false
         var configuration = target.configuration(desktop: desktop)
-        applyDisplays(to: &configuration)
+        if opensProgram { applyProgramSpace(to: &configuration) } else { applyDisplays(to: &configuration) }
         let access = SharedFolderAccess(target.sharedFolders)
         folderAccess = access
         configuration.sharedFolders = access.folders
@@ -270,8 +275,9 @@ final class SessionModel {
             keepOrForgetEnteredGatewayCredentials()
             wasRefused = false
             phase = .connected
+            startPrograms(for: source)
             // A session that connects where nobody can see it.
-            if !isVisible { send([.displayUpdates(false)]) }
+            if !isVisible, !opensProgram { send([.displayUpdates(false)]) }
         case .disconnected(let reason):
             let wasConnected = phase == .connected
             clipboard?.stop()
@@ -293,6 +299,7 @@ final class SessionModel {
                 if !continueReconnecting(after: reason, wasConnected: wasConnected) {
                     phase = .disconnected(reason)
                 }
+                programsLost(isReconnecting: phase.isReconnecting)
             }
         }
     }

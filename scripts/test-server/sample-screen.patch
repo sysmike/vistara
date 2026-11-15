@@ -306,7 +306,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,1410 @@
+@@ -37,6 +37,1417 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -1313,9 +1313,11 @@
 + * handshake it says its desktop is ready; an exec of "||vistara-notepad"
 + * opens a window with an icon and a popup owned by it, "||vistara-calc" a
 + * second window, and anything else is "not in the allow list". The first
-+ * activation of the notepad window pretends its title bar was dragged
-+ * (local move/size), a window move is answered with the window at its new
-+ * place, and a close deletes the window and what it owns. Everything the
++ * activation of the notepad window pretends its title bar was pressed
++ * (local move/size began); the client's window move that follows ends it,
++ * as Windows ends a drag once the button is up. A window move is answered
++ * with the window at its new place, and a close deletes the window and
++ * what it owns. Everything the
 + * client sends is logged as "vistara-rail ...". The RAIL channel's own thread
 + * runs the callbacks; window orders go out from the client's thread. */
 +#include <stdarg.h>
@@ -1344,6 +1346,7 @@
 +	BOOL moveNotepad;
 +	RAIL_WINDOW_MOVE_ORDER move;
 +	BOOL dragged;
++	BOOL dragging;
 +} vistaraRail;
 +
 +static void vistara_rail_log(const char* format, ...)
@@ -1437,23 +1440,17 @@
 +	BOOL drag = FALSE;
 +	EnterCriticalSection(&state->lock);
 +	if (activate->enabled && activate->windowId == VISTARA_NOTEPAD_ID && !state->dragged)
-+		drag = state->dragged = TRUE;
++		drag = state->dragged = state->dragging = TRUE;
 +	LeaveCriticalSection(&state->lock);
 +	if (!drag)
 +		return CHANNEL_RC_OK;
-+	/* As if the user pressed on the title bar and let go 30 pixels further. */
++	/* As if the user pressed on the title bar, 50 pixels in from its left. */
 +	RAIL_LOCALMOVESIZE_ORDER order = WINPR_C_ARRAY_INIT;
 +	order.windowId = VISTARA_NOTEPAD_ID;
 +	order.isMoveSizeStart = TRUE;
 +	order.moveSizeType = RAIL_WMSZ_MOVE;
 +	order.posX = 150;
 +	order.posY = 90;
-+	UINT rc = context->ServerLocalMoveSize(context, &order);
-+	if (rc != CHANNEL_RC_OK)
-+		return rc;
-+	order.isMoveSizeStart = FALSE;
-+	order.posX = 130;
-+	order.posY = 110;
 +	return context->ServerLocalMoveSize(context, &order);
 +}
 +
@@ -1481,9 +1478,19 @@
 +	EnterCriticalSection(&state->lock);
 +	state->moveNotepad = TRUE;
 +	state->move = *move;
++	const BOOL endsDrag = state->dragging;
++	state->dragging = FALSE;
 +	LeaveCriticalSection(&state->lock);
 +	vistara_rail_wake(state);
-+	return CHANNEL_RC_OK;
++	if (!endsDrag)
++		return CHANNEL_RC_OK;
++	RAIL_LOCALMOVESIZE_ORDER order = WINPR_C_ARRAY_INIT;
++	order.windowId = VISTARA_NOTEPAD_ID;
++	order.isMoveSizeStart = FALSE;
++	order.moveSizeType = RAIL_WMSZ_MOVE;
++	order.posX = move->left;
++	order.posY = move->top;
++	return context->ServerLocalMoveSize(context, &order);
 +}
 +
 +static UINT vistara_rail_client_langbar(WINPR_ATTR_UNUSED RailServerContext* context,
@@ -1717,7 +1724,7 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -303,6 +1707,11 @@
+@@ -303,6 +1714,11 @@
  		return FALSE;
  	if (!freerdp_settings_set_bool(settings, FreeRDP_FrameMarkerCommandEnabled, TRUE))
  		return FALSE;
@@ -1729,7 +1736,7 @@
  	if (!freerdp_settings_set_bool(settings, FreeRDP_SurfaceFrameMarkerEnabled, TRUE))
  		return FALSE;
  	if (!freerdp_settings_set_bool(
-@@ -574,6 +1983,32 @@
+@@ -574,6 +1990,32 @@
  	subsystem = server->subsystem;
  	WINPR_ASSERT(subsystem);
  
@@ -1762,7 +1769,7 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -735,6 +2170,8 @@
+@@ -735,6 +2177,8 @@
  	WINPR_ASSERT(client);
  
  	client->suppressOutput = !(allow);
@@ -1771,7 +1778,7 @@
  
  	if (allow)
  	{
-@@ -2845,6 +4282,10 @@
+@@ -2845,6 +4289,10 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
@@ -1782,7 +1789,7 @@
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2885,6 +4326,9 @@
+@@ -2885,6 +4333,9 @@
  
  	ChannelEvent = WTSVirtualChannelManagerGetEventHandle(client->vcm);
  	WINPR_ASSERT(ChannelEvent);
@@ -1792,7 +1799,7 @@
  
  	rc = freerdp_settings_set_bool(settings, FreeRDP_UnicodeInput, TRUE);
  	WINPR_ASSERT(rc);
-@@ -2935,6 +4379,8 @@
+@@ -2935,6 +4386,8 @@
  		}
  		events[nCount++] = ChannelEvent;
  		events[nCount++] = MessageQueue_Event(MsgQueue);
@@ -1801,7 +1808,7 @@
  
  #if defined(CHANNEL_RDPGFX_SERVER)
  		HANDLE gfxevent = rdpgfx_server_get_event_handle(client->rdpgfx);
-@@ -2950,6 +4396,13 @@
+@@ -2950,6 +4403,13 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
@@ -1815,7 +1822,7 @@
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +4490,8 @@
+@@ -3037,6 +4497,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -1824,7 +1831,7 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +4645,16 @@
+@@ -3190,6 +4652,16 @@
  
  fail:
  
