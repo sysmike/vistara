@@ -178,6 +178,15 @@ final class ProgramWindowController: NSObject, NSWindowDelegate {
 
     /// An icon as the Dock shows a minimized window's.
     static func image(_ icon: RDPImage) -> NSImage? {
+        cgImage(icon).map { NSImage(cgImage: $0, size: NSSize(width: icon.width, height: icon.height)) }
+    }
+
+    /// An icon as a PNG, as a saved connection keeps it.
+    static func png(_ icon: RDPImage) -> Data? {
+        cgImage(icon).flatMap { NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:]) }
+    }
+
+    private static func cgImage(_ icon: RDPImage) -> CGImage? {
         guard icon.width > 0, icon.height > 0, icon.pixels.count >= icon.width * icon.height * 4,
             let provider = CGDataProvider(data: icon.pixels as CFData),
             let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
@@ -189,7 +198,7 @@ final class ProgramWindowController: NSObject, NSWindowDelegate {
             space: colorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: true,
             intent: .defaultIntent
         ) else { return nil }
-        return NSImage(cgImage: image, size: NSSize(width: icon.width, height: icon.height))
+        return image
     }
 
     // MARK: NSWindowDelegate

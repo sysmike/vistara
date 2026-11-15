@@ -17,6 +17,8 @@ final class SessionCoordinator {
     /// Saves fresh bookmarks of moved shared folders to a saved connection.
     /// Set by the app.
     @ObservationIgnored var renewSharedFolders: ((UUID, [SharedFolderAccess.Renewal]) -> Void)?
+    /// Keeps a program's icon for its saved connection. Set by the app.
+    @ObservationIgnored var programIconArrived: ((UUID, Data) -> Void)?
     /// Opens the Connections window or brings it forward. Set by the app.
     @ObservationIgnored var showConnections: (() -> Void)?
     @ObservationIgnored let trustStore: CertificateTrustStore
@@ -64,6 +66,15 @@ final class SessionCoordinator {
     /// gets its window or tab brought forward instead of a second one.
     @discardableResult
     func open(_ target: SessionTarget, placement: SessionPlacement? = nil) -> SessionWindowController {
+        // Programs on the same computer, user, and gateway share one session
+        // (docs/DESIGN.md, RemoteApp).
+        if target.program != nil, let shared = controllers.first(where: { controller in
+            let model = controller.model
+            return model.opensProgram && model.isLive && model.target.sharesSession(with: target)
+        }) {
+            shared.model.startProgram(target)
+            return shared
+        }
         if let existing = controllers.first(where: { $0.model.target.credentialKey == target.credentialKey }) {
             existing.show()
             return existing
@@ -92,14 +103,16 @@ final class SessionCoordinator {
         controller.observeCertificates()
         model.connect()
         // A session across displays is never a tab, nor joined by one.
-        if placement == .tab, let host, host.window.isVisible, host.span == nil, controller.span == nil {
+        if placement == .tab, !model.opensProgram, let host, host.window.isVisible, host.span == nil,
+            controller.span == nil {
             host.window.addTabbedWindow(controller.window, ordered: .above)
             controller.show()
         } else {
             // A window of its own, even where AppKit would make it a tab.
             controller.window.tabbingMode = .disallowed
             controller.show()
-            if controller.span == nil { controller.window.tabbingMode = .automatic }
+            // A program's panel stays out of tabs.
+            if controller.span == nil, !model.opensProgram { controller.window.tabbingMode = .automatic }
         }
         frontSession = controller
         return controller
@@ -111,6 +124,8 @@ final class SessionCoordinator {
             model.onEditConnection = { [weak self] in self?.editConnection?(id) }
             model.onRenewedSharedFolders = { [weak self] renewals in self?.renewSharedFolders?(id, renewals) }
         }
+        model.onEditConnectionWithID = { [weak self] id in self?.editConnection?(id) }
+        model.onProgramIcon = { [weak self] id, png in self?.programIconArrived?(id, png) }
         // A program's session ends once its last window has gone.
         model.onLastProgramWindowClosed = { [weak self, weak model] in
             guard let self, let model else { return }

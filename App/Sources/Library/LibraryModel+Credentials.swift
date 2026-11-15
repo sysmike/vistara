@@ -54,3 +54,15 @@ extension LibraryModel {
         if changed { await save() }
     }
 }
+
+extension LibraryModel {
+    /// Keeps a program's icon, as a PNG, for the connection's row. On this
+    /// Mac only; nothing changes when it is the same.
+    func setProgramIcon(of id: Connection.ID, to png: Data) async {
+        guard canChange, let index = library.connections.firstIndex(where: { $0.id == id }),
+            library.connections[index].programIcon != png
+        else { return }
+        library.connections[index].programIcon = png
+        await save()
+    }
+}

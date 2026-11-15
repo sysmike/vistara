@@ -13,6 +13,11 @@ final class ProgramWindows {
     private let send: ([RDPInputEvent]) -> Void
     /// The programs' last window has been gone a while: the session can end.
     var onLastWindowClosed: (() -> Void)?
+    /// The remote computer answered a program's start: nil when it started.
+    var onProgramAnswer: ((RDPProgramFailure?) -> Void)?
+    /// A window of its own (not a menu or a dialog's) showed its icon first.
+    var onWindowIcon: ((RDPImage) -> Void)?
+    private var iconsTold: Set<UInt32> = []
     private var tasks: [Task<Void, Never>] = []
     /// Whether a window was brought to the front yet, which the first one is.
     private var hasShownWindow = false
@@ -52,7 +57,18 @@ final class ProgramWindows {
             } else {
                 open(remote)
             }
+            if remote.ownerID == nil, !remote.isDeleted, let icon = remote.icon, iconsTold.insert(remote.id).inserted {
+                onWindowIcon?(icon)
+            }
         }
+    }
+
+    /// Brings the windows forward, as when a running program is opened again.
+    func bringToFront() {
+        NSApp.activate()
+        let shown = controllers.values.filter { $0.window.takesKeyboard && $0.window.isVisible }
+        shown.forEach { $0.window.orderFront(nil) }
+        shown.first?.window.makeKeyAndOrderFront(nil)
     }
 
     private func open(_ remote: RDPRemoteWindow) {
@@ -84,8 +100,10 @@ final class ProgramWindows {
             controllers[id]?.applyLimits(limits)
         case .lastWindowClosed:
             onLastWindowClosed?()
-        case .programStarted, .programFailed:
-            break
+        case .programStarted:
+            onProgramAnswer?(nil)
+        case .programFailed(let failure):
+            onProgramAnswer?(failure)
         }
     }
 

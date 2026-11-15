@@ -6,6 +6,7 @@ the short version.
 
 - [Your connections](#your-connections)
 - [Connecting](#connecting)
+- [Opening a program instead of the desktop](#opening-a-program-instead-of-the-desktop)
 - [The session window](#the-session-window)
 - [Keyboard](#keyboard)
 - [Clipboard, printing, sound, and shared folders](#clipboard-printing-sound-and-shared-folders)
@@ -46,6 +47,9 @@ Settings > General.
 
 ![The connection editor](images/editor.png)
 
+- **Open**: *The Desktop*, or *A Program* of the remote computer in windows
+  of its own; see [Opening a program instead of the
+  desktop](#opening-a-program-instead-of-the-desktop).
 - **General**: a name, the computer (with a port if it isn't 3389), the user
   name and domain to suggest when signing in, a folder, and tags. You can type
   `DOMAIN\user` in the User field.
@@ -72,6 +76,56 @@ There is no password field. Vistara asks for the password when you connect.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/editor-gateway-dark.png">
   <img alt="The Gateway section, signing in to the gateway as another account" src="images/editor-gateway.png" width="480">
+</picture>
+
+## Opening a program instead of the desktop
+
+A connection can open one program of the remote computer, such as Word,
+instead of its whole desktop (RemoteApp). The program's windows appear on
+your Mac beside your own, without the remote desktop around them.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/program-window-dark.png">
+  <img alt="A program's window beside a Mac window" src="images/program-window.png" width="560">
+</picture>
+
+1. In the connection editor, choose **Open: A Program**.
+2. Enter the program as the remote computer publishes it: `||` and its
+   name, such as `||WINWORD`, or a path. Ask whoever runs the computer if
+   you don't know it. Add arguments if the program needs any.
+3. Connect as usual. A small panel says Vistara is connecting, and asks for
+   your password or about the certificate if it must. It goes away when the
+   program's first window appears.
+
+An `.rdp` file for a published program, such as one from a company's
+RD Web Access page, imports as a program connection named after the program.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/editor-program-dark.png">
+  <img alt="The connection editor opening a program" src="images/editor-program.png" width="480">
+</picture>
+
+- **The windows** have the program's own title bar and buttons. Drag the
+  title bar to move a window and its edges to resize it; the buttons
+  minimize, maximize, and close it. Menus and tooltips appear above the
+  window they belong to.
+- **Each window** is in the Window menu, Mission Control, and Command-`. A
+  minimized window goes to the Dock with the program's icon, which the
+  Connections window shows too once you've opened the program.
+- **Keys, the clipboard, copying files, printing, sound, and shared folders**
+  work as in a desktop session, following the connection's choices.
+- **Several programs on the same computer** share one session: opening a
+  second program connection to the same computer, with the same user and
+  gateway, starts it without signing in again.
+- **Closing** a program's window asks the program to close it, so it can ask
+  you to save. When its last window has closed, the session ends.
+- **If the program can't start**, because the computer doesn't publish it or
+  can't find it, the panel says so, with Edit Connection to fix the
+  program's name.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/program-not-published-dark.png">
+  <img alt="The panel saying a program isn't published" src="images/program-not-published.png" width="440">
 </picture>
 
 ## Connecting
@@ -430,7 +484,10 @@ the architecture document.
 Vistara is new. It does not yet support:
 
 - using only some of your displays (All Displays uses every one);
-- RemoteApp, smart cards, or USB devices;
+- smart cards or USB devices;
+- subscribing to a workspace or RD Web Access feed (import a program's
+  `.rdp` file instead), or icons in the notification area;
+- programs following a display plugged in or out while they run;
 - choosing which of your Mac's printers the remote computer sees (it sees
   one, Vistara, which is the print panel);
 - copying images through the clipboard, or dragging files into a session;
