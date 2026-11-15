@@ -14,7 +14,7 @@ public enum RDPFileMapping {
         "desktopwidth", "desktopheight", "smart sizing", "dynamic resolution", "desktopscalefactor", "use multimon",
         "redirectclipboard", "redirectprinters", "audiomode", "autoreconnection enabled",
         "enablecredsspsupport", "authentication level"
-    ]).union(gatewayKeys)
+    ]).union(gatewayKeys).union(programKeys)
 
     /// Builds a connection from a file. The file format has no name, so the
     /// caller supplies one, usually the file name.
@@ -33,6 +33,7 @@ public enum RDPFileMapping {
         applyDisplaySettings(of: file, to: &connection)
         applyDeviceAndSecuritySettings(of: file, to: &connection)
         applyGateway(of: file, to: &connection)
+        applyProgram(of: file, to: &connection)
 
         connection.additionalRDPSettings = file.settings.filter { !mappedKeys.contains($0.key) }.map(\.line)
         return connection
@@ -100,6 +101,7 @@ public enum RDPFileMapping {
         add("enablecredsspsupport", flag(connection.requiresNLA))
         add("authentication level", .integer(connection.certificatePolicy == .requireTrusted ? 1 : 2))
         settings += gatewaySettings(of: connection)
+        settings += programSettings(of: connection)
 
         let extras = connection.additionalRDPSettings
             .compactMap(RDPFile.Setting.init(line:))

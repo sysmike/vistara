@@ -18,6 +18,9 @@ struct ImportReport: Equatable {
     /// Files that use their gateway only sometimes, which Vistara does not:
     /// it uses it always (docs/DESIGN.md, RD Gateway).
     var gatewaysUsedAlways: [String] = []
+    /// Files that ask for a program but name none: they open the desktop
+    /// (docs/DESIGN.md, RemoteApp).
+    var programsMissing: [String] = []
 
     var isEmpty: Bool { imported.isEmpty && failures.isEmpty }
 
@@ -54,6 +57,11 @@ struct ImportReport: Equatable {
                 ? "“\(gatewaysUsedAlways[0])” uses its gateway" : "\(gatewaysUsedAlways.count) files use their gateway"
             sentences.append("\(which) only when needed; Vistara always uses it.")
         }
+        if !programsMissing.isEmpty {
+            let which = programsMissing.count == 1
+                ? "“\(programsMissing[0])” asks" : "\(programsMissing.count) files ask"
+            sentences.append("\(which) for a program without naming one, so the desktop opens instead.")
+        }
         return sentences
     }
 }
@@ -75,13 +83,15 @@ extension LibraryModel {
                 let connection = try RDPFileMapping.connection(from: file, name: name)
                 await save(connection)
                 added.append(connection.id)
-                report.imported.append(name)
+                // A program's name from the file, when it gives one.
+                report.imported.append(connection.name)
                 if file.droppedPassword { report.droppedPasswords.append(name) }
                 report.skippedLines += file.skippedLines.count
                 if connection.usesAllDisplays, file.string("selectedmonitors") != nil {
                     report.chosenDisplays.append(name)
                 }
                 if RDPFileMapping.usesGatewayOnlySometimes(file) { report.gatewaysUsedAlways.append(name) }
+                if RDPFileMapping.asksForAProgramWithoutOne(file) { report.programsMissing.append(name) }
             } catch RDPFileMapping.ImportError.missingAddress {
                 report.failures.append("“\(url.lastPathComponent)” names no computer and wasn’t imported.")
             } catch {

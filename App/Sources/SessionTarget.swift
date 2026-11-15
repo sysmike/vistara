@@ -37,6 +37,9 @@ struct SessionTarget: Equatable, Sendable {
     var usesAllDisplays = false
     /// The gateway to go through, when the connection uses one.
     var gateway: Connection.Gateway?
+    /// The program to open in place of the desktop, when the connection opens
+    /// one (docs/DESIGN.md, RemoteApp). RDPKit starts it from #154 on.
+    var program: Connection.Program?
 
     /// What RDPKit is told about this target, for a desktop of the given size.
     func configuration(desktop: DesktopSize) -> RDPSessionConfiguration {
@@ -131,6 +134,7 @@ extension SessionTarget {
         usesHiDPI = connection.usesHiDPI
         usesAllDisplays = connection.usesAllDisplays
         gateway = connection.gateway.isUsed ? connection.gateway : nil
+        program = connection.program.isUsed ? connection.program : nil
         requiresNLA = connection.requiresNLA
         certificatePolicy = connection.certificatePolicy
         audioMode = connection.audioMode
