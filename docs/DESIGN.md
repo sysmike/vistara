@@ -668,6 +668,40 @@ Mac's own print panel.
   remote computers without Microsoft Print to PDF (before Windows 10 and
   Windows Server 2016), and printing without the panel.
 
+### Smart cards
+
+The remote computer can use the smart cards in the Mac's readers: to sign
+in to a program, sign a document, or anything else a card does there.
+
+- The connection's **Use smart cards** choice, in the editor's Devices and
+  Audio, turns it on. It is off by default, and Settings > General has its
+  default for new connections. *Judgment: off. While a card is in the
+  reader, it can sign for whoever uses the session.* With it off, the device
+  redirection channel offers no smart cards, and is not loaded at all without
+  shared folders or the printer.
+- With it on, the remote computer sees every reader of the Mac and the card
+  in each, and readers and cards as they come and go during the session.
+- A card's PIN is typed where the remote computer asks for it, on its own
+  screen. Vistara never asks for one, sees one, or keeps one, and a card's
+  keys never leave it: the remote computer asks the card to sign, as a
+  program on the Mac would.
+- Signing in to the computer with a card works on Windows' own sign-in
+  screen, which a connection without Network Level Authentication shows.
+  With NLA required, the editor says beneath the choice that the card works
+  in the session, and that signing in with it needs NLA off. *Judgment:
+  signing in with a card through NLA needs Kerberos, which Vistara does not
+  carry; it is a later step.*
+- Cards are reached through macOS's own smart card service (PC/SC and
+  CryptoTokenKit), with the App Sandbox's smart card entitlement. Vistara
+  installs no driver.
+- Logs count readers and requests; they never name a reader or a card, and
+  never show a certificate, what a card sent, or a PIN.
+- `.rdp` files keep it: `redirectsmartcards` is read on import and written
+  on export.
+- Not in this step: signing in through NLA or a gateway with a card,
+  choosing which readers the remote computer sees, and Windows Hello or
+  passkeys from the Mac.
+
 ### Sound
 
 - The connection's Sound choice decides where the remote computer's sound
@@ -704,7 +738,7 @@ the title follows the pane, and the window reopens on the last pane.
 
 | Pane | Contents |
 | --- | --- |
-| General | Defaults for new connections (resolution, Retina, displays, clipboard, copying files, printing, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
+| General | Defaults for new connections (resolution, Retina, displays, clipboard, copying files, printing, smart cards, sound, reconnecting, Network Level Authentication, certificate); whether to ask before quitting with open sessions |
 | Keyboard | Translate editing shortcuts; Right Command as the Windows key |
 | Sync | Where the connections live: On This Mac, or in a folder shared with other Macs; that folder, and whether it can be reached |
 | Security | Trusted certificates: host, fingerprint, date trusted, Remove |
