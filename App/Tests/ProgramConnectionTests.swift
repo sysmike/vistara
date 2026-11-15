@@ -60,6 +60,7 @@ struct ProgramConnectionTests {
         excel.name = "Excel"
         excel.connectionID = UUID()
         excel.program = Connection.Program(opens: .program, path: "||EXCEL")
+        let wordID = try #require(word.connectionID)
         let model = SessionModel(target: word, credentialStore: InMemoryCredentialStore())
         model.beginPrograms()
 
@@ -69,7 +70,20 @@ struct ProgramConnectionTests {
         model.programAnswered(nil)
         #expect(model.programStarts.waiting.isEmpty)
         #expect(model.programStarts.awaitingAnswer.map(\.name) == ["Excel"])
-        #expect(model.programStarts.awaitingIcon == [word.connectionID])
+        #expect(model.programStarts.awaitingIcon == [wordID])
+
+        // An icon that comes before its program's answer waits for it.
+        var icons: [UUID] = []
+        model.onProgramIcon = { id, _ in icons.append(id) }
+        model.programStarts.awaitingIcon = []
+        model.programIconArrived(RDPImage(width: 1, height: 1, pixels: Data([0, 0, 0xFF, 0xFF])))
+        #expect(icons.isEmpty)
+        let again = ProgramStarts.Start(
+            name: "Word", connectionID: word.connectionID, program: RDPProgram(path: "||WINWORD")
+        )
+        model.programStarts.awaitingAnswer.insert(again, at: 0)
+        model.programAnswered(nil)
+        #expect(icons == [wordID])
 
         model.programAnswered(.notPublished)
         let failure = ProgramFailure(failure: .notPublished, name: "Excel", connectionID: excel.connectionID)
@@ -222,13 +236,15 @@ struct ProgramOpeningTests {
             controller.model.programs?.controllers[0x100] != nil && controller.model.programs?.controllers[0x200] != nil
         }
 
+        // The answers come on another channel than the windows.
+        await waitUntil("both programs were answered") { controller.model.programStarts.awaitingAnswer.isEmpty }
         #expect(coordinator.sessionWindows.count == 1)
         let lines = Self.railLines(after: before)
         #expect(lines.filter { $0.hasPrefix("handshake ") }.count == 1)
         #expect(lines.contains("exec program=||vistara-calc arguments="))
         // Opening one that runs brings its windows forward instead.
         #expect(coordinator.open(calculator) === controller)
-        #expect(controller.model.programStarts.awaitingAnswer.isEmpty)
+        #expect(controller.model.programStarts.awaitingAnswer.isEmpty && controller.model.programStarts.waiting.isEmpty)
 
         coordinator.disconnect(controller.model)
         await waitUntil("the session has ended") { !controller.model.isLive }

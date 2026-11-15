@@ -72,6 +72,9 @@ struct ProgramStarts {
     var waiting: [Start] = []
     /// Started, waiting for a new window's icon.
     var awaitingIcon: [UUID] = []
+    /// Icons of new windows that came before their program's answer, as PNGs:
+    /// the answer comes on another channel and may be later.
+    var earlyIcons: [Data] = []
     /// The saved connections whose programs run in the session.
     var running: Set<UUID> = []
     var takesMore = false
@@ -132,7 +135,12 @@ extension SessionModel {
             programStarts.waiting = []
         }
         guard let failure else {
-            if let id = start.connectionID { programStarts.awaitingIcon.append(id) }
+            guard let id = start.connectionID else { return }
+            if programStarts.earlyIcons.isEmpty {
+                programStarts.awaitingIcon.append(id)
+            } else {
+                onProgramIcon?(id, programStarts.earlyIcons.removeFirst())
+            }
             return
         }
         if let id = start.connectionID { programStarts.running.remove(id) }
@@ -145,8 +153,12 @@ extension SessionModel {
 
     /// A program's first window brought its icon.
     func programIconArrived(_ icon: RDPImage) {
-        guard !programStarts.awaitingIcon.isEmpty, let png = ProgramWindowController.png(icon) else { return }
-        onProgramIcon?(programStarts.awaitingIcon.removeFirst(), png)
+        guard let png = ProgramWindowController.png(icon) else { return }
+        if programStarts.awaitingIcon.isEmpty {
+            programStarts.earlyIcons.append(png)
+        } else {
+            onProgramIcon?(programStarts.awaitingIcon.removeFirst(), png)
+        }
     }
 
     /// What the panel says about a program that did not start, if one did not.

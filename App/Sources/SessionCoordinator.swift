@@ -111,7 +111,8 @@ final class SessionCoordinator {
             // A window of its own, even where AppKit would make it a tab.
             controller.window.tabbingMode = .disallowed
             controller.show()
-            if controller.span == nil { controller.window.tabbingMode = .automatic }
+            // A program's panel stays out of tabs.
+            if controller.span == nil, !model.opensProgram { controller.window.tabbingMode = .automatic }
         }
         frontSession = controller
         return controller
