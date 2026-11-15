@@ -33,7 +33,10 @@ without the app.
 
 ## FreeRDP
 
-- FreeRDP 3.x is embedded as libraries: libfreerdp, libfreerdp-client, WinPR.
+- FreeRDP 3.x (libfreerdp, libfreerdp-client, WinPR) and OpenSSL are linked
+  statically into the app. A library the app carried would load under library
+  validation only when signed by the app's team, which an ad hoc build has
+  none of (docs/RELEASING.md).
 - Vistara does not shell out to `xfreerdp` or `sdl-freerdp` and does not reuse
   upstream's `client/Mac` code. `xfreerdp` needs XQuartz, the SDL client brings
   its own non-native window, and the upstream Mac client is unmaintained.

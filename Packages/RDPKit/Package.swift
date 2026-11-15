@@ -24,14 +24,27 @@ let package = Package(
                     "-I\(freeRDPPrefix)/include/winpr3"
                 ])
             ],
+            // FreeRDP, WinPR, and OpenSSL, linked statically: the app carries
+            // no libraries for library validation to refuse (docs/RELEASING.md).
+            // What they use of the system follows.
             linkerSettings: [
                 .unsafeFlags(["-L\(freeRDPPrefix)/lib"]),
-                .linkedLibrary("freerdp-client3"),
-                .linkedLibrary("freerdp3"),
-                .linkedLibrary("winpr3"),
-                // The sound output (audio.c).
+                .linkedLibrary("vistara-freerdp"),
+                .linkedLibrary("z"),
+                .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),
-                .linkedFramework("CoreAudio")
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("Carbon"),
+                .linkedFramework("CoreAudio"),
+                .linkedFramework("CoreFoundation"),
+                .linkedFramework("CoreMedia"),
+                .linkedFramework("CoreServices"),
+                .linkedFramework("CoreVideo"),
+                .linkedFramework("Foundation"),
+                .linkedFramework("IOKit"),
+                .linkedFramework("Security"),
+                .linkedFramework("UniformTypeIdentifiers"),
+                .linkedFramework("VideoToolbox")
             ]
         ),
         .target(name: "RDPKit", dependencies: ["CFreeRDP"]),
@@ -39,21 +52,11 @@ let package = Package(
         .target(name: "RDPKitUI", dependencies: ["RDPKit"]),
         .testTarget(
             name: "RDPKitTests",
-            dependencies: ["RDPKit"],
-            // Tests run outside an app bundle, so they find the libraries in
-            // the build prefix. The app embeds them instead (see project.yml).
-            linkerSettings: [
-                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "\(freeRDPPrefix)/lib"])
-            ]
+            dependencies: ["RDPKit"]
         ),
         .testTarget(
             name: "RDPKitUITests",
-            dependencies: ["RDPKitUI"],
-            // Tests run outside an app bundle, so they find the libraries in
-            // the build prefix. The app embeds them instead (see project.yml).
-            linkerSettings: [
-                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "\(freeRDPPrefix)/lib"])
-            ]
+            dependencies: ["RDPKitUI"]
         )
     ]
 )

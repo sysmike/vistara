@@ -9,7 +9,7 @@ and how to use it, see the [README](../README.md) and the
 
 ## Building the app
 
-Build FreeRDP first (see below); the app links and embeds it.
+Build FreeRDP first (see below); the app links it statically.
 
 Vistara builds with Xcode 26 (CI and releases pin 26.6; see `XCODE_VERSION`
 in the workflows) and runs on macOS 14 and later. Built against the macOS 26
@@ -246,7 +246,7 @@ errors only; set `WLOG_LEVEL=DEBUG` in the environment for more.
 
 ## Building FreeRDP
 
-Vistara embeds FreeRDP as libraries built from a pinned release.
+Vistara links FreeRDP statically, built from a pinned release.
 
 ```bash
 scripts/build-freerdp.sh
@@ -259,7 +259,7 @@ present). Nothing from Homebrew or MacPorts is linked.
 | --- | --- |
 | Input | [`FREERDP_VERSION`](../FREERDP_VERSION): FreeRDP version and the SHA-256 of its release tarball, on one line |
 | Input | [`scripts/OPENSSL_VERSION`](../scripts/OPENSSL_VERSION): the same for OpenSSL, FreeRDP's one external dependency |
-| Output | `build/freerdp/prefix/include` and `build/freerdp/prefix/lib`: headers and relocatable (`@rpath`) libraries for libfreerdp, libfreerdp-client, WinPR, libssl, and libcrypto |
+| Output | `build/freerdp/prefix/include` and `build/freerdp/prefix/lib`: headers, static libraries for libfreerdp, libfreerdp-client, WinPR, libssl, and libcrypto, and all of them joined in `libvistara-freerdp.a`, which the app links. OpenSSL is also built shared, for the test server |
 | Options | `--force` rebuilds even when the prefix is current. `VISTARA_ARCHS` (default `arm64 x86_64`) and `VISTARA_BUILD_DIR` (default `build/freerdp`) change the targets and location. With two architectures each is built on its own and the libraries are joined with `lipo` |
 
 To move to a new FreeRDP or OpenSSL release, follow

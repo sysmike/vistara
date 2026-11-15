@@ -44,17 +44,12 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: App/Vistara.entitlements
         ENABLE_HARDENED_RUNTIME: YES
-        # Ad hoc signing for local and CI builds. Xcode applies the hardened
-        # runtime only with a real identity, which arrives with issue #34.
+        # Ad hoc signing for local and CI builds; releases sign with a
+        # Developer ID when they have one (docs/RELEASING.md).
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         DEVELOPMENT_TEAM: ""
         ENABLE_USER_SCRIPT_SANDBOXING: NO
-        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
-    postBuildScripts:
-      - name: Embed FreeRDP
-        script: '"$SRCROOT/scripts/embed-freerdp.sh"'
-        basedOnDependencyAnalysis: false
     scheme:
       testTargets:
         - VistaraTests
