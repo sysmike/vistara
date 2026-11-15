@@ -64,22 +64,22 @@ final class ProgramWindow: NSWindow {
     /// The frame for the pointer at `pointer`: moved by as much as it went,
     /// or with the dragged edges following it, within the size limits.
     static func frame(for drag: LocalDrag, pointer: CGPoint, minSize: CGSize, maxSize: CGSize) -> CGRect {
-        let dx = pointer.x - drag.start.x
-        let dy = pointer.y - drag.start.y
+        let deltaX = pointer.x - drag.start.x
+        let deltaY = pointer.y - drag.start.y
         var frame = drag.startFrame
         switch drag.kind {
         case .move:
-            frame = frame.offsetBy(dx: dx, dy: dy)
+            frame = frame.offsetBy(dx: deltaX, dy: deltaY)
         case .keyboardMove, .keyboardSize:
             break
         default:
             let edges = edges(of: drag.kind)
             var minX = frame.minX, maxX = frame.maxX, minY = frame.minY, maxY = frame.maxY
-            if edges.left { minX = min(minX + dx, maxX - minSize.width) }
-            if edges.right { maxX = max(maxX + dx, minX + minSize.width) }
+            if edges.left { minX = min(minX + deltaX, maxX - minSize.width) }
+            if edges.right { maxX = max(maxX + deltaX, minX + minSize.width) }
             // Remote "top" is the Mac's larger y.
-            if edges.top { maxY = max(maxY + dy, minY + minSize.height) }
-            if edges.bottom { minY = min(minY + dy, maxY - minSize.height) }
+            if edges.top { maxY = max(maxY + deltaY, minY + minSize.height) }
+            if edges.bottom { minY = min(minY + deltaY, maxY - minSize.height) }
             frame = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
             frame.size.width = min(frame.width, maxSize.width)
             frame.size.height = min(frame.height, maxSize.height)

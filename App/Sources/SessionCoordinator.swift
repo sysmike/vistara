@@ -71,16 +71,7 @@ final class SessionCoordinator {
         let host = frontSession
         let placement = placement ?? defaultPlacement
 
-        let model = SessionModel(target: target, credentialStore: credentialStore, trustStore: trustStore)
-        if let id = target.connectionID {
-            model.onEditConnection = { [weak self] in self?.editConnection?(id) }
-            model.onRenewedSharedFolders = { [weak self] renewals in self?.renewSharedFolders?(id, renewals) }
-        }
-        // A program's session ends once its last window has gone.
-        model.onLastProgramWindowClosed = { [weak self, weak model] in
-            guard let self, let model else { return }
-            disconnect(model)
-        }
+        let model = makeModel(for: target)
         let controller = SessionWindowController(model: model)
         controller.onMainChange = { [weak self, weak controller] isMain in
             guard let self, let controller else { return }
@@ -112,6 +103,20 @@ final class SessionCoordinator {
         }
         frontSession = controller
         return controller
+    }
+
+    private func makeModel(for target: SessionTarget) -> SessionModel {
+        let model = SessionModel(target: target, credentialStore: credentialStore, trustStore: trustStore)
+        if let id = target.connectionID {
+            model.onEditConnection = { [weak self] in self?.editConnection?(id) }
+            model.onRenewedSharedFolders = { [weak self] renewals in self?.renewSharedFolders?(id, renewals) }
+        }
+        // A program's session ends once its last window has gone.
+        model.onLastProgramWindowClosed = { [weak self, weak model] in
+            guard let self, let model else { return }
+            disconnect(model)
+        }
+        return model
     }
 
     /// Closes the session's window, which disconnects. This is what
