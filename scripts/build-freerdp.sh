@@ -292,7 +292,8 @@ grep -q "FREERDP_VERSION_FULL \"$FREERDP_VERSION\"" "$PREFIX/include/freerdp3/fr
 # The runtime-check option is off, and the asserts are still compiled in:
 # assert() calls __assert_rtn, which NDEBUG would have removed. (Not grep -q:
 # under pipefail, a grep that stops reading early can fail the pipeline.)
-strings "$PREFIX/lib/libfreerdp3.a" | grep "WITH_VERBOSE_WINPR_ASSERT=OFF" >/dev/null ||
+# The build configuration the library reports is the generated buildflags.h.
+grep -F "WITH_VERBOSE_WINPR_ASSERT=OFF" "$PREFIX/include/freerdp3/freerdp/buildflags.h" >/dev/null ||
   { echo "libfreerdp3 does not report WITH_VERBOSE_WINPR_ASSERT=OFF" >&2; status=1; }
 for name in freerdp3 winpr3; do
   nm -u "$PREFIX/lib/lib$name.a" 2>/dev/null | grep "___assert_rtn" >/dev/null ||
