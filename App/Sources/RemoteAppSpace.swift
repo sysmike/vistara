@@ -1,5 +1,6 @@
 import AppKit
 import RDPKit
+import RDPKitUI
 
 /// Where a RemoteApp session's desktop lies on the Mac (docs/DESIGN.md,
 /// RemoteApp): every display, arranged as in System Settings, at one pixel
@@ -17,16 +18,45 @@ struct RemoteAppSpace: Equatable {
     /// RDP's largest desktop side.
     static let maximumSide: CGFloat = 8192
 
-    /// The Mac's displays now. With `usesHiDPI`, at the main display's
-    /// density, unless the desktop would then be too large.
+    /// The Mac's displays now (simulated ones in tests, as for sessions
+    /// across displays). With `usesHiDPI`, at the main display's density,
+    /// unless the desktop would then be too large.
+    @MainActor
     static func current(usesHiDPI: Bool) -> RemoteAppSpace {
-        let screens = NSScreen.screens
-        let main = screens.first
+        current(displays: SessionWindowController.displays(), usesHiDPI: usesHiDPI)
+    }
+
+    @MainActor
+    static func current(displays: [DisplayLayout.Display], usesHiDPI: Bool) -> RemoteAppSpace {
+        let ordered = displays.filter(\.isMain) + displays.filter { !$0.isMain }
+        let main = ordered.first
+        // The menu bar and the Dock are on the real main display.
+        let screen = NSScreen.screens.first
+        let visible = screen.flatMap { $0.frame == main?.frame ? $0.visibleFrame : nil } ?? main?.frame ?? .zero
         return RemoteAppSpace(
-            displays: screens.map(\.frame), visibleMain: main?.visibleFrame ?? .zero,
-            usesHiDPI: usesHiDPI, backingScale: main?.backingScaleFactor ?? 1
+            displays: ordered.map(\.frame), visibleMain: visible, usesHiDPI: usesHiDPI,
+            backingScale: main?.backingScale ?? 1
         )
     }
+
+    /// Where a window goes when the displays change: where it is while its
+    /// title bar is still on a display, otherwise near the top left of the
+    /// main display's visible frame, as large as it was where that fits.
+    static func placement(of frame: CGRect, on displays: [CGRect], visibleMain: CGRect) -> CGRect {
+        let titleBar = CGRect(x: frame.minX, y: frame.maxY - Self.titleBarHeight, width: frame.width,
+                              height: Self.titleBarHeight)
+        if displays.contains(where: { $0.intersects(titleBar) }) { return frame }
+        let width = min(frame.width, visibleMain.width)
+        let height = min(frame.height, visibleMain.height)
+        return CGRect(
+            x: visibleMain.minX + Self.inset, y: max(visibleMain.minY, visibleMain.maxY - Self.inset - height),
+            width: width, height: height
+        )
+    }
+
+    /// The top strip of a window, where a Windows title bar is.
+    private static let titleBarHeight: CGFloat = 30
+    private static let inset: CGFloat = 20
 
     init(displays: [CGRect], visibleMain: CGRect, usesHiDPI: Bool, backingScale: CGFloat) {
         self.displays = displays.isEmpty ? [CGRect(x: 0, y: 0, width: 1280, height: 800)] : displays

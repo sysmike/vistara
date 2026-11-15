@@ -12,7 +12,11 @@ final class ProgramWindowController: NSObject, NSWindowDelegate {
     let window: ProgramWindow
     let view: RDPSessionView
     private(set) var remote: RDPRemoteWindow
-    private let space: RemoteAppSpace
+    /// The displays as the remote desktop has them; changes with them.
+    private(set) var space: RemoteAppSpace
+    /// Keeps its place on the Mac while the displays change, whatever the
+    /// remote computer says meanwhile.
+    private(set) var holdsPlace = false
     private let send: ([RDPInputEvent]) -> Void
     private let connectionName: String
     /// The Mac changing the window itself, so its moves are not the user's.
@@ -69,7 +73,7 @@ final class ProgramWindowController: NSObject, NSWindowDelegate {
         listInWindowsMenu(as: "\(title) — \(connectionName)")
         if let icon = remote.icon.flatMap(Self.image) { window.miniwindowImage = icon }
         // While the Mac drags it, the window goes where the pointer goes.
-        if window.localDrag == nil {
+        if window.localDrag == nil, !holdsPlace {
             window.setFrame(space.screenRect(for: remote.frame), display: true)
             view.region = space.framebufferRegion(for: remote.frame)
         }
@@ -132,6 +136,23 @@ final class ProgramWindowController: NSObject, NSWindowDelegate {
                 width: CGFloat(limits.maximumWidth) / space.scale, height: CGFloat(limits.maximumHeight) / space.scale
             )
         }
+    }
+
+    /// The displays are changing: the window stays at `frame` on the Mac.
+    /// A window being dragged follows the drag, which sends where it ends.
+    func holdPlace(at frame: CGRect) {
+        holdsPlace = true
+        if window.localDrag == nil, frame != window.frame { window.setFrame(frame, display: true) }
+    }
+
+    /// The displays have changed, and the remote desktop follows `space`:
+    /// the window shows its part of the new desktop, and the remote computer
+    /// is told where the Mac has it, if that is not where it thinks.
+    func releasePlace(in space: RemoteAppSpace) {
+        self.space = space
+        holdsPlace = false
+        view.region = space.framebufferRegion(for: remote.frame)
+        if window.takesKeyboard, space.remoteRect(for: window.frame) != remote.frame { sendFrame() }
     }
 
     /// The remote computer started moving or resizing the window, the
