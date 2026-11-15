@@ -35,7 +35,8 @@ Consequences:
 | --- | --- | --- |
 | Connections | Primary, one per app | Sidebar, connection list, toolbar with search. Reopened with Window > Connections |
 | Session | One per connection in use, alone or as a tab | Title is the connection name, subtitle is the host. No toolbar: the desktop fills the window below the title bar. See Session tabs |
-| Settings | Auxiliary | Fixed toolbar with panes General, Keyboard, Security |
+| Program | One per window of a remote program | No Mac title bar: the program draws its own frame. See RemoteApp |
+| Settings | Auxiliary | Fixed toolbar with panes General, Keyboard, Sync, Security |
 
 - Opening a connection opens a new window, because the point is to keep the
   library and several desktops visible at once (HIG Windows: "Choose the right
@@ -342,6 +343,74 @@ network.
   they do the computer's. Reconnecting goes through the gateway again.
 - Not in this step: Azure Virtual Desktop and Microsoft Entra sign-in to the
   gateway, smart cards, and gateway settings shared outside a connection.
+
+### RemoteApp
+
+A connection can open one program of the remote computer instead of its
+whole desktop. The program's windows are windows on the Mac, beside the
+Mac's own, without the remote desktop around them.
+
+- **What a connection opens**: the connection editor starts with *Open: The
+  Desktop / A Program*. The Desktop is the default. A Program asks for the
+  program as the remote computer publishes it, such as `||WINWORD` for a
+  published alias or a path, and, under it, optional arguments. Resolution,
+  displays, and full screen don't apply to a program and are hidden.
+- **The library** shows a program connection with an app symbol, and with
+  the program's own icon once it has been opened on this Mac. The icon is
+  kept on this Mac only, as last use is. *Judgment: no icon is fetched
+  before the first connection, which would need a sign-in.*
+- **Opening it** shows a small Connecting panel with the connection's name
+  and Cancel, in place of a session window. The credentials sheet, the
+  certificate sheet and alert, and the gateway's sheets attach to that panel.
+  It closes when the program's first window appears.
+- **The program's windows** are Mac windows without Mac title bars: each
+  shows the window as the remote computer draws it, with its own title bar
+  and buttons. *Judgment: one frame, the program's, instead of a Mac title
+  bar around a Windows one.*
+  - Dragging the program's title bar moves the Mac window. Its edges resize
+    it, and its buttons minimize, maximize, and close it. Minimize puts the
+    window in the Dock as any window; maximize fills the screen it is on,
+    leaving the menu bar and the Dock visible.
+  - Menus, lists that drop down, and tooltips are windows of their own on
+    the remote computer. They appear where the program puts them, above the
+    window they belong to, and go away with it.
+  - Each window is listed in the Window menu with its title, under the
+    connection's name, and in Mission Control. Command-` moves between
+    Vistara's windows, programs' included. A program window is never a tab
+    and has no full-screen mode.
+  - Windows go to any of the Mac's displays. The remote computer is told
+    about every display, arranged as they are in System Settings.
+- **Keys, the pointer, the clipboard, copying files, printing, sound, and
+  shared folders** work as in a desktop session, following the connection's
+  choices. A key press goes to the program whose window is in front; the
+  same Mac shortcuts stay with the Mac (Keyboard below).
+- **Programs on the same computer share one session**: opening a second
+  program connection to the same computer, user, and gateway starts that
+  program in the session already open, without signing in again. *Judgment:
+  Windows usually allows one session per user; a second one would end the
+  first.*
+- **Ending**: closing a program's window asks the program to close it, as
+  its own close button does, so the program can ask to save. The session
+  ends when its programs' last window has been gone for a few seconds.
+  Session > Disconnect, in a program window's menu bar, ends the session at
+  once and closes its windows; the programs keep running on the remote
+  computer and opening the connection again brings them back.
+- **When something goes wrong**: if the remote computer doesn't publish the
+  program, or can't find or start it, the Connecting panel says so in those
+  words, naming the program, and offers Edit Connection. If the connection
+  drops, its windows stay where they are, dimmed, and the Connecting panel
+  shows Reconnecting… with Cancel, as a session window would.
+- **`.rdp` files**: `remoteapplicationmode`, `remoteapplicationprogram`,
+  `remoteapplicationname`, and `remoteapplicationcmdline` are read on import
+  and written on export. An imported program takes its name from
+  `remoteapplicationname` when there is one. Until this step, such a file
+  imported as a desktop connection without a word; files imported before
+  stay as they are.
+- Logs never name the program, its arguments, or its windows' titles.
+- Not in this step: subscribing to a workspace or RD Web Access feed, icons
+  in the notification area, jump lists, a Dock icon of its own for each
+  program, opening a Mac file in a remote program, and RemoteApp through
+  Azure Virtual Desktop.
 
 ## Keyboard
 

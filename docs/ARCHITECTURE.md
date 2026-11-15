@@ -55,6 +55,13 @@ without the app.
   cross from RDPKit to the app as Swift values and async streams.
 - One window per session. Session windows are ordinary Mac windows with system
   chrome and the system's full-screen mode.
+- A RemoteApp session (DESIGN.md, RemoteApp) loads FreeRDP's RAIL channel
+  and draws into one framebuffer that spans every display. Each program
+  window is a borderless Mac window that shows its own rectangle of it;
+  window orders (created, moved, retitled, deleted) and the program's icons
+  cross to the app as Swift values, and the app's moves, resizes, and
+  activations go back as RAIL orders. One RemoteApp session serves every
+  program connection to the same computer, user, and gateway.
 
 ## Persistence
 
@@ -99,6 +106,7 @@ Version 1 covers the connection library, per-connection settings, the session
 window, certificate trust on first use, and `.rdp` import and export.
 Session tabs came in milestone M4, multiple displays in M5, RD Gateway in
 M6, copying files in M7, printing in M8, and keeping connections on several
-Macs follows in M9 (see Session tabs, Multiple displays, RD Gateway, Copying
-files, Printing, and Connections on several Macs in DESIGN.md). Smart cards
-and RemoteApp are tracked as issues labeled `later`.
+Macs in M9, and RemoteApp follows in M10 (see Session tabs, Multiple
+displays, RD Gateway, Copying files, Printing, Connections on several Macs,
+and RemoteApp in DESIGN.md). Smart cards are tracked as an issue labeled
+`later`.
