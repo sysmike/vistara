@@ -60,23 +60,27 @@ extension FileClipboardIntegrationTests {
         let scratch = try ScratchFolder()
         defer { scratch.remove() }
         let locked = Data((0..<2_621_447).map { Self.reportByte(UInt64($0) + 3) })
-        let firstURL = try scratch.file("First/Copied.bin", locked)
+        // Its name asks the server to wait after the first part until the Mac
+        // has copied something else, so the copy always comes mid-fetch.
+        let firstURL = try scratch.file("First/wait for my next copy.bin", locked)
         let secondURL = try scratch.file("Second/Copied.bin", Data((0..<2_621_447).map { _ in UInt8(0x5A) }))
 
         let before = Self.serverLog().count
         try await whileConnected { session in
             session.send([.clipboardFiles(RDPLocalFileOffer(urls: [firstURL]))])
-            // As soon as the server has locked the first file and begun to
-            // fetch it, the Mac copies another in its place.
-            try await waitForServer("client-lock=7", after: before)
+            // Once the server has locked the first file and fetched its first
+            // part, and waits, the Mac copies another in its place.
+            try await waitForServer("client-fetch-waits", after: before)
             session.send([.clipboardFiles(RDPLocalFileOffer(urls: [secondURL]))])
             try await waitForServer("client-files-done", after: before)
         }
 
         let lines = Self.clipboardLines(after: before)
+        let waits = try #require(lines.firstIndex(of: "client-fetch-waits"))
         let copied = try #require(lines.firstIndex(of: "client-copied-during-fetch"))
+        let resumes = try #require(lines.firstIndex(of: "client-fetch-resumes after=copy"))
         let done = try #require(lines.firstIndex(of: "client-files-done"))
-        #expect(copied < done)
+        #expect(waits < copied && copied < resumes && resumes < done)
         let firstDone = String(format: "client-file-done index=0 bytes=2621447 fnv=%016llx", Self.fnv(locked))
         #expect(lines.contains(firstDone))
         #expect(!lines.contains { $0.hasPrefix("client-file-failed") })
