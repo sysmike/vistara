@@ -39,6 +39,9 @@ public actor SyncedLibraryStore {
     private let now: @Sendable () -> Date
     private var known = Library()
     private var pendingDeletions: [UUID: Date] = [:]
+    /// The folder as the last sync left it, to notice when it changes.
+    private var seen: SyncFolder.Fingerprint?
+    private var lastState: FolderState?
 
     /// `localDirectory` holds this Mac's library file; `folder` is the folder
     /// chosen, in which "Vistara Connections" is kept.
@@ -46,7 +49,9 @@ public actor SyncedLibraryStore {
         local = ConnectionStore(directory: localDirectory)
         self.folder = SyncFolder(chosen: folder)
         stateFile = localDirectory.appendingPathComponent(Self.stateFileName)
-        self.now = now
+        // In whole seconds, as the files keep dates: a stamp kept finer here
+        // would always be newer than its own copy in the folder.
+        self.now = { Date(timeIntervalSince1970: now().timeIntervalSince1970.rounded(.down)) }
     }
 
     /// This Mac's copy as last seen, to show at once; `sync()` follows.
@@ -70,15 +75,58 @@ public actor SyncedLibraryStore {
         return try await sync()
     }
 
+    /// Saves a library changed from `base`, which this store returned
+    /// earlier: only what changed since `base` is this Mac's change, and
+    /// what other Macs changed meanwhile stays.
+    @discardableResult
+    public func save(_ library: Library, basedOn base: Library) async throws -> SyncResult {
+        try await save(LibraryMerge.rebase(library, from: base, onto: known))
+    }
+
+    /// Starts keeping the library in the folder, as when it is chosen: this
+    /// Mac's entries are added to what is there, and nothing is deleted on
+    /// either side, not even what the folder marks deleted.
+    public func join() async throws -> SyncResult {
+        pendingDeletions = [:]
+        if let deletions = try? folder.read(now: now()).contents.deletions {
+            let time = now()
+            known.connections = known.connections.map { Self.restamp($0, ifIn: deletions, at: time) }
+            known.folders = known.folders.map { Self.restamp($0, ifIn: deletions, at: time) }
+            try await local.save(known)
+        }
+        try writeState()
+        return try await sync()
+    }
+
+    private static func restamp<Entry: SyncedEntry>(
+        _ entry: Entry, ifIn deletions: [UUID: Date], at time: Date
+    ) -> Entry {
+        guard deletions[entry.id] != nil else { return entry }
+        var stamped = entry
+        stamped.modifiedAt = time
+        return stamped
+    }
+
+    /// Whether `sync()` may find something new: the folder changed since the
+    /// last one, or that one couldn't finish. Cheap: it only lists the folder.
+    public func needsSync() -> Bool {
+        lastState != .reachable || folder.fingerprint() != seen
+    }
+
+    /// Identifiers in copies of this Mac's library file kept next to it.
+    public func identifiersInKeptCopies() async -> Set<String> {
+        await local.identifiersInKeptCopies()
+    }
+
     /// Takes what other Macs changed and writes what this Mac changed.
     public func sync() async throws -> SyncResult {
         let reading: SyncFolder.Reading
         do {
             reading = try folder.read(now: now())
         } catch SyncFolder.Problem.newerLayout {
-            return SyncResult(library: known, folder: .newerLayout, damagedFiles: [])
+            return finish(SyncResult(library: known, folder: .newerLayout, damagedFiles: []))
         } catch {
-            return SyncResult(library: known, folder: .unreachable, damagedFiles: [])
+            return finish(SyncResult(library: known, folder: .unreachable, damagedFiles: []))
         }
         let outcome = LibraryMerge.merge(local: known, localDeletions: pendingDeletions, folder: reading.contents)
         var state = FolderState.reachable
@@ -94,7 +142,13 @@ public actor SyncedLibraryStore {
             known = outcome.library
         }
         try writeState()
-        return SyncResult(library: known, folder: state, damagedFiles: reading.damaged)
+        return finish(SyncResult(library: known, folder: state, damagedFiles: reading.damaged))
+    }
+
+    private func finish(_ result: SyncResult) -> SyncResult {
+        lastState = result.folder
+        seen = folder.fingerprint()
+        return result
     }
 
     private func apply(_ outcome: LibraryMerge.Outcome, tidying reading: SyncFolder.Reading) throws {
@@ -123,28 +177,38 @@ public actor SyncedLibraryStore {
         var stamped = library
         let knownConnections = Dictionary(known.connections.map { ($0.id, $0) }) { first, _ in first }
         let knownFolders = Dictionary(known.folders.map { ($0.id, $0) }) { first, _ in first }
-        stamped.connections = library.connections.map { Self.stamp($0, was: knownConnections[$0.id], at: time) }
-        stamped.folders = library.folders.map { Self.stamp($0, was: knownFolders[$0.id], at: time) }
+        let deletions = pendingDeletions
+        stamped.connections = library.connections.map {
+            Self.stamp($0, was: knownConnections[$0.id], deletedAt: deletions[$0.id], at: time)
+        }
+        stamped.folders = library.folders.map {
+            Self.stamp($0, was: knownFolders[$0.id], deletedAt: deletions[$0.id], at: time)
+        }
         let present = Set(library.connections.map(\.id)).union(library.folders.map(\.id))
         for id in Set(knownConnections.keys).union(knownFolders.keys) where !present.contains(id) {
-            pendingDeletions[id] = time
+            let changed = knownConnections[id]?.modifiedAt ?? knownFolders[id]?.modifiedAt
+            pendingDeletions[id] = Self.later(than: changed, at: time)
         }
         // Back again, as after an undo: no longer deleted.
         for id in present { pendingDeletions[id] = nil }
         return stamped
     }
 
-    private static func stamp<Entry: SyncedEntry>(_ entry: Entry, was old: Entry?, at time: Date) -> Entry {
-        if let old {
-            var current = entry.shared
-            var before = old.shared
-            current.modifiedAt = nil
-            before.modifiedAt = nil
-            if current == before { return entry }
-        }
+    private static func stamp<Entry: SyncedEntry>(
+        _ entry: Entry, was old: Entry?, deletedAt: Date?, at time: Date
+    ) -> Entry {
+        if let old, entry.hasSameSharedPart(as: old) { return entry }
         var stamped = entry
-        stamped.modifiedAt = time
+        stamped.modifiedAt = later(than: old?.modifiedAt ?? deletedAt, at: time)
         return stamped
+    }
+
+    /// Now, or a second after what it follows if that is as late: a change
+    /// made within the same second as the version it changes is still the
+    /// later one, and a tie would go to the folder.
+    private static func later(than previous: Date?, at time: Date) -> Date {
+        guard let previous, previous >= time else { return time }
+        return previous.addingTimeInterval(1)
     }
 
     // MARK: State

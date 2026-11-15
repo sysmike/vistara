@@ -19,7 +19,7 @@ public actor ConnectionStore {
 
     public static let fileName = "connections.json"
 
-    private let directory: URL
+    public nonisolated let directory: URL
     private var fileURL: URL { directory.appendingPathComponent(Self.fileName) }
 
     public init(directory: URL) {

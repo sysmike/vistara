@@ -45,8 +45,8 @@ final class LibraryModel {
     var isExporting = false
     /// Files opened from the Finder before the library had loaded.
     @ObservationIgnored var pendingImports: [URL] = []
-    /// Set when the last change could not be saved.
-    private(set) var saveFailed = false
+    /// Set when the last change could not be saved; set by LibraryModel+Sync.
+    var saveFailed = false
 
     /// What the editor sheet shows, if it is open.
     enum EditorRequest: Identifiable, Equatable {
@@ -80,34 +80,69 @@ final class LibraryModel {
     var searchText = ""
     var sortOrder = [KeyPathComparator(\Connection.name, comparator: .localizedStandard)]
 
-    @ObservationIgnored private let store: ConnectionStore
-    @ObservationIgnored private var pendingSave: Task<Void, Never>?
-    private static let log = RDPLogging.logger("Library")
+    // Where the library is kept (docs/DESIGN.md, Connections on several
+    // Macs); set by this type and LibraryModel+Sync only.
+    /// The folder chosen in Settings > Sync, or nil for On This Mac.
+    var syncFolder: SyncFolderChoice?
+    /// How the folder was at the last sync; nil while on this Mac.
+    var syncState: SyncedLibraryStore.FolderState?
+    @ObservationIgnored var storage: LibraryStorage
+    /// This Mac's library file's folder, which holds its copy in either place.
+    @ObservationIgnored let directory: URL
+    /// Where the choice of folder is kept; tests keep none.
+    @ObservationIgnored let choiceDefaults: UserDefaults?
+    /// The library as the folder's store has it, as far as this model knows:
+    /// what the next save's changes are made to.
+    @ObservationIgnored var syncedBase = Library()
+    /// Files in the folder that could not be read, which may hold connections.
+    @ObservationIgnored var damagedSyncFiles: [String] = []
+    /// The folder opened through its bookmark, closed when no longer used.
+    @ObservationIgnored var openedFolder: URL?
+    @ObservationIgnored var folderWatch: Task<Void, Never>?
+    @ObservationIgnored var isCheckingFolder = false
+    /// Writes and syncs run one after another; see LibraryModel+Sync.
+    @ObservationIgnored var pendingSave: Task<Void, Never>?
+    @ObservationIgnored var lastOperation = 0
+    static let log = RDPLogging.logger("Library")
 
-    init(store: ConnectionStore) {
-        self.store = store
+    init(store: ConnectionStore, choiceDefaults: UserDefaults? = nil) {
+        storage = .thisMac(store)
+        directory = store.directory
+        self.choiceDefaults = choiceDefaults
     }
 
     /// The app's library. Tests make their own.
     static let shared = standard()
 
-    /// Vistara's library in Application Support.
+    /// Vistara's library in Application Support, in the folder chosen in
+    /// Settings > Sync if there is one.
     static func standard() -> LibraryModel {
         let directory = (try? ConnectionStore.defaultDirectory())
             ?? FileManager.default.temporaryDirectory.appendingPathComponent(VistaraCore.applicationSupportFolderName)
-        return LibraryModel(store: ConnectionStore(directory: directory))
+        let model = LibraryModel(store: ConnectionStore(directory: directory), choiceDefaults: .standard)
+        if let choice = SyncFolderChoice.saved(in: .standard) { model.useFolder(choice) }
+        return model
     }
 
     func load() async {
         do {
-            let result = try await store.load()
+            let result: ConnectionStore.LoadResult
+            switch storage {
+            case .thisMac(let store):
+                result = try await store.load()
+                identifiersInKeptCopies = await store.identifiersInKeptCopies()
+            case .folder(let store):
+                result = try await store.load()
+                identifiersInKeptCopies = await store.identifiersInKeptCopies()
+            }
             library = result.library
+            syncedBase = result.library
             corruptFileBackup = result.corruptFileBackup
             skippedEntries = result.skippedEntries
             originalFileCopy = result.originalFileCopy
-            identifiersInKeptCopies = await store.identifiersInKeptCopies()
             showsSkippedNotice = !result.skippedEntries.isEmpty
             loadState = .loaded
+            startSyncing()
             if !pendingImports.isEmpty {
                 let urls = pendingImports
                 pendingImports = []
@@ -226,34 +261,14 @@ final class LibraryModel {
         await save()
     }
 
-    /// Writes the library as it is now, after any write still in progress,
-    /// so writes land in the order the changes were made.
-    func scheduleSave() {
-        let previous = pendingSave
-        let snapshot = library
-        let store = store
-        pendingSave = Task { [weak self] in
-            await previous?.value
-            do {
-                try await store.save(snapshot)
-                self?.saveFailed = false
-            } catch {
-                Self.log.error("Saving the library failed: \(String(describing: error), privacy: .public)")
-                self?.saveFailed = true
-            }
-        }
-    }
-
-    private func save() async {
+    /// Writes the library as it is now and waits until it is written.
+    func save() async {
         scheduleSave()
         await flushSaves()
     }
+}
 
-    /// Waits until every change so far is written.
-    func flushSaves() async {
-        await pendingSave?.value
-    }
-
+extension LibraryModel {
     // MARK: Sidebar
 
     var folders: [Folder] {
@@ -321,53 +336,4 @@ final class LibraryModel {
 extension Connection {
     /// For sorting by Last Used: never used sorts as the oldest.
     var lastUsedSortKey: Date { lastConnectedAt ?? .distantPast }
-}
-
-extension LibraryModel {
-    /// Removes the Keychain items of connections that are no longer in the
-    /// library. Called at launch and at quit, when no Undo can bring a
-    /// deleted connection back. Never runs while the library is unreadable
-    /// or unsaved, so a missing connection always really is gone.
-    func removeOrphanedCredentials(from store: any CredentialStore) {
-        guard loadState == .loaded, !saveFailed, let keys = try? store.keys() else { return }
-        // An entry that could not be read may still own a password. Keep the
-        // ones whose identifier is known; without one, keep everything.
-        let skipped = skippedEntries.filter { $0.kind == .connection }
-        guard skipped.allSatisfy({ $0.id != nil }) else { return }
-        // A copy of the file kept next to it holds its connections too.
-        let keptCopies = identifiersInKeptCopies
-        let kept = Set(library.connections.map(\.id.uuidString))
-            .union(skipped.compactMap { $0.id?.uppercased() })
-            .union(keptCopies)
-        // A gateway's passwords stay while a connection uses the gateway. What
-        // an unreadable entry or a kept copy uses is unknown: keep them all.
-        let gateways = library.connections.map(\.gateway).filter(\.isUsed).map(\.credentialKeyPrefix)
-        let keepsEveryGateway = !skipped.isEmpty || !keptCopies.isEmpty
-        for key in keys where !kept.contains(key.uppercased()) {
-            if key.hasPrefix(Self.gatewayKeyPrefix),
-                keepsEveryGateway || gateways.contains(where: { key.lowercased().hasPrefix($0) }) {
-                continue
-            }
-            try? store.remove(for: key)
-        }
-    }
-
-    /// What every gateway's Keychain items start with.
-    static let gatewayKeyPrefix = "gateway/"
-}
-
-extension LibraryModel {
-    /// Saves fresh bookmarks of shared folders that moved, so the connection
-    /// follows them. A folder the user removed or changed meanwhile is left
-    /// as it is.
-    func renewSharedFolders(of id: Connection.ID, _ renewals: [SharedFolderAccess.Renewal]) async {
-        guard canChange, let index = library.connections.firstIndex(where: { $0.id == id }) else { return }
-        var changed = false
-        for renewal in renewals {
-            guard let folder = library.connections[index].sharedFolders.firstIndex(of: renewal.old) else { continue }
-            library.connections[index].sharedFolders[folder] = renewal.new
-            changed = true
-        }
-        if changed { await save() }
-    }
 }

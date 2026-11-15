@@ -5,12 +5,13 @@ import VistaraCore
 /// pane, reopening on the last one (docs/DESIGN.md, Settings).
 struct SettingsView: View {
     enum Pane: String {
-        case general, keyboard, security
+        case general, keyboard, sync, security
     }
 
     static let paneKey = "SettingsPane"
 
     let trustStore: CertificateTrustStore
+    let library: LibraryModel
     @AppStorage(Self.paneKey) private var pane = Pane.general
 
     var body: some View {
@@ -21,6 +22,9 @@ struct SettingsView: View {
             KeyboardSettingsView()
                 .tabItem { Label("Keyboard", systemImage: "keyboard") }
                 .tag(Pane.keyboard)
+            SyncSettingsView(model: library)
+                .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
+                .tag(Pane.sync)
             SecuritySettingsView(trustStore: trustStore)
                 .tabItem { Label("Security", systemImage: "lock") }
                 .tag(Pane.security)

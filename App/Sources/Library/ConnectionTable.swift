@@ -12,6 +12,9 @@ struct ConnectionTable: View {
         // Notices sit above the list in a plain stack: inset into the table's
         // safe area, they threw off the layout of the whole window.
         VStack(spacing: 0) {
+            if let folder = model.syncFolder, let state = model.syncState, state != .reachable {
+                SyncNotice(folder: folder, state: state)
+            }
             if model.showsSkippedNotice {
                 SkippedEntriesNotice(
                     skipped: model.skippedEntries, copy: model.originalFileCopy,
