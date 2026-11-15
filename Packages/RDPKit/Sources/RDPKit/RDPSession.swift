@@ -41,6 +41,7 @@ public final class RDPSession: Sendable {
     private let remoteFilesContinuation: AsyncStream<RDPRemoteFiles>.Continuation
     let fetcher = FileFetcher()
     let printed = PrintedDocuments()
+    let remoteApp = RemoteAppPublisher()
 
     private let delegate: RDPSessionDelegate
     private let continuation: AsyncStream<RDPSessionState>.Continuation
@@ -145,6 +146,7 @@ public final class RDPSession: Sendable {
         remoteFilesContinuation.finish()
         fetcher.end()
         printed.finish()
+        remoteApp.finish()
         framebuffer.finish()
     }
 
@@ -214,7 +216,8 @@ public final class RDPSession: Sendable {
             monitors: configuration.monitors,
             gateway: configuration.gateway.map {
                 SessionHandle.Gateway(host: $0.host, port: $0.port, credentials: gatewayCredentials)
-            }
+            },
+            program: configuration.program
         )
         let delegate = delegate
 
@@ -263,6 +266,7 @@ public final class RDPSession: Sendable {
             if let files = handle.takeRemoteFiles() { remoteFilesContinuation.yield(files) }
             fetcher.service(handle)
             printed.publish(handle.takePrinted())
+            remoteApp.publish(windows: handle.takeRemoteWindows(), events: handle.takeRemoteAppEvents())
         }
         handle.disconnect()
         return .userRequested

@@ -81,6 +81,9 @@ public struct RDPSessionConfiguration: Sendable, Equatable {
     public var gateway: RDPGateway?
     /// The printer to offer the remote computer, or nil for none.
     public var printing: RDPPrinting?
+    /// A program to open in place of the desktop (RemoteApp), or nil for the
+    /// desktop. Its windows arrive on `RDPSession.remoteWindows`.
+    public var program: RDPProgram?
 
     public init(
         host: String,

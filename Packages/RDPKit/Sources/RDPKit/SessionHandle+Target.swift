@@ -23,6 +23,8 @@ extension SessionHandle {
         /// Several monitors; with fewer than two, one of width x height.
         var monitors: [RDPMonitor] = []
         var gateway: Gateway?
+        /// A program in place of the desktop (RemoteApp).
+        var program: RDPProgram?
     }
 
     /// The gateway to go through. Without `credentials`, it signs in with the
@@ -102,7 +104,9 @@ extension SessionHandle.Target {
             gateway_password: nil,
             decide_gateway_message: nil,
             decide_gateway_message_context: nil,
-            print_folder: nil
+            print_folder: nil,
+            remote_app_program: nil,
+            remote_app_arguments: nil
         )
     }
 }

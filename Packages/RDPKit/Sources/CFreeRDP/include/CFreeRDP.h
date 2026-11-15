@@ -163,6 +163,12 @@ typedef struct {
     /// neither a printer nor shared folders, the device redirection channel
     /// is not loaded.
     const char *_Nullable print_folder;
+    /// The program to start in place of the desktop (RemoteApp), as the
+    /// remote computer publishes it: "||ALIAS" or a path. NULL shows the
+    /// desktop. Its windows are reported by vistara_session_take_remote_windows().
+    const char *_Nullable remote_app_program;
+    /// Passed to the program; NULL or empty for none.
+    const char *_Nullable remote_app_arguments;
 } vistara_connect_options;
 
 typedef enum {
@@ -553,6 +559,138 @@ uint64_t vistara_session_paint_count(const vistara_session *session);
 
 /// Disconnects. Does nothing if not connected.
 void vistara_session_disconnect(vistara_session *session);
+
+// MARK: RemoteApp
+
+/// One window of a remote program, as the remote computer last described it
+/// ([MS-RDPERP] 2.2.1.3.1). Positions are desktop pixels.
+typedef struct {
+    uint32_t id;
+    /// The window it belongs to, such as a menu's or a dialog's, or 0.
+    uint32_t owner_id;
+    /// Windows' window styles (WS_*) and extended styles (WS_EX_*).
+    uint32_t style;
+    uint32_t extended_style;
+    /// Windows' show state: 0 hidden, 2 minimized, 3 maximized, 5 shown.
+    uint32_t show_state;
+    /// The title as UTF-8, or NULL when none was sent.
+    char *_Nullable title;
+    /// The window's frame, its own title bar and edges included.
+    int32_t x;
+    int32_t y;
+    uint32_t width;
+    uint32_t height;
+    /// The parts of it that show, relative to (visible_x, visible_y); none
+    /// sent means all of the frame.
+    int32_t visible_x;
+    int32_t visible_y;
+    vistara_rect *_Nullable visible_rects;
+    size_t visible_rect_count;
+    /// Its largest icon so far: icon_width x icon_height pixels of 32-bit
+    /// BGRA with straight alpha, top row first, or NULL.
+    uint32_t icon_width;
+    uint32_t icon_height;
+    uint8_t *_Nullable icon_pixels;
+    /// Gone. The other fields are as last described.
+    bool deleted;
+} vistara_remote_window;
+
+/// The windows that changed since the last call, each as it is now, and those
+/// deleted, once. Free the list with vistara_remote_windows_free().
+bool vistara_session_take_remote_windows(vistara_session *session,
+                                         vistara_remote_window *_Nullable *_Nonnull windows, size_t *count);
+void vistara_remote_windows_free(vistara_remote_window *_Nullable windows, size_t count);
+
+typedef enum {
+    /// The remote computer answered a program's start: `code` is
+    /// [MS-RDPERP]'s execResult, 0 when it started.
+    VISTARA_REMOTE_APP_STARTED = 0,
+    /// The remote computer began moving or resizing a window for the user,
+    /// at (x, y), as when its title bar is dragged: `code` is the WMSZ_* kind,
+    /// 9 for a move.
+    VISTARA_REMOTE_APP_MOVE_SIZE_BEGAN = 1,
+    /// It ended that, with the window at (x, y).
+    VISTARA_REMOTE_APP_MOVE_SIZE_ENDED = 2,
+    /// How large a window may be: maximized at (x, y), width x height, and
+    /// dragged between min and max.
+    VISTARA_REMOTE_APP_SIZE_LIMITS = 3,
+} vistara_remote_app_event_kind;
+
+typedef struct {
+    vistara_remote_app_event_kind kind;
+    uint32_t window_id;
+    uint32_t code;
+    int32_t x;
+    int32_t y;
+    int32_t width;
+    int32_t height;
+    int32_t min_width;
+    int32_t min_height;
+    int32_t max_width;
+    int32_t max_height;
+} vistara_remote_app_event;
+
+/// What the RAIL channel said since the last call, in order. Free the list
+/// with free().
+bool vistara_session_take_remote_app_events(vistara_session *session,
+                                            vistara_remote_app_event *_Nullable *_Nonnull events, size_t *count);
+
+/// Starts another program in this session. Returns false when the session
+/// shows the desktop, or the first program has not been started yet.
+bool vistara_session_start_program(vistara_session *session, const char *program,
+                                   const char *_Nullable arguments);
+
+/// Tells the remote computer a window became, or stopped being, the one in front.
+bool vistara_session_activate_window(vistara_session *session, uint32_t window_id, bool active);
+
+/// Tells the remote computer where this Mac put a window: its new frame.
+bool vistara_session_move_window(vistara_session *session, uint32_t window_id, vistara_rect frame);
+
+/// What a window's buttons and menu do ([MS-RDPERP] 2.2.2.6.1).
+typedef enum {
+    VISTARA_WINDOW_MINIMIZE = 0xF020,
+    VISTARA_WINDOW_MAXIMIZE = 0xF030,
+    VISTARA_WINDOW_CLOSE = 0xF060,
+    VISTARA_WINDOW_RESTORE = 0xF120,
+} vistara_window_command;
+
+bool vistara_session_window_command(vistara_session *session, uint32_t window_id, vistara_window_command command);
+
+/// The part of the desktop a maximized window fills: without the menu bar
+/// and the Dock.
+bool vistara_session_set_work_area(vistara_session *session, vistara_rect area);
+
+/// A session's RemoteApp state on its own. For tests: window orders are
+/// applied as the session applies them.
+typedef struct vistara_remote_app vistara_remote_app;
+
+vistara_remote_app *_Nullable vistara_remote_app_new(void);
+void vistara_remote_app_free(vistara_remote_app *_Nullable app);
+
+/// Which fields of a window order are present, for vistara_remote_app_apply().
+typedef enum {
+    VISTARA_WINDOW_FIELD_OWNER = 1 << 0,
+    VISTARA_WINDOW_FIELD_STYLE = 1 << 1,
+    VISTARA_WINDOW_FIELD_SHOW = 1 << 2,
+    VISTARA_WINDOW_FIELD_TITLE = 1 << 3,
+    VISTARA_WINDOW_FIELD_OFFSET = 1 << 4,
+    VISTARA_WINDOW_FIELD_SIZE = 1 << 5,
+    VISTARA_WINDOW_FIELD_VISIBLE_OFFSET = 1 << 6,
+    VISTARA_WINDOW_FIELD_VISIBILITY = 1 << 7,
+    /// The window is new.
+    VISTARA_WINDOW_FIELD_NEW = 1 << 8,
+} vistara_window_fields;
+
+/// Applies a window order with the given fields, taken from `values`.
+void vistara_remote_app_apply(vistara_remote_app *app, uint32_t window_id, uint32_t fields,
+                              const vistara_remote_window *values);
+/// Applies an icon of `width` x `height` pixels, 32 bits each, bottom row
+/// first, as the remote computer sends one.
+void vistara_remote_app_apply_icon(vistara_remote_app *app, uint32_t window_id, uint32_t width, uint32_t height,
+                                   const uint8_t *pixels);
+void vistara_remote_app_delete(vistara_remote_app *app, uint32_t window_id);
+bool vistara_remote_app_take_windows(vistara_remote_app *app, vistara_remote_window *_Nullable *_Nonnull windows,
+                                     size_t *count);
 
 #if __has_feature(nullability)
 #pragma clang assume_nonnull end

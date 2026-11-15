@@ -306,7 +306,7 @@
  }
 --- a/server/shadow/shadow_client.c
 +++ b/server/shadow/shadow_client.c
-@@ -37,6 +37,1032 @@
+@@ -37,6 +37,1410 @@
  #include "shadow.h"
  #include "shadow_rfx_dirty.h"
  
@@ -1309,6 +1309,384 @@
 +	state->rdpdr = nullptr;
 +}
 +
++/* Vistara test server: a RemoteApp host ([MS-RDPERP]). After the client's
++ * handshake it says its desktop is ready; an exec of "||vistara-notepad"
++ * opens a window with an icon and a popup owned by it, "||vistara-calc" a
++ * second window, and anything else is "not in the allow list". The first
++ * activation of the notepad window pretends its title bar was dragged
++ * (local move/size), a window move is answered with the window at its new
++ * place, and a close deletes the window and what it owns. Everything the
++ * client sends is logged as "vistara-rail ...". The RAIL channel's own thread
++ * runs the callbacks; window orders go out from the client's thread. */
++#include <stdarg.h>
++#include <freerdp/server/rail.h>
++#include <freerdp/rail.h>
++#include <freerdp/window.h>
++
++#define VISTARA_NOTEPAD_ID 0x100
++#define VISTARA_POPUP_ID 0x101
++#define VISTARA_CALC_ID 0x200
++/* WINDOW_LEVEL_SUPPORTED_EX, from libfreerdp's private capabilities.h. */
++#define VISTARA_WINDOW_LEVEL_SUPPORTED_EX 0x00000002
++
++typedef struct
++{
++	BOOL tried;
++	RailServerContext* rail;
++	CRITICAL_SECTION lock;
++	BOOL lockReady;
++	HANDLE wake;
++	/* Work for the client's thread, guarded by lock. */
++	BOOL sendDesktop;
++	BOOL openNotepad;
++	BOOL openCalc;
++	UINT32 closeWindow;
++	BOOL moveNotepad;
++	RAIL_WINDOW_MOVE_ORDER move;
++	BOOL dragged;
++} vistaraRail;
++
++static void vistara_rail_log(const char* format, ...)
++{
++	va_list args;
++	va_start(args, format);
++	(void)fprintf(stderr, "vistara-rail ");
++	(void)vfprintf(stderr, format, args);
++	(void)fprintf(stderr, "\n");
++	(void)fflush(stderr);
++	va_end(args);
++}
++
++static void vistara_rail_wake(vistaraRail* state)
++{
++	(void)SetEvent(state->wake);
++}
++
++static UINT vistara_rail_client_handshake(RailServerContext* context, const RAIL_HANDSHAKE_ORDER* handshake)
++{
++	vistaraRail* state = context->custom;
++	vistara_rail_log("handshake build=%u", (unsigned)handshake->buildNumber);
++	EnterCriticalSection(&state->lock);
++	state->sendDesktop = TRUE;
++	LeaveCriticalSection(&state->lock);
++	vistara_rail_wake(state);
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_rail_client_status(WINPR_ATTR_UNUSED RailServerContext* context,
++                                       const RAIL_CLIENT_STATUS_ORDER* status)
++{
++	vistara_rail_log("client-status flags=0x%x", (unsigned)status->flags);
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_rail_send_exec_result(RailServerContext* context, const RAIL_EXEC_ORDER* exec,
++                                          UINT16 result)
++{
++	size_t length = 0;
++	WCHAR* program = ConvertUtf8ToWCharAlloc(exec->RemoteApplicationProgram ? exec->RemoteApplicationProgram
++	                                                                        : "",
++	                                         &length);
++	RAIL_EXEC_RESULT_ORDER order = WINPR_C_ARRAY_INIT;
++	order.flags = exec->flags;
++	order.execResult = result;
++	order.exeOrFile.string = program;
++	order.exeOrFile.length = (UINT16)(length * sizeof(WCHAR));
++	const UINT rc = context->ServerExecResult(context, &order);
++	free(program);
++	return rc;
++}
++
++static UINT vistara_rail_client_exec(RailServerContext* context, const RAIL_EXEC_ORDER* exec)
++{
++	vistaraRail* state = context->custom;
++	const char* program = exec->RemoteApplicationProgram ? exec->RemoteApplicationProgram : "";
++	const char* arguments = exec->RemoteApplicationArguments ? exec->RemoteApplicationArguments : "";
++	vistara_rail_log("exec program=%s arguments=%s", program, arguments);
++	BOOL* open = nullptr;
++	if (strcmp(program, "||vistara-notepad") == 0)
++		open = &state->openNotepad;
++	else if (strcmp(program, "||vistara-calc") == 0)
++		open = &state->openCalc;
++	if (!open)
++		return vistara_rail_send_exec_result(context, exec, RAIL_EXEC_E_NOT_IN_ALLOWLIST);
++	const UINT rc = vistara_rail_send_exec_result(context, exec, RAIL_EXEC_S_OK);
++	EnterCriticalSection(&state->lock);
++	*open = TRUE;
++	LeaveCriticalSection(&state->lock);
++	vistara_rail_wake(state);
++	return rc;
++}
++
++static UINT vistara_rail_client_sysparam(WINPR_ATTR_UNUSED RailServerContext* context,
++                                         const RAIL_SYSPARAM_ORDER* sysparam)
++{
++	if (sysparam->param == SPI_SET_WORK_AREA)
++		vistara_rail_log("work-area left=%u top=%u right=%u bottom=%u", (unsigned)sysparam->workArea.left,
++		                 (unsigned)sysparam->workArea.top, (unsigned)sysparam->workArea.right,
++		                 (unsigned)sysparam->workArea.bottom);
++	else
++		vistara_rail_log("sysparam param=0x%x", (unsigned)sysparam->param);
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_rail_client_activate(RailServerContext* context, const RAIL_ACTIVATE_ORDER* activate)
++{
++	vistaraRail* state = context->custom;
++	vistara_rail_log("activate id=0x%x enabled=%u", (unsigned)activate->windowId, (unsigned)activate->enabled);
++	BOOL drag = FALSE;
++	EnterCriticalSection(&state->lock);
++	if (activate->enabled && activate->windowId == VISTARA_NOTEPAD_ID && !state->dragged)
++		drag = state->dragged = TRUE;
++	LeaveCriticalSection(&state->lock);
++	if (!drag)
++		return CHANNEL_RC_OK;
++	/* As if the user pressed on the title bar and let go 30 pixels further. */
++	RAIL_LOCALMOVESIZE_ORDER order = WINPR_C_ARRAY_INIT;
++	order.windowId = VISTARA_NOTEPAD_ID;
++	order.isMoveSizeStart = TRUE;
++	order.moveSizeType = RAIL_WMSZ_MOVE;
++	order.posX = 150;
++	order.posY = 90;
++	UINT rc = context->ServerLocalMoveSize(context, &order);
++	if (rc != CHANNEL_RC_OK)
++		return rc;
++	order.isMoveSizeStart = FALSE;
++	order.posX = 130;
++	order.posY = 110;
++	return context->ServerLocalMoveSize(context, &order);
++}
++
++static UINT vistara_rail_client_syscommand(RailServerContext* context, const RAIL_SYSCOMMAND_ORDER* command)
++{
++	vistaraRail* state = context->custom;
++	vistara_rail_log("syscommand id=0x%x command=0x%x", (unsigned)command->windowId, (unsigned)command->command);
++	if (command->command == 0xF060 /* SC_CLOSE */)
++	{
++		EnterCriticalSection(&state->lock);
++		state->closeWindow = command->windowId;
++		LeaveCriticalSection(&state->lock);
++		vistara_rail_wake(state);
++	}
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_rail_client_window_move(RailServerContext* context, const RAIL_WINDOW_MOVE_ORDER* move)
++{
++	vistaraRail* state = context->custom;
++	vistara_rail_log("window-move id=0x%x left=%d top=%d right=%d bottom=%d", (unsigned)move->windowId,
++	                 (int)move->left, (int)move->top, (int)move->right, (int)move->bottom);
++	if (move->windowId != VISTARA_NOTEPAD_ID)
++		return CHANNEL_RC_OK;
++	EnterCriticalSection(&state->lock);
++	state->moveNotepad = TRUE;
++	state->move = *move;
++	LeaveCriticalSection(&state->lock);
++	vistara_rail_wake(state);
++	return CHANNEL_RC_OK;
++}
++
++static UINT vistara_rail_client_langbar(WINPR_ATTR_UNUSED RailServerContext* context,
++                                       const RAIL_LANGBAR_INFO_ORDER* info)
++{
++	vistara_rail_log("langbar status=0x%x", (unsigned)info->languageBarStatus);
++	return CHANNEL_RC_OK;
++}
++
++static void vistara_rail_open(rdpShadowClient* client, vistaraRail* state)
++{
++	if (state->tried || !client->activated ||
++	    !WTSVirtualChannelManagerIsChannelJoined(client->vcm, RAIL_SVC_CHANNEL_NAME))
++		return;
++	state->tried = TRUE;
++	RailServerContext* rail = rail_server_context_new(client->vcm);
++	if (!rail)
++		return;
++	rail->rdpcontext = &client->context;
++	rail->custom = state;
++	rail->ClientHandshake = vistara_rail_client_handshake;
++	rail->ClientClientStatus = vistara_rail_client_status;
++	rail->ClientExec = vistara_rail_client_exec;
++	rail->ClientSysparam = vistara_rail_client_sysparam;
++	rail->ClientActivate = vistara_rail_client_activate;
++	rail->ClientSyscommand = vistara_rail_client_syscommand;
++	rail->ClientWindowMove = vistara_rail_client_window_move;
++	rail->ClientLangbarInfo = vistara_rail_client_langbar;
++	if (rail->Start(rail) != CHANNEL_RC_OK)
++	{
++		rail_server_context_free(rail);
++		return;
++	}
++	state->rail = rail;
++	const RAIL_HANDSHAKE_ORDER handshake = { .buildNumber = 0x1DB0 };
++	if (rail->ServerHandshake(rail, &handshake) != CHANNEL_RC_OK)
++		vistara_rail_log("server-handshake failed");
++	vistara_rail_log("opened");
++}
++
++static BOOL vistara_rail_send_desktop(rdpContext* context, UINT32 field)
++{
++	const WINDOW_ORDER_INFO info = { .fieldFlags = WINDOW_ORDER_TYPE_DESKTOP | field };
++	const MONITORED_DESKTOP_ORDER desktop = WINPR_C_ARRAY_INIT;
++	return context->update->window->MonitoredDesktop(context, &info, &desktop);
++}
++
++/* A new window, or the notepad window at a new place. */
++static BOOL vistara_rail_send_window(rdpContext* context, UINT32 id, UINT32 owner, const char* title, INT32 x,
++                                     INT32 y, UINT32 width, UINT32 height, BOOL isNew)
++{
++	WINDOW_ORDER_INFO info = WINPR_C_ARRAY_INIT;
++	info.windowId = id;
++	info.fieldFlags = WINDOW_ORDER_TYPE_WINDOW | WINDOW_ORDER_FIELD_WND_OFFSET | WINDOW_ORDER_FIELD_WND_SIZE |
++	                  WINDOW_ORDER_FIELD_VIS_OFFSET | WINDOW_ORDER_FIELD_VISIBILITY;
++	WINDOW_STATE_ORDER state = WINPR_C_ARRAY_INIT;
++	WCHAR* wide = nullptr;
++	if (isNew)
++	{
++		size_t length = 0;
++		wide = ConvertUtf8ToWCharAlloc(title, &length);
++		info.fieldFlags |= WINDOW_ORDER_STATE_NEW | WINDOW_ORDER_FIELD_OWNER | WINDOW_ORDER_FIELD_STYLE |
++		                   WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TITLE;
++		state.ownerWindowId = owner;
++		state.style = owner ? (WS_POPUP | WS_VISIBLE) : (WS_OVERLAPPEDWINDOW | WS_VISIBLE);
++		state.extendedStyle = owner ? WS_EX_TOOLWINDOW : WS_EX_APPWINDOW;
++		state.showState = WINDOW_SHOW;
++		state.titleInfo.string = wide;
++		state.titleInfo.length = (UINT16)(length * sizeof(WCHAR));
++	}
++	state.windowOffsetX = x;
++	state.windowOffsetY = y;
++	state.windowWidth = width;
++	state.windowHeight = height;
++	state.visibleOffsetX = x;
++	state.visibleOffsetY = y;
++	RECTANGLE_16 visible = { 0, 0, (UINT16)width, (UINT16)height };
++	state.numVisibilityRects = 1;
++	state.visibilityRects = &visible;
++	const BOOL rc = isNew ? context->update->window->WindowCreate(context, &info, &state)
++	                      : context->update->window->WindowUpdate(context, &info, &state);
++	free(wide);
++	return rc;
++}
++
++/* A 16x16 orange square, 32 bits per pixel, as the window's big icon. */
++static BOOL vistara_rail_send_icon(rdpContext* context, UINT32 id)
++{
++	BYTE pixels[16 * 16 * 4];
++	for (size_t i = 0; i < 16 * 16; i++)
++	{
++		pixels[i * 4 + 0] = 0x00; /* blue */
++		pixels[i * 4 + 1] = 0x80; /* green */
++		pixels[i * 4 + 2] = 0xFF; /* red */
++		pixels[i * 4 + 3] = 0xFF; /* alpha */
++	}
++	ICON_INFO icon = WINPR_C_ARRAY_INIT;
++	icon.cacheEntry = 0;
++	icon.cacheId = 0;
++	icon.bpp = 32;
++	icon.width = 16;
++	icon.height = 16;
++	icon.cbBitsColor = sizeof(pixels);
++	icon.bitsColor = pixels;
++	const WINDOW_ORDER_INFO info = { .windowId = id,
++		                             .fieldFlags = WINDOW_ORDER_TYPE_WINDOW | WINDOW_ORDER_ICON |
++		                                           WINDOW_ORDER_FIELD_ICON_BIG };
++	const WINDOW_ICON_ORDER order = { .iconInfo = &icon };
++	return context->update->window->WindowIcon(context, &info, &order);
++}
++
++static BOOL vistara_rail_delete(rdpContext* context, UINT32 id)
++{
++	const WINDOW_ORDER_INFO info = { .windowId = id,
++		                             .fieldFlags = WINDOW_ORDER_TYPE_WINDOW | WINDOW_ORDER_STATE_DELETED };
++	vistara_rail_log("window-deleted id=0x%x", (unsigned)id);
++	return context->update->window->WindowDelete(context, &info);
++}
++
++/* Runs on the client's own thread, which also sends its updates. */
++static void vistara_rail_service(rdpShadowClient* client, vistaraRail* state)
++{
++	if (!state->rail)
++		return;
++	EnterCriticalSection(&state->lock);
++	const BOOL sendDesktop = state->sendDesktop;
++	const BOOL openNotepad = state->openNotepad;
++	const BOOL openCalc = state->openCalc;
++	const UINT32 closeWindow = state->closeWindow;
++	const BOOL moveNotepad = state->moveNotepad;
++	const RAIL_WINDOW_MOVE_ORDER move = state->move;
++	state->sendDesktop = state->openNotepad = state->openCalc = state->moveNotepad = FALSE;
++	state->closeWindow = 0;
++	LeaveCriticalSection(&state->lock);
++	if (!sendDesktop && !openNotepad && !openCalc && !closeWindow && !moveNotepad)
++		return;
++
++	rdpContext* context = &client->context;
++	rdpUpdate* update = context->update;
++	if (!update->BeginPaint(context))
++		return;
++	BOOL rc = TRUE;
++	if (sendDesktop)
++	{
++		rc = vistara_rail_send_desktop(context, WINDOW_ORDER_FIELD_DESKTOP_ARC_BEGAN) &&
++		     vistara_rail_send_desktop(context, WINDOW_ORDER_FIELD_DESKTOP_ARC_COMPLETED);
++		vistara_rail_log("desktop-ready");
++	}
++	if (rc && openNotepad)
++	{
++		rc = vistara_rail_send_window(context, VISTARA_NOTEPAD_ID, 0, "Vistara Notepad", 100, 80, 400, 300, TRUE) &&
++		     vistara_rail_send_icon(context, VISTARA_NOTEPAD_ID) &&
++		     vistara_rail_send_window(context, VISTARA_POPUP_ID, VISTARA_NOTEPAD_ID, "", 140, 140, 160, 100, TRUE);
++		vistara_rail_log("window-created id=0x%x", (unsigned)VISTARA_NOTEPAD_ID);
++	}
++	if (rc && openCalc)
++	{
++		rc = vistara_rail_send_window(context, VISTARA_CALC_ID, 0, "Vistara Calculator", 520, 100, 240, 320, TRUE);
++		vistara_rail_log("window-created id=0x%x", (unsigned)VISTARA_CALC_ID);
++	}
++	if (rc && moveNotepad)
++		rc = vistara_rail_send_window(context, VISTARA_NOTEPAD_ID, 0, nullptr, move.left, move.top,
++		                              (UINT32)(move.right - move.left), (UINT32)(move.bottom - move.top), FALSE);
++	if (rc && closeWindow)
++	{
++		if (closeWindow == VISTARA_NOTEPAD_ID)
++			rc = vistara_rail_delete(context, VISTARA_POPUP_ID);
++		rc = rc && vistara_rail_delete(context, closeWindow);
++	}
++	if (!rc)
++		vistara_rail_log("window orders failed");
++	(void)update->EndPaint(context);
++
++	if (rc && openNotepad)
++	{
++		RAIL_MINMAXINFO_ORDER limits = WINPR_C_ARRAY_INIT;
++		limits.windowId = VISTARA_NOTEPAD_ID;
++		limits.maxWidth = 1024;
++		limits.maxHeight = 728;
++		limits.maxPosX = 0;
++		limits.maxPosY = 0;
++		limits.minTrackWidth = 200;
++		limits.minTrackHeight = 150;
++		limits.maxTrackWidth = 1024;
++		limits.maxTrackHeight = 768;
++		(void)state->rail->ServerMinMaxInfo(state->rail, &limits);
++	}
++}
++
++static void vistara_rail_close(vistaraRail* state)
++{
++	if (state->rail)
++	{
++		(void)state->rail->Stop(state->rail);
++		rail_server_context_free(state->rail);
++		state->rail = nullptr;
++	}
++	if (state->lockReady)
++		DeleteCriticalSection(&state->lock);
++	if (state->wake)
++		(void)CloseHandle(state->wake);
++}
++
 +/* Runs on the client's own thread, which also sends its updates. */
 +static void vistara_apply_resize(rdpShadowClient* client)
 +{
@@ -1339,7 +1717,19 @@
  #define TAG CLIENT_TAG("shadow")
  
  #define SHADOW_CLIENT_MAX_INVALID_RECTS 256
-@@ -574,6 +1600,32 @@
+@@ -303,6 +1707,11 @@
+ 		return FALSE;
+ 	if (!freerdp_settings_set_bool(settings, FreeRDP_FrameMarkerCommandEnabled, TRUE))
+ 		return FALSE;
++	/* Vistara test server: RemoteApp as Windows announces it. FreeRDP's
++	 * defaults announce no RemoteApp level and a window level clients refuse. */
++	if (!freerdp_settings_set_uint32(settings, FreeRDP_RemoteApplicationSupportLevel, RAIL_LEVEL_SUPPORTED) ||
++	    !freerdp_settings_set_uint32(settings, FreeRDP_RemoteWndSupportLevel, VISTARA_WINDOW_LEVEL_SUPPORTED_EX))
++		return FALSE;
+ 	if (!freerdp_settings_set_bool(settings, FreeRDP_SurfaceFrameMarkerEnabled, TRUE))
+ 		return FALSE;
+ 	if (!freerdp_settings_set_bool(
+@@ -574,6 +1983,32 @@
  	subsystem = server->subsystem;
  	WINPR_ASSERT(subsystem);
  
@@ -1372,7 +1762,7 @@
  	if (freerdp_settings_get_uint32(settings, FreeRDP_ColorDepth) == 24)
  	{
  		if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 16)) /* disable 24bpp */
-@@ -735,6 +1787,8 @@
+@@ -735,6 +2170,8 @@
  	WINPR_ASSERT(client);
  
  	client->suppressOutput = !(allow);
@@ -1381,29 +1771,51 @@
  
  	if (allow)
  	{
-@@ -2845,6 +3899,9 @@
+@@ -2845,6 +4282,10 @@
  	wMessageQueue* MsgQueue = nullptr;
  	/* This should only be visited in client thread */
  	SHADOW_GFX_STATUS gfxstatus = WINPR_C_ARRAY_INIT;
 +	vistaraDisp vistara_disp = WINPR_C_ARRAY_INIT;
 +	vistaraClipboard vistara_clipboard = WINPR_C_ARRAY_INIT;
 +	vistaraDrives vistara_drives = WINPR_C_ARRAY_INIT;
++	vistaraRail vistara_rail = WINPR_C_ARRAY_INIT;
  	rdpUpdate* update = nullptr;
  
  	WINPR_ASSERT(client);
-@@ -2950,6 +4007,11 @@
+@@ -2885,6 +4326,9 @@
+ 
+ 	ChannelEvent = WTSVirtualChannelManagerGetEventHandle(client->vcm);
+ 	WINPR_ASSERT(ChannelEvent);
++	InitializeCriticalSection(&vistara_rail.lock);
++	vistara_rail.lockReady = TRUE;
++	vistara_rail.wake = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+ 
+ 	rc = freerdp_settings_set_bool(settings, FreeRDP_UnicodeInput, TRUE);
+ 	WINPR_ASSERT(rc);
+@@ -2935,6 +4379,8 @@
+ 		}
+ 		events[nCount++] = ChannelEvent;
+ 		events[nCount++] = MessageQueue_Event(MsgQueue);
++		if (vistara_rail.wake)
++			events[nCount++] = vistara_rail.wake;
+ 
+ #if defined(CHANNEL_RDPGFX_SERVER)
+ 		HANDLE gfxevent = rdpgfx_server_get_event_handle(client->rdpgfx);
+@@ -2950,6 +4396,13 @@
  		if (status == WAIT_FAILED)
  			goto fail;
  
 +		vistara_disp_send_caps(&vistara_disp);
 +		vistara_clipboard_open(client, &vistara_clipboard);
 +		vistara_drives_open(client, &vistara_drives);
++		vistara_rail_open(client, &vistara_rail);
++		vistara_rail_service(client, &vistara_rail);
 +		vistara_apply_resize(client);
 +
  		if (UpdateEvent && (WaitForSingleObject(UpdateEvent, 0) == WAIT_OBJECT_0))
  		{
  			/* The UpdateEvent means to start sending current frame. It is
-@@ -3037,6 +4099,8 @@
+@@ -3037,6 +4490,8 @@
  					break;
  
  				case DRDYNVC_STATE_READY:
@@ -1412,12 +1824,13 @@
  #if defined(CHANNEL_AUDIN_SERVER)
  					if (client->audin && !IFCALLRESULT(TRUE, client->audin->IsOpen, client->audin))
  					{
-@@ -3190,6 +4254,15 @@
+@@ -3190,6 +4645,16 @@
  
  fail:
  
 +	vistara_clipboard_close(&vistara_clipboard);
 +	vistara_drives_close(&vistara_drives);
++	vistara_rail_close(&vistara_rail);
 +	if (vistara_disp.disp)
 +	{
 +		WTSVirtualChannelManagerSetDVCCreationCallback(client->vcm, nullptr, nullptr);

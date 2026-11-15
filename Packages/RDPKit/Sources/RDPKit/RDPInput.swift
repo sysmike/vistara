@@ -88,6 +88,9 @@ public enum RDPInputEvent: Sendable, Hashable {
     /// one size; either replaces the other while they wait. The framebuffer
     /// becomes the monitors' bounding box (`RDPMonitor.boundingBox`).
     case monitorLayout([RDPMonitor])
+    /// About a program and its windows, in a session that opened one
+    /// (`RDPSessionConfiguration.program`). Dropped otherwise.
+    case remoteApp(RDPRemoteAppOrder)
 
     /// Whether a later event of the same kind makes this one pointless, so
     /// that only the latest needs sending.
@@ -97,6 +100,7 @@ public enum RDPInputEvent: Sendable, Hashable {
             (.monitorLayout, .monitorLayout), (.desktopSize, .monitorLayout), (.monitorLayout, .desktopSize),
             (.clipboardText, .clipboardText), (.clipboardFiles, .clipboardFiles), (.clipboardText, .clipboardFiles),
             (.clipboardFiles, .clipboardText): true
+        case (.remoteApp(let order), .remoteApp(let laterOrder)): order.isSuperseded(by: laterOrder)
         default: false
         }
     }

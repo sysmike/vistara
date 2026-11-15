@@ -5,6 +5,7 @@
 #include "printer.h"
 #include "monitors.h"
 #include "probe.h"
+#include "remote_app.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -31,6 +32,7 @@
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/graphics.h>
 #include <freerdp/input.h>
+#include <freerdp/rail.h>
 #include <freerdp/settings.h>
 #include <freerdp/transport_io.h>
 #include <freerdp/update.h>
@@ -132,6 +134,8 @@ struct vistara_session {
     vistara_cursor_kind cursor_kind;
     uint8_t *cursor_pixels;
     uint32_t cursor_width, cursor_height, cursor_hotspot_x, cursor_hotspot_y;
+    // A program in place of the desktop (RemoteApp), or NULL.
+    vistara_remote_app *remote_app;
 };
 
 // FreeRDP allocates ContextSize bytes and treats the start as rdpContext, so
@@ -906,6 +910,10 @@ static void wake_for_printed(void *session) {
     vistara_session_wake(session);
 }
 
+vistara_remote_app *vistara_remote_app_for(rdpContext *context) {
+    return context ? session_of(context)->remote_app : NULL;
+}
+
 /// Adds the printer "Vistara", whose documents go to the spool in
 /// `options->print_folder`. FreeRDP keeps what the remote computer tells it
 /// about its printers in FreeRDP_ConfigPath, which is put in that folder too.
@@ -990,6 +998,11 @@ static BOOL load_channels(freerdp *instance) {
     if (session_of(context)->share_clipboard && !load_static_channel(context, CLIPRDR_SVC_CHANNEL_NAME, NULL)) {
         return FALSE;
     }
+    // RemoteApp's channel only for a program.
+    if (session_of(context)->remote_app &&
+        !load_static_channel(context, RAIL_SVC_CHANNEL_NAME, context->settings)) {
+        return FALSE;
+    }
     const char *const display_control[] = {DISP_CHANNEL_NAME};
     if (!freerdp_client_add_dynamic_channel(context->settings, 1, display_control) ||
         !freerdp_settings_set_bool(context->settings, FreeRDP_SupportDynamicChannels, TRUE)) {
@@ -1016,6 +1029,10 @@ static void channel_connected(void *context, const ChannelConnectedEventArgs *ev
         clipboard_connected(session, event->pInterface);
         return;
     }
+    if (strcmp(event->name, RAIL_SVC_CHANNEL_NAME) == 0 && event->pInterface && session->remote_app) {
+        vistara_remote_app_channel_connected(session->remote_app, event->pInterface, wake_for_printed, session);
+        return;
+    }
     if (strcmp(event->name, DISP_DVC_CHANNEL_NAME) == 0 && event->pInterface) {
         DispClientContext *display_control = event->pInterface;
         display_control->custom = session;
@@ -1037,6 +1054,10 @@ static void channel_disconnected(void *context, const ChannelDisconnectedEventAr
     vistara_session *session = session_of(context);
     if (strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
         clipboard_disconnected(session);
+        return;
+    }
+    if (strcmp(event->name, RAIL_SVC_CHANNEL_NAME) == 0 && session->remote_app) {
+        vistara_remote_app_channel_disconnected(session->remote_app);
         return;
     }
     if (strcmp(event->name, DISP_DVC_CHANNEL_NAME) == 0) {
@@ -1146,6 +1167,9 @@ static BOOL post_connect(freerdp *instance) {
     update->EndPaint = end_paint;
     update->DesktopResize = desktop_resize;
     register_pointer(instance->context);
+    if (session_of(instance->context)->remote_app) {
+        vistara_remote_app_register(instance->context);
+    }
     return TRUE;
 }
 
@@ -1279,6 +1303,7 @@ void vistara_session_destroy(vistara_session *session) {
     freerdp_free(session->instance);
     // After the channels: a document still arriving is removed with the spool.
     vistara_print_spool_free(session->print_spool);
+    vistara_remote_app_free(session->remote_app);
     (void)CloseHandle(session->wake_event);
     free(session->cursor_pixels);
     free(session->local_text);
@@ -1369,6 +1394,27 @@ static bool apply_options(rdpSettings *settings, const vistara_connect_options *
            freerdp_settings_set_bool(settings, FreeRDP_HasExtendedMouseEvent, TRUE);
 }
 
+/// A program in place of the desktop, as FreeRDP's own clients ask for one:
+/// with the language bar, the work area, and no wallpaper or window contents
+/// while dragging, which RemoteApp has no use for.
+static bool apply_remote_app(vistara_session *session, rdpSettings *settings,
+                             const vistara_connect_options *options) {
+    if (!options->remote_app_program || options->remote_app_program[0] == '\0') {
+        return true;
+    }
+    session->remote_app = vistara_remote_app_new();
+    const char *arguments = options->remote_app_arguments;
+    return session->remote_app &&
+           freerdp_settings_set_bool(settings, FreeRDP_RemoteApplicationMode, TRUE) &&
+           freerdp_settings_set_string(settings, FreeRDP_RemoteApplicationProgram, options->remote_app_program) &&
+           freerdp_settings_set_string(settings, FreeRDP_RemoteApplicationCmdLine,
+                                       arguments && arguments[0] ? arguments : NULL) &&
+           freerdp_settings_set_bool(settings, FreeRDP_RemoteAppLanguageBarSupported, TRUE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_Workarea, TRUE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_DisableWallpaper, TRUE) &&
+           freerdp_settings_set_bool(settings, FreeRDP_DisableFullWindowDrag, TRUE);
+}
+
 /// The keyboard announced in the client core data, which FreeRDP writes from
 /// these settings. Nothing is changed for a layout of 0.
 static bool apply_keyboard(rdpSettings *settings, const vistara_connect_options *options) {
@@ -1407,6 +1453,7 @@ vistara_connect_result vistara_session_connect(vistara_session *session,
     if (!apply_options(session->instance->context->settings, options) ||
         !apply_gateway(session->instance->context->settings, options) ||
         !apply_keyboard(session->instance->context->settings, options) ||
+        !apply_remote_app(session, session->instance->context->settings, options) ||
         !vistara_apply_monitors(session->instance->context->settings, options->monitors, options->monitor_count) ||
         !add_shared_folders(session, session->instance->context->settings, options) ||
         !add_printer(session, session->instance->context->settings, options) ||
@@ -1605,4 +1652,51 @@ void vistara_session_disconnect(vistara_session *session) {
     }
     session->connected = false;
     (void)freerdp_disconnect(session->instance);
+}
+
+// MARK: RemoteApp
+
+bool vistara_session_take_remote_windows(vistara_session *session, vistara_remote_window **windows, size_t *count) {
+    if (!session->remote_app) {
+        *windows = NULL;
+        *count = 0;
+        return false;
+    }
+    return vistara_remote_app_take_windows(session->remote_app, windows, count);
+}
+
+bool vistara_session_take_remote_app_events(vistara_session *session, vistara_remote_app_event **events,
+                                            size_t *count) {
+    if (!session->remote_app) {
+        *events = NULL;
+        *count = 0;
+        return false;
+    }
+    return vistara_remote_app_take_events(session->remote_app, events, count);
+}
+
+bool vistara_session_start_program(vistara_session *session, const char *program, const char *arguments) {
+    return session->connected && session->remote_app &&
+           vistara_remote_app_start_program(session->remote_app, program, arguments);
+}
+
+bool vistara_session_activate_window(vistara_session *session, uint32_t window_id, bool active) {
+    return session->connected && session->remote_app &&
+           vistara_remote_app_activate(session->remote_app, window_id, active);
+}
+
+bool vistara_session_move_window(vistara_session *session, uint32_t window_id, vistara_rect frame) {
+    return session->connected && session->remote_app &&
+           vistara_remote_app_move(session->remote_app, window_id, frame);
+}
+
+bool vistara_session_window_command(vistara_session *session, uint32_t window_id,
+                                    vistara_window_command command) {
+    return session->connected && session->remote_app &&
+           vistara_remote_app_command(session->remote_app, window_id, (uint16_t)command);
+}
+
+bool vistara_session_set_work_area(vistara_session *session, vistara_rect area) {
+    return session->connected && session->remote_app &&
+           vistara_remote_app_set_work_area(session->remote_app, area);
 }
