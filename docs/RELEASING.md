@@ -5,9 +5,11 @@ universal app, signs it and every bundled library with a Developer ID, has
 Apple notarize the app and the DMG, staples both, and creates a **draft**
 GitHub release with the DMG and `SHA256SUMS`. A person publishes the draft.
 
-Without the secrets below, and on pull requests that change the release
-scripts, the same steps run as a dry run. The app is signed ad hoc and not
-notarized, and the DMG is uploaded as a workflow artifact only.
+Every other run is a dry run: a manual run from the Actions tab, a pull
+request that changes the release scripts, and a tag while the secrets below
+are missing. The app is signed ad hoc and not notarized, and the DMG is
+uploaded as a workflow artifact only. Only a `v*` tag uses the `release`
+environment, so a run on a branch never sees the signing secrets.
 
 ## One-time setup
 

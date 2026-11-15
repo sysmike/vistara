@@ -1,10 +1,10 @@
 name: Release
 
 # A tag such as v0.1.0 builds, signs, notarizes, and staples Vistara, and
-# creates a draft release with the DMG and its checksums. Without the
-# signing secrets (and on pull requests that change the release itself), the
-# same steps run as a dry run: signed ad hoc, not notarized, uploaded as an
-# artifact only. See docs/RELEASING.md.
+# creates a draft release with the DMG and its checksums. Any other run (a
+# manual one, or a pull request that changes the release itself), and a tag
+# without the signing secrets, is a dry run: signed ad hoc, not notarized,
+# uploaded as an artifact only. See docs/RELEASING.md.
 
 on:
   push:
@@ -34,9 +34,11 @@ jobs:
     name: Build, sign, and notarize
     runs-on: macos-26
     timeout-minutes: 120
-    # The signing secrets live in this environment. GitHub never gives them
-    # to pull requests from forks, and the environment can require approval.
-    environment: ${{ github.event_name == 'pull_request' && 'dry-run' || 'release' }}
+    # The signing secrets live in the release environment, which only a v*
+    # tag uses: a manual run on a branch never gets them. GitHub never gives
+    # them to pull requests from forks, and the environment can require
+    # approval and allow only tags.
+    environment: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && 'release' || 'dry-run' }}
     permissions:
       contents: write
     env:
@@ -52,7 +54,8 @@ jobs:
           HAS_CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE != '' }}
           HAS_NOTARY_KEY: ${{ secrets.NOTARY_KEY != '' }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" != "pull_request" && "$HAS_CERTIFICATE" == "true" && "$HAS_NOTARY_KEY" == "true" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/v* \
+            && "$HAS_CERTIFICATE" == "true" && "$HAS_NOTARY_KEY" == "true" ]]; then
             echo "signed=true" >> "$GITHUB_OUTPUT"
             echo "Signed run: Developer ID, notarized."
           else
