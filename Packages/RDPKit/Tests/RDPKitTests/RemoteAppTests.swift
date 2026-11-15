@@ -17,7 +17,10 @@ struct RemoteAppWindowTests {
         windows.apply(notepad, fields: all)
 
         let taken = windows.take()
-        #expect(taken == [notepad.with { $0.visibleRegion = [notepad.frame] }])
+        // With no visible parts sent, all of the frame shows.
+        var expected = notepad
+        expected.visibleRegion = [notepad.frame]
+        #expect(taken == [expected])
         #expect(taken.first?.hasTitleBar == true)
         #expect(taken.first?.isPopup == false)
         // Nothing changed since.
