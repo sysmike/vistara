@@ -58,6 +58,12 @@ jobs:
             && "$HAS_CERTIFICATE" == "true" && "$HAS_NOTARY_KEY" == "true" ]]; then
             echo "signed=true" >> "$GITHUB_OUTPUT"
             echo "Signed run: Developer ID, notarized."
+          elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/v* ]]; then
+            # An ad hoc build doesn't open on another Mac: library validation
+            # refuses its libraries. A tag is a release, so it signs or fails.
+            echo "::error::$GITHUB_REF_NAME is a release tag, but the release environment has no signing" \
+              "secrets. Add them as docs/RELEASING.md says, then run this workflow again."
+            exit 1
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "Dry run: signed ad hoc, not notarized, no release."
@@ -125,6 +131,33 @@ jobs:
           pgrep -x Vistara
           pkill -x Vistara
           mv build/freerdp/prefix.hidden build/freerdp/prefix
+
+      # Experiment for the 0.5.0-beta crash: does a downloaded (quarantined)
+      # copy load its libraries?
+      - name: Start a quarantined copy
+        continue-on-error: true
+        run: |
+          copy="$RUNNER_TEMP/quarantined"
+          rm -rf "$copy" && mkdir -p "$copy"
+          ditto "$VISTARA_RELEASE_DIR/Vistara.app" "$copy/Vistara.app"
+          xattr -w -r com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" "$copy/Vistara.app"
+          codesign --display --verbose=4 "$copy/Vistara.app" 2>&1 | grep -E "flags=|TeamIdentifier|Authority" || true
+          mv build/freerdp/prefix build/freerdp/prefix.hidden
+          "$copy/Vistara.app/Contents/MacOS/Vistara" > "$copy/out.txt" 2>&1 &
+          pid=$!
+          sleep 8
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "quarantined copy is running"
+            kill "$pid"
+            result=0
+          else
+            wait "$pid" || true
+            echo "quarantined copy exited"
+            head -c 2000 "$copy/out.txt"
+            result=1
+          fi
+          mv build/freerdp/prefix.hidden build/freerdp/prefix
+          exit $result
 
       - name: Write the notary key
         if: steps.mode.outputs.signed == 'true'
