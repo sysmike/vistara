@@ -27,7 +27,9 @@ extension SessionModel {
         guard opensProgram, let framebuffer, let space = programSpace else { return }
         programs?.closeAll()
         let send: ([RDPInputEvent]) -> Void = { [weak session] events in session?.send(events) }
-        let windows = ProgramWindows(framebuffer: framebuffer, space: space, connectionName: target.name, send: send)
+        let windows = ProgramWindows(
+            framebuffer: framebuffer, space: space, usesHiDPI: target.usesHiDPI, connectionName: target.name, send: send
+        )
         windows.onLastWindowClosed = { [weak self] in self?.onLastProgramWindowClosed?() }
         windows.onProgramAnswer = { [weak self] failure in self?.programAnswered(failure) }
         windows.onWindowIcon = { [weak self] icon in self?.programIconArrived(icon) }

@@ -109,6 +109,8 @@ RD Web Access page, imports as a program connection named after the program.
   title bar to move a window and its edges to resize it; the buttons
   minimize, maximize, and close it. Menus and tooltips appear above the
   window they belong to.
+- **Displays** you plug in, unplug, or rearrange while a program runs are
+  followed: a window whose display went away comes to the main display.
 - **Each window** is in the Window menu, Mission Control, and Command-`. A
   minimized window goes to the Dock with the program's icon, which the
   Connections window shows too once you've opened the program.
@@ -487,7 +489,6 @@ Vistara is new. It does not yet support:
 - smart cards or USB devices;
 - subscribing to a workspace or RD Web Access feed (import a program's
   `.rdp` file instead), or icons in the notification area;
-- programs following a display plugged in or out while they run;
 - choosing which of your Mac's printers the remote computer sees (it sees
   one, Vistara, which is the print panel);
 - copying images through the clipboard, or dragging files into a session;

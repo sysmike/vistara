@@ -7,7 +7,10 @@ import RDPKitUI
 @MainActor
 final class ProgramWindows {
     private(set) var controllers: [UInt32: ProgramWindowController] = [:]
-    let space: RemoteAppSpace
+    /// The displays as the remote desktop has them now.
+    private(set) var space: RemoteAppSpace
+    private let usesHiDPI: Bool
+    private let framebuffer: RDPFramebuffer
     private let desktop: RDPSharedDesktop
     private let connectionName: String
     private let send: ([RDPInputEvent]) -> Void
@@ -18,16 +21,24 @@ final class ProgramWindows {
     /// A window of its own (not a menu or a dialog's) showed its icon first.
     var onWindowIcon: ((RDPImage) -> Void)?
     private var iconsTold: Set<UInt32> = []
+    private var displayObserver: (any NSObjectProtocol)?
+    private var displayChange: Task<Void, Never>?
+    /// How long display changes rest before they are followed.
+    static var displayChangeDelay = Duration.milliseconds(500)
+    /// How long the remote computer has to take on a new layout.
+    static var layoutWait = Duration.seconds(5)
     private var tasks: [Task<Void, Never>] = []
     /// Whether a window was brought to the front yet, which the first one is.
     private var hasShownWindow = false
 
     init(
-        framebuffer: RDPFramebuffer, space: RemoteAppSpace, connectionName: String,
+        framebuffer: RDPFramebuffer, space: RemoteAppSpace, usesHiDPI: Bool, connectionName: String,
         send: @escaping ([RDPInputEvent]) -> Void
     ) {
         desktop = RDPSharedDesktop(framebuffer: framebuffer)
+        self.framebuffer = framebuffer
         self.space = space
+        self.usesHiDPI = usesHiDPI
         self.connectionName = connectionName
         self.send = send
     }
@@ -44,6 +55,62 @@ final class ProgramWindows {
         })
         // A maximized window leaves the menu bar and the Dock visible.
         send([.remoteApp(.workArea(space.workArea))])
+        followDisplays()
+    }
+
+    // MARK: Displays
+
+    /// Displays plugged in or out, rearranged, or resized while the program
+    /// runs: followed once a burst of changes has rested.
+    private func followDisplays() {
+        displayObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.displaysMayHaveChanged() }
+        }
+    }
+
+    func displaysMayHaveChanged() {
+        displayChange?.cancel()
+        let delay = Self.displayChangeDelay
+        displayChange = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.displaysChanged()
+        }
+    }
+
+    /// Asks the remote computer for the new layout. Windows keep their place
+    /// on the Mac, those whose display went away moved onto the main one,
+    /// until the remote desktop has the new size; then the new arrangement
+    /// takes over, and windows are put where the Mac has them. A remote
+    /// computer that keeps its desktop keeps the old arrangement.
+    private func displaysChanged() async {
+        let next = RemoteAppSpace.current(usesHiDPI: usesHiDPI)
+        guard next != space else { return }
+        for controller in controllers.values where controller.window.takesKeyboard {
+            controller.holdPlace(
+                at: RemoteAppSpace.placement(
+                    of: controller.window.frame, on: next.displays, visibleMain: next.visibleMain
+                )
+            )
+        }
+        send([.monitorLayout(next.monitors)])
+        let box = next.boundingBox
+        let deadline = ContinuousClock.now + Self.layoutWait
+        var adopted = false
+        while !Task.isCancelled {
+            let size = framebuffer.size
+            adopted = size.width == box.width && size.height == box.height
+            if adopted || ContinuousClock.now >= deadline { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard !Task.isCancelled else { return }
+        if adopted {
+            space = next
+            send([.remoteApp(.workArea(next.workArea))])
+        }
+        for controller in controllers.values { controller.releasePlace(in: space) }
     }
 
     /// Windows that changed, owners before what they own.
@@ -120,6 +187,9 @@ final class ProgramWindows {
     func closeAll() {
         tasks.forEach { $0.cancel() }
         tasks = []
+        displayChange?.cancel()
+        if let displayObserver { NotificationCenter.default.removeObserver(displayObserver) }
+        displayObserver = nil
         for controller in controllers.values { controller.close() }
         controllers = [:]
     }
