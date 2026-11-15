@@ -21,10 +21,12 @@ struct RemoteAppSpace: Equatable {
     /// The Mac's displays now (simulated ones in tests, as for sessions
     /// across displays). With `usesHiDPI`, at the main display's density,
     /// unless the desktop would then be too large.
+    @MainActor
     static func current(usesHiDPI: Bool) -> RemoteAppSpace {
         current(displays: SessionWindowController.displays(), usesHiDPI: usesHiDPI)
     }
 
+    @MainActor
     static func current(displays: [DisplayLayout.Display], usesHiDPI: Bool) -> RemoteAppSpace {
         let ordered = displays.filter(\.isMain) + displays.filter { !$0.isMain }
         let main = ordered.first
