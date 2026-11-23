@@ -81,4 +81,6 @@ The details are in [Security posture](docs/ARCHITECTURE.md#security-posture).
 
 ## License
 
-[MIT](LICENSE)
+Vistara is free software under the [GNU General Public License, version 3](LICENSE).
+
+It links FreeRDP and OpenSSL, which are under the Apache License 2.0, a license compatible with GPLv3.
